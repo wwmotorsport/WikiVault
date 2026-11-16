@@ -21,30 +21,44 @@ const NOT_CONTENT = /^(file|image|media|category|special|template|help|talk|user
 const DULL_TITLE = /^(lists? of|index of|outline of|timeline of|glossary of)\b|\((disambiguation|surname|given name|name)\)$|^\d{1,4}s?( BC)?$|^(january|february|march|april|may|june|july|august|september|october|november|december)( \d{1,2})?$|^main[ _]page$/i;
 const LINK_SKIP = '.navbox, .vertical-navbox, .sidebar, .reflist, .references, .mw-references-wrap, .hatnote, .metadata, .ambox, .infobox, .toc, #toc, .thumb, figure, .gallery, .noprint, .sistersitebox, .authority-control, .mw-editsection';
 
-/** One spelling per page: no query, no fragment, percent-escapes undone. */
+const unescape = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+
+/**
+ * One spelling per page: no query, no fragment, and every part of the path escaped the same way.
+ * The result is still a working address ("What_is_life%3F" keeps its question mark escaped), so it
+ * can be opened as well as compared.
+ */
 function canonical(url) {
   try {
     const u = new URL(url);
-    let p = u.pathname;
-    try { p = decodeURIComponent(p); } catch { /* keep as it is */ }
-    return `${u.origin}${p}`;
+    return `${u.origin}${u.pathname.split('/').map((seg) => encodeURIComponent(unescape(seg))).join('/')}`;
   } catch { return String(url || ''); }
 }
 
-/** "Saturn_V" at the end of an address becomes "Saturn V". */
-function titleFromUrl(url) {
-  const last = canonical(url).split('/').filter(Boolean).pop() || '';
-  return last.replace(/_/g, ' ');
+/** The page's path inside the library, readable: "Saturn_V", "Physics/Essays/Light". */
+function pathOf(url, contentBase) {
+  const c = canonical(url);
+  const base = contentBase ? `${canonical(contentBase)}/` : null;
+  const rest = base && c.startsWith(base) ? c.slice(base.length) : c.split('/').filter(Boolean).pop() || '';
+  return rest.split('/').map(unescape).join('/');
 }
+
+/** "Saturn_V" at the end of an address becomes "Saturn V". */
+function titleFromUrl(url, contentBase) { return pathOf(url, contentBase).replace(/_/g, ' '); }
 
 function isArticleUrl(url, contentBase) {
   const c = canonical(url);
-  const base = `${canonical(contentBase)}/`;
-  if (!c.startsWith(base)) return false;
-  const rest = c.slice(base.length);
+  if (!c.startsWith(`${canonical(contentBase)}/`)) return false;
+  const rest = pathOf(c, contentBase);
   if (!rest || NOT_A_PAGE.test(rest)) return false;
-  return !NOT_CONTENT.test(rest.split('/').pop());
+  return !NOT_CONTENT.test(rest) && !NOT_CONTENT.test(rest.split('/').pop());
 }
+
+/** Titles are compared without regard to case, underscores or spacing. */
+const sameTitle = (a, b) => {
+  const n = (t) => String(t || '').replace(/[_\s]+/g, ' ').trim().toLowerCase();
+  return Boolean(n(a)) && n(a) === n(b);
+};
 
 function pageTitle(html, url) {
   const root = parse(html);
@@ -73,7 +87,7 @@ function articleLinks(html, pageUrl, contentBase) {
       const c = canonical(abs);
       if (seen.has(c)) continue;
       seen.add(c);
-      out.push({ url: c, title: (a.getAttribute('title') || a.text || '').replace(/\s+/g, ' ').trim() || titleFromUrl(c) });
+      out.push({ url: c, title: (a.getAttribute('title') || a.text || '').replace(/\s+/g, ' ').trim() || titleFromUrl(c, contentBase) });
     }
     return out;
   };
@@ -146,6 +160,7 @@ async function makeHole({ getPage, randomUrl, contentBase, steps = 3, rng = Math
   lead = lead.replace(/\s*Key facts:[\s\S]*$/, '').trim(); // the info box summary that the extractor appends
   if (lead.length > 320) lead = `${lead.slice(0, 320).replace(/\s+\S*$/, '')}…`;
   return {
+    base: canonical(contentBase),
     start: { url: path[0].url, title: path[0].title },
     target: { url: last.url, title: last.title, lead },
     steps: walked,
@@ -175,7 +190,7 @@ const toPar = (d) => (d === 0 ? 'level par' : d > 0 ? `${d} over` : `${-d} under
 function cleanNames(players) {
   const names = [];
   for (const raw of (Array.isArray(players) ? players : []).slice(0, MAX_PLAYERS)) {
-    let name = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    let name = String((raw && typeof raw === 'object' ? raw.name : raw) || '').replace(/\s+/g, ' ').trim().slice(0, 24);
     if (!name) name = `Player ${names.length + 1}`;
     let unique = name;
     for (let i = 2; names.includes(unique); i++) unique = `${name} ${i}`;
@@ -194,8 +209,15 @@ function cleanNames(players) {
  *   finished  the scorecard
  */
 class GolfGame {
-  constructor({ players, holes = 3, length = 'medium', library = 'Wikipedia' } = {}) {
+  constructor({ players, holes = 3, length = 'medium', library = 'Wikipedia', useHandicaps = false } = {}) {
     this.players = cleanNames(players);
+    // Saved players bring an id, a character and a handicap; a bare name is a guest.
+    const list = (Array.isArray(players) ? players : []).slice(0, MAX_PLAYERS);
+    this.profiles = this.players.map((name, i) => {
+      const p = list[i] && typeof list[i] === 'object' ? list[i] : {};
+      return { id: p.id || null, name, character: p.character || null, colour: p.colour || null, handicap: Number.isFinite(p.handicap) ? p.handicap : null };
+    });
+    this.useHandicaps = Boolean(useHandicaps);
     this.holeCount = [1, 3, 6, 9].includes(Number(holes)) ? Number(holes) : 3;
     this.length = length === 'mixed' || LENGTHS[length] ? length : 'medium';
     this.library = library;
@@ -273,13 +295,35 @@ class GolfGame {
       return 'start';
     }
     if (c === this.live.at) return null; // reload, or a jump within the page
-    if (NOT_A_PAGE.test(c)) return null;
+    if (NOT_A_PAGE.test(pathOf(c, hole.base))) return null;
     this.live.strokes += 1;
     this.live.at = c;
-    this.live.path.push(c === hole.target.url ? hole.target.title : c === hole.start.url ? hole.start.title : titleFromUrl(c));
+    this.live.path.push(c === hole.target.url ? hole.target.title : c === hole.start.url ? hole.start.title : titleFromUrl(c, hole.base));
     if (c === hole.target.url) { this._finish({ holed: true }); return 'holed'; }
     if (this.live.strokes >= strokeLimit(hole.par)) { this._finish({}); return 'limit'; }
     return 'stroke';
+  }
+
+  /**
+   * The page now showing, by its title. A second way to notice the start and the target, for when
+   * the reader's address for a page is not spelled the way the hole recorded it. Returns 'start',
+   * 'holed' or null.
+   */
+  titled(url, title) {
+    if (this.phase !== 'playing') return null;
+    const { hole } = this.current;
+    const c = canonical(url);
+    if (!this.live.onCourse) {
+      if (!sameTitle(title, hole.start.title)) return null;
+      this.live.onCourse = true;
+      this.live.path.push(hole.start.title);
+      this.live.at = c;
+      return 'start';
+    }
+    if (c !== this.live.at || !sameTitle(title, hole.target.title)) return null;
+    this.live.path[this.live.path.length - 1] = hole.target.title;
+    this._finish({ holed: true });
+    return 'holed';
   }
 
   giveUp() {
@@ -300,16 +344,39 @@ class GolfGame {
     throw new Error('Nothing to move on from.');
   }
 
-  /** Totals over the holes everyone has finished, best first. Equal totals share a place. */
+  /**
+   * Totals over the holes everyone has finished, best first. Equal totals share a place. With
+   * handicaps in play each player's strokes are reduced by their handicap, scaled from nine holes
+   * to the holes played, and the reduced ("net") totals decide the places.
+   */
   standings() {
     const complete = this.holes.filter((h) => h.cards.every(Boolean));
     const par = complete.reduce((n, h) => n + h.hole.par, 0);
     const rows = this.players.map((name, i) => {
       const strokes = complete.reduce((n, h) => n + h.cards[i].strokes, 0);
-      return { name, strokes, toPar: strokes - par };
-    }).sort((a, b) => a.strokes - b.strokes);
-    rows.forEach((r, i) => { r.place = i > 0 && rows[i - 1].strokes === r.strokes ? rows[i - 1].place : i + 1; });
-    return { par, holesPlayed: complete.length, rows };
+      const hcp = this.profiles[i].handicap;
+      const shots = this.useHandicaps && hcp != null ? Math.round((hcp * complete.length) / 9) : 0;
+      return { index: i, id: this.profiles[i].id, name, strokes, toPar: strokes - par, shots, net: strokes - shots };
+    }).sort((a, b) => a.net - b.net || a.strokes - b.strokes);
+    rows.forEach((r, i) => { r.place = i > 0 && rows[i - 1].net === r.net ? rows[i - 1].place : i + 1; });
+    return { par, holesPlayed: complete.length, rows, useHandicaps: this.useHandicaps };
+  }
+
+  /** The finished round, for the long-term records. */
+  result(now = Date.now()) {
+    if (this.phase !== 'finished') return null;
+    const st = this.standings();
+    return {
+      at: now,
+      library: this.library,
+      holes: st.holesPlayed,
+      par: st.par,
+      useHandicaps: this.useHandicaps,
+      players: st.rows.map((r) => ({
+        id: r.id, name: r.name, strokes: r.strokes, net: r.net, place: r.place,
+        cards: this.holes.map((h) => ({ par: h.hole.par, strokes: h.cards[r.index].strokes, holed: h.cards[r.index].holed })),
+      })),
+    };
   }
 
   snapshot() {
@@ -325,6 +392,8 @@ class GolfGame {
       error: this.error,
       library: this.library,
       players: this.players,
+      profiles: this.profiles,
+      useHandicaps: this.useHandicaps,
       holeCount: this.holeCount,
       length: this.length,
       holeNumber: this.holeIndex + 1,
@@ -356,4 +425,4 @@ class GolfGame {
   }
 }
 
-module.exports = { GolfGame, makeHole, articleLinks, canonical, titleFromUrl, isArticleUrl, scoreName, strokeLimit, toPar, cleanNames, LENGTHS, MAX_PLAYERS };
+module.exports = { GolfGame, makeHole, articleLinks, canonical, pathOf, titleFromUrl, isArticleUrl, sameTitle, scoreName, strokeLimit, toPar, cleanNames, LENGTHS, MAX_PLAYERS };

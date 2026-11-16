@@ -9,6 +9,7 @@
 @font-face { font-family: "Plex Serif"; src: url("../../assets/fonts/IBMPlexSerif-Regular.woff2") format("woff2"); font-weight: 400; font-display: block; }
 @font-face { font-family: "Plex Serif"; src: url("../../assets/fonts/IBMPlexSerif-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: block; }
 @font-face { font-family: "Plex Serif"; src: url("../../assets/fonts/IBMPlexSerif-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: block; }
+@font-face { font-family: "Pixel"; src: url("../../assets/fonts/PressStart2P-Regular.ttf") format("truetype"); font-weight: 400; font-display: block; }
 
 :root {
   --ink: #14263b;
@@ -377,42 +378,114 @@ fieldset.flavours legend { padding: 0; }
 .more-lib .actions { margin: 10px 0 0; }
 .more-lib progress { width: 100%; height: 8px; margin-top: 8px; }
 
-/* ---- wiki golf ---- */
-:root { --green: #1b5e46; --green-deep: #134534; }
-.icon-btn[aria-pressed="true"] { background: var(--green); color: #fff; }
-.golfbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 16px; background: var(--green); color: #fff; font-size: 14px; }
-.golfbar-hole { font-weight: 600; }
-.golfbar-route { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.golfbar-route strong { padding: 1px 6px; background: var(--mark); color: var(--ink); border-radius: 4px; }
-.golfbar-strokes { font-variant-numeric: tabular-nums; }
-.golfbar .btn { background: transparent; border-color: rgba(255, 255, 255, .5); color: #fff; }
-.golfbar .btn:hover:not(:disabled) { border-color: #fff; background: var(--green-deep); }
-.golfbar :focus-visible { outline-color: var(--mark); }
-.golfbar-lead { flex-basis: 100%; margin: 2px 0 4px; max-width: 760px; font: 15px/1.55 var(--read); }
-.golfbar > [hidden] { display: none; }
+/* ---- wiki golf: an 8-bit clubhouse ---- */
+:root { --g8-ink: #101820; --g8-paper: #fcfcfc; --g8-sky: #6ec3ff; --g8-grass: #2f9e4f; --g8-fair: #5fd068; --g8-sand: #f2d16b; --g8-flag: #e4433b; --g8-gold: #f2d14b; }
+.icon-btn[aria-pressed="true"] { background: var(--g8-grass); color: #fff; }
 body.golf-playing [inert] { opacity: .35; }
 
-.golf h1 { margin: 0 0 14px; font: 600 34px/1.2 var(--read); }
-.golf h1.golf-result { font-size: 46px; color: var(--green); }
-.golf-kicker { margin: 0 0 10px; color: var(--muted); }
-.golf-hole { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); margin: 6px 0 22px; border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet); overflow: hidden; }
-.golf-end { padding: 20px 22px; }
-.golf-end + .golf-end { border-left: 1px solid var(--rule); }
-.golf-end-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
-.golf-end strong { display: block; font: 600 26px/1.25 var(--read); overflow-wrap: anywhere; }
-.golf-target { background: #f1f7f4; box-shadow: inset 4px 0 0 var(--green); }
-.golf-target p { margin: 10px 0 0; font: 15px/1.55 var(--read); color: var(--text); }
-.golf-up { font-size: 17px; }
-.golf-standing { margin-top: 14px; }
-.golf-card-table { width: 100%; margin: 4px 0 14px; border-collapse: collapse; background: var(--sheet); border: 1px solid var(--rule); font-size: 15px; }
-.golf-card-table th, .golf-card-table td { padding: 9px 12px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; font-weight: 400; }
-.golf-card-table thead th, .golf-card-table tbody th, .golf-card-table tfoot th { font-weight: 600; }
-.golf-card-table thead th { background: var(--green); color: #fff; border-bottom: 0; }
-.golf-card-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.golf-card-table td.best { font-weight: 600; color: var(--green); }
-.golf-card-table tfoot td, .golf-card-table tfoot th { background: #f1f7f4; font-weight: 600; }
-.golf-card-table tfoot tr:last-child td, .golf-card-table tfoot tr:last-child th { border-bottom: 0; }
-.golf-path { color: var(--muted); font-size: 14px; }
-.golf-player { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.golf-player input { flex: 1; }
-@media (max-width: 760px) { .golf-hole { grid-template-columns: 1fr; } .golf-end + .golf-end { border-left: 0; border-top: 1px solid var(--rule); } .golf-target { box-shadow: inset 0 4px 0 var(--green); } }
+.golfbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 10px 16px; background: var(--g8-ink); border-bottom: 4px solid var(--g8-grass); color: var(--g8-paper); font: 400 10px/1.6 "Pixel", var(--ui); letter-spacing: .02em; text-transform: uppercase; }
+.golfbar-hole { color: var(--g8-gold); }
+.golfbar-route { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golfbar-route strong { font-weight: 400; padding: 3px 6px; background: var(--g8-flag); color: #fff; }
+.golfbar-strokes { color: var(--g8-fair); font-variant-numeric: tabular-nums; }
+.golfbar .btn { height: 28px; padding: 0 10px; background: var(--g8-ink); border: 2px solid var(--g8-paper); border-radius: 0; color: var(--g8-paper); font: inherit; text-transform: uppercase; }
+.golfbar .btn:hover:not(:disabled) { background: var(--g8-paper); color: var(--g8-ink); border-color: var(--g8-paper); }
+.golfbar :focus-visible { outline: 2px solid var(--g8-gold); outline-offset: 2px; }
+.golfbar-lead { flex-basis: 100%; margin: 2px 0 4px; max-width: 780px; font: 15px/1.55 var(--ui); letter-spacing: 0; text-transform: none; }
+.golfbar > [hidden] { display: none; }
+
+#view-golf { background: var(--g8-ink); }
+.g8 { max-width: 1040px; margin: 0 auto; padding: 20px 24px 56px; color: var(--g8-paper); font: 400 11px/1.9 "Pixel", var(--ui); }
+.g8 canvas, .g8-dialog canvas { image-rendering: pixelated; }
+.g8-stage { position: relative; border: 4px solid var(--g8-paper); background: var(--g8-sky); line-height: 0; }
+.g8-stage canvas { display: block; width: 100%; height: clamp(200px, 40vh, 380px); object-fit: cover; object-position: 50% 62%; }
+.g8-banner { position: absolute; left: 0; right: 0; top: 9%; margin: 0; text-align: center; font-size: clamp(18px, 4.2vw, 40px); line-height: 1.3; color: var(--g8-paper); text-shadow: 4px 4px 0 var(--g8-ink); padding: 0 12px; overflow-wrap: anywhere; }
+.g8-banner.small { font-size: clamp(12px, 2.2vw, 20px); }
+.g8-body { margin-top: 16px; display: grid; gap: 16px; }
+.g8-box { border: 4px solid var(--g8-paper); padding: 16px 18px; background: var(--g8-ink); }
+.g8-box > :last-child { margin-bottom: 0; }
+.g8-h { margin: 0 0 12px; padding: 0; border: 0; font: 400 12px/1.6 "Pixel", var(--ui); color: var(--g8-gold); text-transform: uppercase; }
+.g8-kicker { margin: 0 0 10px; color: var(--g8-fair); text-transform: uppercase; }
+.g8-big { margin: 0 0 12px; font-size: clamp(16px, 3vw, 28px); line-height: 1.4; overflow-wrap: anywhere; }
+.g8-big.win { color: var(--g8-gold); }
+.g8-plain { font: 16px/1.55 var(--ui); margin: 0 0 12px; max-width: 760px; }
+.g8-plain.dim { color: #b9c6d2; font-size: 14px; }
+.g8-plain.bad { color: #ff9a8f; }
+.g8-route { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0; margin-bottom: 14px; }
+.g8-end { padding: 14px 16px; border: 4px solid var(--g8-paper); }
+.g8-end + .g8-end { border-left: 0; background: #17324a; }
+.g8-end-label { display: block; margin-bottom: 8px; color: var(--g8-fair); text-transform: uppercase; }
+.g8-end.target .g8-end-label { color: var(--g8-flag); }
+.g8-end strong { display: block; font: 400 15px/1.6 "Pixel", var(--ui); overflow-wrap: anywhere; }
+.g8-end p { margin: 10px 0 0; font: 15px/1.55 var(--ui); color: #dbe6ee; }
+.g8-up { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; text-transform: uppercase; }
+.g8-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 4px; }
+.g8-btn { min-height: 40px; padding: 8px 16px; border: 4px solid var(--g8-paper); border-radius: 0; background: var(--g8-ink); color: var(--g8-paper); font: 400 11px/1.4 "Pixel", var(--ui); text-transform: uppercase; cursor: pointer; }
+.g8-btn:hover:not(:disabled) { background: var(--g8-paper); color: var(--g8-ink); }
+.g8-btn.go { background: var(--g8-grass); border-color: var(--g8-paper); }
+.g8-btn.go:hover:not(:disabled) { background: var(--g8-fair); color: var(--g8-ink); }
+.g8-btn.quiet { border-color: transparent; color: #b9c6d2; text-decoration: underline; text-underline-offset: 4px; }
+.g8-btn.quiet:hover:not(:disabled) { background: transparent; color: var(--g8-paper); }
+.g8-btn:disabled { opacity: .45; cursor: default; }
+.g8-btn[aria-pressed="true"] { background: var(--g8-gold); color: var(--g8-ink); border-color: var(--g8-gold); }
+.g8 :focus-visible, .g8-dialog :focus-visible { outline: 3px solid var(--g8-gold); outline-offset: 3px; }
+.g8-roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.g8-player { position: relative; display: grid; grid-template-columns: 48px 1fr; gap: 4px 12px; align-items: center; padding: 10px; border: 4px solid #4a5a6c; background: var(--g8-ink); color: var(--g8-paper); font: inherit; text-align: left; cursor: pointer; }
+.g8-player:hover { border-color: var(--g8-paper); }
+.g8-player[aria-pressed="true"] { border-color: var(--g8-gold); background: #1d2b3a; }
+.g8-player canvas { grid-row: span 2; width: 48px; height: 48px; }
+.g8-player .g8-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
+.g8-player .g8-sub { color: #b9c6d2; font-size: 8px; line-height: 1.6; }
+.g8-player .g8-order { position: absolute; top: -10px; right: -10px; min-width: 24px; padding: 2px 4px; background: var(--g8-gold); color: var(--g8-ink); text-align: center; }
+.g8-player.new { grid-template-columns: 1fr; justify-items: center; border-style: dashed; color: var(--g8-fair); min-height: 76px; }
+.g8-edit { display: flex; gap: 8px; flex-wrap: wrap; }
+.g8-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+.g8-opts .g8-label { min-width: 104px; color: #b9c6d2; text-transform: uppercase; }
+.g8-table { width: 100%; border-collapse: collapse; font-size: 9px; line-height: 1.8; }
+.g8-table th, .g8-table td { padding: 8px 8px; border-bottom: 2px solid #2c3d4f; text-align: left; font-weight: 400; vertical-align: middle; }
+.g8-table thead th { color: var(--g8-fair); text-transform: uppercase; border-bottom: 4px solid var(--g8-paper); }
+.g8-table .num { text-align: right; white-space: nowrap; }
+.g8-table td.best { color: var(--g8-gold); }
+.g8-table tfoot td, .g8-table tfoot th { border-bottom: 0; border-top: 4px solid var(--g8-paper); color: var(--g8-gold); }
+.g8-table .g8-path { font: 14px/1.5 var(--ui); color: #dbe6ee; }
+.g8-table .who { display: flex; align-items: center; gap: 10px; }
+.g8-table .who canvas { width: 32px; height: 32px; flex: none; }
+.g8-scroll { overflow-x: auto; }
+.g8-dialog { width: min(640px, calc(100vw - 32px)); padding: 20px 22px; border: 4px solid var(--g8-paper); border-radius: 0; background: var(--g8-ink); color: var(--g8-paper); font: 400 11px/1.9 "Pixel", var(--ui); box-shadow: 8px 8px 0 rgba(0, 0, 0, .6); }
+.g8-dialog::backdrop { background: rgba(16, 24, 32, .75); }
+.g8-dialog input[type="text"] { width: 100%; height: 44px; border: 4px solid var(--g8-paper); border-radius: 0; background: var(--g8-ink); color: var(--g8-paper); font: 400 13px/1 "Pixel", var(--ui); }
+.g8-dialog .g8-label { display: block; margin: 14px 0 8px; color: var(--g8-fair); text-transform: uppercase; }
+.g8-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.g8-choice { width: 64px; height: 64px; padding: 4px; border: 4px solid #4a5a6c; background: #1d2b3a; cursor: pointer; }
+.g8-choice canvas { width: 48px; height: 48px; }
+.g8-choice.swatch { width: 44px; height: 44px; }
+.g8-choice[aria-pressed="true"] { border-color: var(--g8-gold); }
+.g8-preview { display: flex; align-items: center; gap: 18px; }
+.g8-preview canvas { width: 96px; height: 96px; background: var(--g8-sky); border: 4px solid var(--g8-paper); }
+.g8-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin: 12px 0; }
+.g8-stat { padding: 8px 10px; border: 2px solid #4a5a6c; }
+.g8-stat b { display: block; font-weight: 400; font-size: 14px; color: var(--g8-gold); }
+.g8-stat span { color: #b9c6d2; font-size: 8px; text-transform: uppercase; }
+@media (max-width: 760px) { .g8-route { grid-template-columns: 1fr; } .g8-end + .g8-end { border-left: 4px solid var(--g8-paper); border-top: 0; } }
+@media (prefers-reduced-motion: reduce) { .g8 * { animation: none !important; } }
+
+/* ---- guided tour: numbered pins on the top bar, and a card that says what each one is ---- */
+dialog#tour { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden; }
+dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
+#tour-pins { position: absolute; inset: 0; pointer-events: none; }
+.tour-ring { position: absolute; border: 2px solid var(--mark); border-radius: 8px; box-shadow: 0 0 0 3px rgba(20, 38, 59, .5); }
+.tour-pin { position: absolute; width: 28px; height: 28px; margin-left: -14px; display: grid; place-items: center; border-radius: 50%; background: var(--mark); color: var(--ink); font: 600 15px/1 var(--ui); box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.tour-pin::before { content: ""; position: absolute; left: 13px; top: -10px; width: 2px; height: 10px; background: var(--mark); }
+.tour-pin.lit, .tour-ring.lit { outline: 3px solid #fff; outline-offset: 2px; }
+.tour-card { position: absolute; left: 50%; top: 118px; transform: translateX(-50%); width: min(640px, calc(100vw - 48px)); max-height: calc(100vh - 150px); overflow: auto; padding: 24px 28px 14px; background: var(--sheet); border-radius: 10px; color: var(--text); box-shadow: 0 24px 60px rgba(20, 38, 59, .45); }
+.tour-card h2 { margin: 0 0 8px; padding: 0; border: 0; font: 600 22px/1.3 var(--read); }
+.tour-card ol { list-style: none; margin: 0 0 16px; padding: 0; }
+.tour-card ol li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; padding: 7px 6px; border-radius: 6px; }
+.tour-card ol li:hover, .tour-card ol li.lit { background: var(--paper); }
+.tour-num { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--mark); color: var(--ink); font-weight: 600; font-size: 13px; }
+.tour-card ol b { font-weight: 600; }
+#tour-new { margin: 0 0 14px; padding: 12px 14px; background: #fff8dc; border-left: 4px solid var(--mark); border-radius: 4px; }
+#tour-new ul { margin: 0; padding-left: 18px; }
+#tour-new li { margin-bottom: 4px; }
+.tour-new-title { margin: 0 0 6px; font-weight: 600; }
+.tour-card .actions { margin: 12px 0 8px; justify-content: flex-start; }

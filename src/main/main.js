@@ -25,7 +25,9 @@ const os = require('node:os');
 const { LlmService, refreshWindowsPath, fastest } = require('../core/llm');
 const { smartSearch } = require('../core/search');
 const { GolfGame, makeHole } = require('../core/golf');
+const { GolfStore, CHARACTERS, COLOURS } = require('../core/golf-store');
 const { sisterLink, pathCandidates } = require('../core/links');
+const { tourPlan } = require('../core/tour');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -55,6 +57,7 @@ const DEFAULTS = {
   keepInTray: true,
   launchAtLogin: true,
   enginePath: null,
+  tour: { hide: false, seenVersion: null }, // the guided tour: switched off? and the version it was last shown in
   ai: {
     enabled: true,
     provider: 'foundry',
@@ -81,9 +84,16 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings() {
   try {
     const saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) } };
+    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) }, tour: { ...DEFAULTS.tour, ...(saved.tour || {}) } };
   } catch { /* first run */ }
   if (process.env.WIKIVAULT_BASE_URL) settings.baseUrl = process.env.WIKIVAULT_BASE_URL;
+}
+
+// Decided once per start, from what the settings said when the app opened.
+let tourRun = null;
+function tourThisRun() {
+  if (!tourRun) tourRun = { ...tourPlan(settings.tour, app.getVersion()), done: false };
+  return { show: tourRun.show && !tourRun.done, whatsNew: tourRun.whatsNew };
 }
 
 function saveSettings() {
@@ -167,11 +177,20 @@ async function layGolfHole() {
     const hole = await makeHole({ getPage: (url) => e.fetchHtml(url), randomUrl: e.randomUrl(), contentBase: e.contentBase(), steps: g.game.stepsForNext() });
     if (golf !== g || g.game.phase !== 'layout') return;
     g.game.setHole(hole);
+    log(`golf: hole ${g.game.holeIndex + 1} laid out, par ${hole.par}: ${hole.start.url} -> ${hole.target.url}`);
   } catch (err) {
+    log(`golf: hole could not be laid out: ${err.message}`);
     if (golf === g) g.game.layoutFailed(err.message);
   }
   pushState();
 }
+// Saved players and their records live beside the settings, in golf.json.
+let golfStoreObj = null;
+function clubStore() {
+  if (!golfStoreObj) golfStoreObj = new GolfStore(path.join(app.getPath('userData'), 'golf.json'), { log });
+  return golfStoreObj;
+}
+const golfClub = () => ({ players: clubStore().list(), characters: CHARACTERS, colours: COLOURS });
 const golfInPlay = () => Boolean(golfState() && golf.game.phase !== 'finished');
 
 /**
@@ -355,6 +374,7 @@ async function getState() {
   return {
     version: app.getVersion(),
     acknowledged: Number(settings.acknowledged) >= TERMS_VERSION,
+    tour: { ...tourThisRun(), auto: !settings.tour.hide },
     platform: process.platform,
     packaged: app.isPackaged,
     partitionAvailable: partitionAvailable(),
@@ -373,6 +393,7 @@ async function getState() {
     },
     activeLibrary: curLibId(),
     golf: golfState(),
+    golfClub: golfClub(),
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
       const snap = x?.manager.snapshot();
@@ -1395,10 +1416,15 @@ function registerIpc() {
     pushState();
     return { homeUrl: cur().homeUrl() };
   });
-  handle('golf:start', ({ players, holes, length }) => {
+  handle('golf:start', ({ playerIds, holes, length, handicaps }) => {
     if (!cur()?.running) throw new Error('There is no library to play in yet.');
+    const roster = clubStore().list();
+    const players = (Array.isArray(playerIds) ? playerIds : []).map((id) => roster.find((p) => p.id === id)).filter(Boolean)
+      .map((p) => ({ id: p.id, name: p.name, character: p.character, colour: p.colour, handicap: p.handicap }));
+    if (!players.length) throw new Error('Choose at least one player.');
     const libId = curLibId();
-    golf = { engine: cur(), libId, game: new GolfGame({ players, holes, length, library: libId === 'wikipedia' ? 'Wikipedia' : LIBRARIES[libId].name }) };
+    golf = { engine: cur(), libId, recorded: false, game: new GolfGame({ players, holes, length, useHandicaps: Boolean(handicaps), library: libId === 'wikipedia' ? 'Wikipedia' : LIBRARIES[libId].name }) };
+    log(`golf: round started in ${golf.game.library}: ${players.length} player(s), ${golf.game.holeCount} hole(s), ${golf.game.length}`);
     layGolfHole();
     return true;
   });
@@ -1410,15 +1436,38 @@ function registerIpc() {
   };
   handle('golf:relay', inGolf((game) => { if (game.phase === 'layout') game.error = null; else game.relay(); }));
   handle('golf:tee', inGolf((game) => ({ url: game.teeOff() })));
-  handle('golf:visit', ({ url }) => {
-    if (!golfState()) return null;
-    const what = golf.game.visit(String(url || ''));
+  // Every page the reader arrives at during a turn, and what the game made of it, goes in the log.
+  const golfSaw = (how, url, what) => {
+    if (golf?.game.phase === 'playing' || what) log(`golf: ${how} ${url} -> ${what || 'not counted'}`);
     if (what) pushState();
     return what;
+  };
+  handle('golf:visit', ({ url }) => (golfState() ? golfSaw('at', String(url || ''), golf.game.visit(String(url || ''))) : null));
+  handle('golf:title', ({ url, title }) => {
+    if (!golfState() || golf.game.phase !== 'playing') return null;
+    const what = golf.game.titled(String(url || ''), String(title || ''));
+    return what ? golfSaw(`title "${String(title).slice(0, 80)}" at`, String(url || ''), what) : null;
   });
   handle('golf:give-up', inGolf((game) => game.giveUp()));
-  handle('golf:next', inGolf((game) => { game.next(); }));
-  handle('golf:quit', () => { golf = null; pushState(); return true; });
+  handle('golf:next', async () => {
+    if (!golfState()) throw new Error('No round of wiki golf is in progress.');
+    const g = golf;
+    g.game.next();
+    if (g.game.phase === 'finished' && !g.recorded) {
+      g.recorded = true;
+      await clubStore().recordRound(g.game.result()).catch((err) => log(`golf: the round could not be saved: ${err.message}`));
+    }
+    if (g.game.phase === 'layout') layGolfHole(); else pushState();
+    return true;
+  });
+  handle('golf:player-save', async (player) => { const id = await clubStore().savePlayer(player); pushState(); return id; });
+  handle('golf:player-delete', async ({ id }) => {
+    if (golfInPlay() && golf.game.profiles.some((p) => p.id === id)) throw new Error('That player is in the round being played.');
+    await clubStore().deletePlayer(String(id));
+    pushState();
+    return true;
+  });
+  handle('golf:quit', () => { if (golf) log('golf: round closed'); golf = null; pushState(); return true; });
   handle('search:suggest', ({ term }) => (cur()?.running ? cur().suggest(term, 8) : []));
   handle('search:query', ({ q, start = 0 }) => (cur()?.running ? smartSearch(cur(), q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
 
@@ -1570,6 +1619,14 @@ function registerIpc() {
     return revertPartition(opts);
   });
 
+  handle('tour:done', ({ hide }) => {
+    tourThisRun();
+    tourRun.done = true;
+    settings.tour = { hide: hide == null ? settings.tour.hide : Boolean(hide), seenVersion: app.getVersion() };
+    saveSettings();
+    pushState();
+    return true;
+  });
   handle('app:acknowledge', () => { settings.acknowledged = TERMS_VERSION; settings.acknowledgedAt = new Date().toISOString(); saveSettings(); pushState(); return true; });
   handle('shell:open-notices', ({ which }) => {
     const name = which === 'licence' ? ['LICENSE.txt', 'LICENSE'] : ['THIRD-PARTY-NOTICES.txt'];

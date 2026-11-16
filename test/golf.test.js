@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { GolfGame, makeHole, articleLinks, canonical, isArticleUrl, scoreName, strokeLimit, cleanNames } = require('../src/core/golf');
+const { GolfGame, makeHole, articleLinks, canonical, pathOf, isArticleUrl, scoreName, strokeLimit, cleanNames } = require('../src/core/golf');
 
 const ORIGIN = 'http://127.0.0.1:9999';
 const BASE = `${ORIGIN}/content/wiki_en`;
@@ -21,7 +21,7 @@ function library(graph) {
     seen,
     getPage: async (url) => {
       if (url.startsWith(`${ORIGIN}/random`)) { const name = names[r++ % names.length]; return { url: u(name), text: html(name) }; }
-      const name = canonical(url).slice(BASE.length + 1);
+      const name = pathOf(url, BASE);
       seen.push(name);
       if (!(name in graph)) throw new Error('404');
       return { url: u(name), text: html(name) };
@@ -39,7 +39,14 @@ test('links are read from the running text only, once each, as full addresses', 
 });
 
 test('addresses are compared without fragments, queries or escapes', () => {
-  assert.equal(canonical(`${BASE}/Saturn%20V?x=1#History`), `${BASE}/Saturn V`);
+  assert.equal(canonical(`${BASE}/Saturn%20V?x=1#History`), `${BASE}/Saturn%20V`);
+  assert.equal(canonical(`${BASE}/Mercury_%28planet%29`), canonical(`${BASE}/Mercury_(planet)`), 'however the brackets are written');
+  assert.equal(canonical(`${BASE}/Pok%C3%A9mon`), canonical(`${BASE}/Pokémon`));
+  // A question mark or a hash that belongs to the title stays part of the page, and the address still works.
+  assert.equal(canonical(`${BASE}/What_is_life%3F`), `${BASE}/What_is_life%3F`);
+  assert.notEqual(canonical(`${BASE}/What_is_life%3F`), canonical(`${BASE}/What_is_life`));
+  assert.equal(pathOf(`${BASE}/Physics/What_is_light%3F`, BASE), 'Physics/What_is_light?');
+  assert.ok(!isArticleUrl(`${BASE}/Category%3APhysics/Essays`, BASE), 'a category with a subpage is still a category');
   assert.ok(isArticleUrl(`${BASE}/Star_Trek:_Voyager`, BASE));
   assert.ok(!isArticleUrl(`${BASE}/File:Photo.jpg`, BASE));
   assert.ok(!isArticleUrl(`${BASE}/I/pic.png`, BASE));
@@ -171,4 +178,47 @@ test('a different hole can be asked for before the first tee shot, and ties shar
   for (const n of [2, 1, 2]) { g.teeOff(); g.visit(u('B')); if (n === 2) g.visit(u('Mid')); g.visit(u('C')); g.next(); }
   g.next();
   assert.deepEqual(g.snapshot().standings.rows.map((r) => [r.name, r.place]), [['Ben', 1], ['Ada', 2], ['Cy', 2]]);
+});
+
+test('the start and the target are also recognised by title when their address is spelled another way', () => {
+  const g = new GolfGame({ players: ['Ada'], holes: 1 });
+  g.setHole({ ...HOLE('A', 'D'), base: BASE });
+  g.teeOff();
+  // The reader reports the start under an address the hole did not record.
+  assert.equal(g.visit(`${BASE}/a_(alias)`), null);
+  assert.equal(g.titled(`${BASE}/a_(alias)`, 'a'), 'start', 'titles are compared without regard to case');
+  assert.equal(g.visit(u('B')), 'stroke');
+  assert.equal(g.titled(u('B'), 'B'), null, 'an ordinary page changes nothing');
+  assert.equal(g.visit(`${BASE}/D_(alias)`), 'stroke', 'the address alone did not look like the target');
+  assert.equal(g.titled(u('B'), 'D'), null, 'a title for a page the reader has already left is ignored');
+  assert.equal(g.titled(`${BASE}/D_(alias)`, 'D'), 'holed');
+  const s = g.snapshot();
+  assert.equal(s.phase, 'done');
+  assert.equal(s.last.strokes, 2);
+  assert.equal(g.titled(`${BASE}/D_(alias)`, 'D'), null, 'only once');
+  g.next();
+  assert.deepEqual(g.snapshot().cards[0].path, ['A', 'B', 'D']);
+});
+
+test('saved players carry their character and handicap; with handicaps on, net scores decide the places', () => {
+  const players = [{ id: 'p1', name: 'Ada', character: 'owl', colour: '#3fae5a', handicap: 0 }, { id: 'p2', name: 'Ben', character: 'fox', colour: '#e4433b', handicap: 9 }, 'Guest'];
+  const play = (useHandicaps) => {
+    const g = new GolfGame({ players, holes: 1, useHandicaps });
+    g.setHole(HOLE('A', 'D'));
+    // Hole 1 tee order: Ada, Ben, Guest. Ada takes 2, Ben 3, the guest 2.
+    for (const n of [2, 3, 2]) { g.teeOff(); g.visit(u('A')); for (let i = 1; i < n; i++) g.visit(u(`M${i}`)); g.visit(u('D')); g.next(); }
+    g.next();
+    return g;
+  };
+  const gross = play(false);
+  assert.deepEqual(gross.snapshot().profiles.map((p) => [p.id, p.character, p.handicap]), [['p1', 'owl', 0], ['p2', 'fox', 9], [null, null, null]]);
+  assert.deepEqual(gross.standings().rows.map((r) => [r.name, r.net, r.place]), [['Ada', 2, 1], ['Guest', 2, 1], ['Ben', 3, 3]]);
+  const net = play(true);
+  // Ben's handicap of 9 is one stroke over a single hole.
+  assert.deepEqual(net.standings().rows.map((r) => [r.name, r.strokes, r.shots, r.net, r.place]), [['Ada', 2, 0, 2, 1], ['Guest', 2, 0, 2, 1], ['Ben', 3, 1, 2, 1]]);
+  const result = net.result(1700000000000);
+  assert.equal(result.holes, 1);
+  assert.equal(result.par, 3);
+  assert.deepEqual(result.players.map((p) => [p.id, p.strokes, p.net, p.place, p.cards[0].holed]), [['p1', 2, 2, 1, true], [null, 2, 2, 1, true], ['p2', 3, 2, 1, true]]);
+  assert.equal(new GolfGame({ players: ['x'] }).result(), null, 'no result until the round is finished');
 });

@@ -108,26 +108,40 @@ These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving
 
 ## Wiki golf
 
-A game for one to six players on one computer, played entirely in the offline copy. Press the flag button in the top bar.
+A game for one to six players on one computer, played entirely in the offline copy and drawn in an 8-bit style. Press the flag button in the top bar to open the clubhouse.
 
 **The idea.** Each hole has a start article and a target article. Get from one to the other using only the links inside the articles. Every article you open is a stroke. The fewest strokes over the round wins.
 
-**Setting up.** Enter the players' names, choose 1, 3, 6 or 9 holes, and choose how long the holes are: short (par 3), medium (par 4), long (par 5) or a mix. The game is played in whichever library is open, so open Wikibooks or Wikiversity first if you want to play there.
+**Players.** Press **+ New player** and give the player a name, one of eight characters and a colour. Players are saved on this computer, in `%APPDATA%\Wikivault\golf.json`, with their records; nothing about them leaves the computer. Press the players who are taking part in the order they will tee off (the cards show 1, 2, 3...). A player's card, opened from the link under the list, shows the record and lets you change the name and look or remove the player.
 
-**How a hole is made.** The app starts at a random article and follows a few links from its text, never visiting a page twice. Where it ends up is the target, so every hole can be reached, and par is one more than the number of links it followed. Lists, disambiguation pages and bare years are skipped. Before the first player tees off you can ask for a different hole.
+**The round.** Choose 1, 3, 6 or 9 holes and how long they are: short (par 3), medium (par 4), long (par 5) or a mix. The game is played in whichever library is open, so open Wikibooks or Wikiversity first if you want to play there.
 
-**Taking a turn.** The hole card shows the start, the target and the opening lines of the target article. Press **Tee off** and the start article opens. A green bar shows the hole, the target and your strokes; **About the target** shows the target's opening lines again. During a turn:
+**How a hole is made.** The app starts at a random article and follows a few links from its text, never visiting a page twice. Where it ends up is the target, so every hole can be reached, and par is one more than the number of links it followed. Lists, disambiguation pages, categories and bare years are skipped. Before the first player tees off you can ask for a different hole.
+
+**Taking a turn.** The hole card shows the start, the target and the opening lines of the target article. Press **Tee off** and the start article opens. A bar under the top bar shows the hole, the target and your strokes; **About the target** shows the target's opening lines again. During a turn:
 
 - search, Ask, the home and random buttons and the library list are switched off;
 - going back or forward counts as a stroke, like any other article you open;
 - jumping around inside one article is free, and so is find on page (`Ctrl+F`);
 - the hole ends when you reach the target, or at three times par. **Pick up** ends your turn early and scores that same limit.
 
+When you open the target, the turn ends by itself and the result is shown.
+
 **Several players.** Everyone plays the same hole, one after another, and the player who goes first changes each hole. The others should look away during a turn: the app hides each route until everyone has played the hole, but it cannot stop anyone watching the screen. After the last player, the hole's summary shows every route and the route the hole was laid out along.
 
-**Scoring.** One stroke is a hole in one; otherwise scores are named against par (eagle, birdie, par, bogey and so on). The scorecard at the end lists every hole, the totals and each player's score to par. Equal totals share the win. Nothing about a round is saved once you close it.
+**Scoring.** One stroke is a hole in one; otherwise scores are named against par (eagle, birdie, par, bogey and so on). The scorecard at the end lists every hole, the totals and each player's score to par. Equal totals share the win.
+
+**Records.** A finished round is added to each player's record: rounds, won-lost-tied (counted only when more than one person played), score to par per hole, best round, holes in one, holes under par and holes not finished, and the last twenty rounds. A round that is ended early is not recorded.
+
+**Handicaps.** After three rounds a player has a handicap: the number of strokes over par they take per nine holes, worked out from the better half of their last ten rounds, so one bad day does not move it much. Someone who plays to par or better is "scratch" (0). With two or more players, **Handicaps: On** takes strokes off each player's total in proportion to the holes played (a handicap of 9 is one stroke a hole) and the reduced "net" totals decide the winner. The scorecard shows both.
 
 If the library is switched to a newer edition during a round, the round ends, because the articles of the old edition are no longer open.
+
+If a turn does not end when you reach the target, `wikivault.log` has a line for the hole ("golf: hole 1 laid out...") and one for every page opened during the turn, with what the game made of it.
+
+## The tour
+
+A short tour opens over the main window: numbered pins on the buttons along the top, and a card that says what each one does. **Got it** closes it; it opens again at the next start. **Don't show again** stops that. The first time a new version runs it opens once more, with a short list of what is new. **Library > About > Show the tour** opens it at any time, and the tick box beside it switches the automatic opening back on.
 
 ## Download speed
 
@@ -296,6 +310,7 @@ When no article contains every word, the search is retried without filler words 
 | Edition state | `<library>\state.json` |
 | Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
+| Wiki golf players and records | `%APPDATA%\Wikivault\golf.json` |
 
 ## If something goes wrong
 

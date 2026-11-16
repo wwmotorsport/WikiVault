@@ -12,6 +12,7 @@ const line = '='.repeat(78);
 let out = `THIRD-PARTY NOTICES FOR WIKIVAULT\n\nWikivault itself is under the MIT licence (see LICENSE.txt). This file lists other people's work.\n\n${line}\nPART 1 - INCLUDED IN THE INSTALLER\n${line}\n\n`;
 out += 'Electron and Chromium\n  The application shell. Their licences are installed next to Wikivault.exe as\n  LICENSE.electron.txt and LICENSES.chromium.html.\n\n';
 out += `IBM Plex Sans and IBM Plex Serif (fonts, unmodified)\n\n${fs.readFileSync(path.join(root, 'assets/fonts/IBM-Plex-LICENSE.txt'), 'utf8').trim()}\n\n`;
+out += `Press Start 2P (font, unmodified; used in the wiki golf game)\n\n${fs.readFileSync(path.join(root, 'assets/fonts/PressStart2P-LICENSE.txt'), 'utf8').trim()}\n\n`;
 
 const packages = Object.entries(lock.packages).filter(([dir, p]) => dir && !p.dev).sort(([a], [b]) => a.localeCompare(b));
 for (const [dir, p] of packages) {

@@ -68,7 +68,7 @@ function showView(next) {
   for (const v of ['setup', 'results', 'reader', 'library', 'golf']) $(`view-${v}`).hidden = v !== next;
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
   if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
-  if (state?.golf) renderGolf();
+  if (next === 'golf' || state?.golf) renderGolf();
   updateNav();
 }
 
@@ -77,7 +77,8 @@ function updateNav() {
   let fwd = false;
   if (view === 'reader' && readerReady) {
     try { back = reader.canGoBack(); fwd = reader.canGoForward(); } catch { /* not attached yet */ }
-  } else if ((view === 'results' || view === 'library') && prevView && prevView !== 'golf') back = true;
+  } else if ((view === 'results' || view === 'library') && prevView) back = true;
+  else if (view === 'golf' && !state?.golf && prevView && prevView !== 'golf') back = true;
   $('nav-back').disabled = !back;
   $('nav-forward').disabled = !fwd;
   const ready = Boolean(state?.engine.ready);
@@ -91,7 +92,7 @@ function updateNav() {
 }
 
 function goBack() {
-  if (view === 'golf') return;
+  if (view === 'golf') { if (!state?.golf && prevView && prevView !== 'golf') showView(prevView); return; }
   if (view === 'reader') { try { reader.goBack(); } catch { /* nothing to go back to */ } } else if (prevView) showView(prevView);
 }
 
@@ -1381,15 +1382,301 @@ $('lib-select').addEventListener('change', (e) => guard(async () => {
   openUrl(r.homeUrl);
 }, null));
 
+// ------------------------------------------------------------ guided tour
+// Numbered pins on the buttons along the top, and a card that says what each one does. It opens by
+// itself at every start until "Don't show again", and once more the first time a new version runs.
+const TOUR_STOPS = [
+  [['nav-back', 'nav-forward'], 'Back and forward', 'Step through the pages you have read.'],
+  [['nav-home'], 'Home', 'The front page of the library that is open.'],
+  [['nav-golf'], 'Wiki golf', 'A game for one to six players: get from one article to another using only the links in between.'],
+  [['nav-random'], 'Random article', 'Opens an article picked at random.'],
+  [['lib-select'], 'Library list', 'Switch between Wikipedia and the other libraries you have downloaded.'],
+  [['search'], 'Search', 'Titles appear as you type. Press Enter to search the full text of every article. Ctrl+K jumps here.'],
+  [['edition-stamp'], 'Edition', 'Which edition is on this computer. Press it for updates and storage.'],
+  [['toggle-ask'], 'Ask', 'Type a question in plain words. The answer is written on this computer and links to the articles it came from.'],
+  [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
+];
+const WHATS_NEW = {
+  '0.15.0': [
+    'Wiki golf has a clubhouse: saved players with their own characters, records, wins and losses, and handicaps.',
+    'This tour. It can be opened again from Library, About.',
+    'Links between Wikipedia, Wikibooks and Wikiversity open in the offline copy when that library is downloaded.',
+    'How much of Wikipedia is kept can be changed at any time under Library.',
+  ],
+};
+let tourOpened = false;   // opened by itself already in this run
+let tourManual = false;
+const tourVisible = (id) => { const n = $(id); return Boolean(n) && !n.hidden && n.getClientRects().length > 0; };
+
+function tourPlace() {
+  const pins = $('tour-pins');
+  const items = [...$('tour-list').children];
+  pins.replaceChildren();
+  items.forEach((li, i) => {
+    const ids = li.dataset.ids.split(',').filter(tourVisible);
+    if (!ids.length) return;
+    const rects = ids.map((id) => $(id).getBoundingClientRect());
+    const left = Math.min(...rects.map((r) => r.left)); const right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)); const bottom = Math.max(...rects.map((r) => r.bottom));
+    const ring = el('div', 'tour-ring');
+    Object.assign(ring.style, { left: `${left - 4}px`, top: `${top - 4}px`, width: `${right - left + 8}px`, height: `${bottom - top + 8}px` });
+    const pin = el('div', 'tour-pin', String(i + 1));
+    Object.assign(pin.style, { left: `${(left + right) / 2}px`, top: `${bottom + 14}px` });
+    pins.append(ring, pin);
+    const light = (on) => { for (const n of [ring, pin, li]) n.classList.toggle('lit', on); };
+    li.onmouseenter = () => light(true);
+    li.onmouseleave = () => light(false);
+  });
+}
+
+function openTour({ manual = false } = {}) {
+  const dlg = $('tour');
+  if (dlg.open) return;
+  tourManual = manual;
+  const stops = TOUR_STOPS.filter(([ids]) => ids.some(tourVisible));
+  $('tour-list').replaceChildren(...stops.map(([ids, name, about], i) => {
+    const li = el('li');
+    li.dataset.ids = ids.join(',');
+    const text = el('span');
+    text.append(el('b', '', name), `. ${about}`);
+    li.append(el('span', 'tour-num', String(i + 1)), text);
+    return li;
+  }));
+  const fresh = !manual && state.tour?.whatsNew ? WHATS_NEW[state.version] : null;
+  $('tour-new').hidden = !fresh;
+  if (fresh) {
+    $('tour-new-title').textContent = `New in version ${state.version}`;
+    $('tour-new-list').replaceChildren(...fresh.map((line) => el('li', '', line)));
+  }
+  $('tour-never').hidden = manual;
+  $('tour-foot').textContent = manual ? '' : 'It opens at each start until you choose "Don\'t show again", and once after each update. It is always under Library, About.';
+  dlg.showModal();
+  tourPlace();
+  $('tour-ok').focus();
+}
+function closeTour(hide) {
+  const dlg = $('tour');
+  if (dlg.open) dlg.close();
+  if (!tourManual) api.tourDone(hide).catch(() => {});
+}
+$('tour-ok').addEventListener('click', () => closeTour(undefined));
+$('tour-never').addEventListener('click', () => closeTour(true));
+$('tour').addEventListener('cancel', (e) => { e.preventDefault(); closeTour(undefined); });
+window.addEventListener('resize', () => { if ($('tour').open) tourPlace(); });
+$('about-tour').addEventListener('click', () => openTour({ manual: true }));
+$('about-tour-auto').addEventListener('change', (e) => api.tourDone(!e.target.checked).catch(() => {}));
+
+/** Open the tour by itself once the main window is in use: agreement accepted, a library open, nothing else in front. */
+function maybeTour() {
+  if (document.activeElement !== $('about-tour-auto')) $('about-tour-auto').checked = Boolean(state.tour?.auto);
+  if (tourOpened || !state.tour?.show || !state.acknowledged || !state.edition?.active || !state.engine?.ready) return;
+  if (view === 'setup' || view === null || golfPlaying() || document.querySelector('dialog[open]')) return;
+  tourOpened = true;
+  openTour();
+}
+
 // ------------------------------------------------------------ wiki golf
-// The rules and the scorecard are kept by the main process (src/core/golf.js). This part shows
-// the state it sends, reports each page the reader arrives at, and locks the shortcuts during a turn.
+// The rules, the scorecard and the saved players are kept by the main process (src/core/golf.js,
+// golf-store.js). This part draws the 8-bit clubhouse and course, shows the state it is sent,
+// reports each page the reader arrives at, and locks the shortcuts during a turn.
+
+// ---- pixel art: every character is 16 x 16, a head of eight rows on a shared body of eight.
+// Letters are colours: k outline, c the player's own colour, s skin or fur, h hair, hat or coat.
+const G8_BODY = [
+  '....kcccccck....',
+  '...kcccccccck...',
+  '...ksccccccsk.g.',
+  '....kcccccck.g..',
+  '....kppppppkg...',
+  '....kppkkppkg...',
+  '....kppk.kpgg...',
+  '...kbbbk.kbbbk..',
+];
+const G8_HEADS = {
+  cap: [
+    '.....kkkkkk.....',
+    '....kcccccck....',
+    '...kcccccccckk..',
+    '...kkkkkkkkkkk..',
+    '...kssssssssk...',
+    '...kskssssksk...',
+    '...kssssssssk...',
+    '....kssssssk....',
+  ],
+  visor: [
+    '.....kkkkkk.....',
+    '....khhhhhhk....',
+    '..kkwwwwwwwwkk..',
+    '..khkkkkkkkkkk..',
+    '..khkssssssssk..',
+    '..khksksssskk...',
+    '...kkssssssssk..',
+    '....kkssssskk...',
+  ],
+  bot: [
+    '.......rr.......',
+    '.......kk.......',
+    '...kkkkkkkkkk...',
+    '...kggggggggk...',
+    '...kgyyggyygk...',
+    '...kggggggggk...',
+    '...kgkwkwkwgk...',
+    '...kkkkkkkkkk...',
+  ],
+  owl: [
+    '...kk......kk...',
+    '...khkkkkkkhk...',
+    '...khhhhhhhhk...',
+    '...kwwwhhwwwk...',
+    '...kwkwhhwkwk...',
+    '...kwwwoowwwk...',
+    '...khhhoohhhk...',
+    '....kkkkkkkk....',
+  ],
+  fox: [
+    '..kk........kk..',
+    '..kok......kok..',
+    '..koookkkkoook..',
+    '..kooooooooook..',
+    '..kokooooookok..',
+    '..kwwooooooowwk.',
+    '...kwwwkkwwwk...',
+    '....kkkkkkkk....',
+  ],
+  astro: [
+    '....kkkkkkkk....',
+    '...kwwwwwwwwk...',
+    '..kwwkkkkkkwwk..',
+    '..kwklllsssskwk.',
+    '..kwklskssskkwk.',
+    '..kwkssssssskwk.',
+    '..kwwkkkkkkwwk..',
+    '...kkkkkkkkkk...',
+  ],
+  wizard: [
+    '.......kk.......',
+    '......khhk......',
+    '.....khyhhk.....',
+    '....khhhhyhk....',
+    '..kkkkkkkkkkkk..',
+    '...kskssssksk...',
+    '...kwwsssswwk...',
+    '....kwwwwwwk....',
+  ],
+  cat: [
+    '..kk........kk..',
+    '..khk......khk..',
+    '..khhkkkkkkhhk..',
+    '..khhhhhhhhhhk..',
+    '..khykhhhhkyhk..',
+    '..khhhhnnhhhhk..',
+    '..khwwhhhhwwhk..',
+    '...kkkkkkkkkk...',
+  ],
+};
+const G8_NAMES = { cap: 'Caddie', visor: 'Ace', bot: 'Bot', owl: 'Owl', fox: 'Fox', astro: 'Astro', wizard: 'Wizard', cat: 'Cat' };
+const G8_INK = { k: '#101820', w: '#fcfcfc', g: '#9aa7b1', y: '#f2d14b', o: '#e8762c', r: '#e4433b', b: '#5a3a1a', p: '#27324f', n: '#f29bb8', l: '#8fd3ff' };
+const G8_LOOK = {
+  cap: { s: '#f1c9a5', h: '#5a3a1a' }, visor: { s: '#c68e5b', h: '#2a1a0e' }, bot: { s: '#9aa7b1', h: '#6b7078' }, owl: { s: '#8a5a2b', h: '#8a5a2b' },
+  fox: { s: '#e8762c', h: '#e8762c' }, astro: { s: '#f1c9a5', h: '#fcfcfc' }, wizard: { s: '#e8b88f', h: '#5b3cc4' }, cat: { s: '#6b7078', h: '#6b7078' },
+};
+
+function g8DrawSprite(ctx, character, colour, x, y, scale = 1) {
+  const rows = [...(G8_HEADS[character] || G8_HEADS.cap), ...G8_BODY];
+  const look = G8_LOOK[character] || G8_LOOK.cap;
+  for (let r = 0; r < rows.length; r++) {
+    for (let c = 0; c < 16; c++) {
+      const ch = rows[r][c];
+      if (!ch || ch === '.') continue;
+      ctx.fillStyle = ch === 'c' ? (colour || '#e4433b') : ch === 's' ? look.s : ch === 'h' ? look.h : G8_INK[ch] || '#101820';
+      ctx.fillRect(Math.round(x + c * scale), Math.round(y + r * scale), scale, scale);
+    }
+  }
+}
+function g8Sprite(character, colour) {
+  const cv = document.createElement('canvas');
+  cv.width = 16; cv.height = 16;
+  cv.setAttribute('aria-hidden', 'true');
+  g8DrawSprite(cv.getContext('2d'), character, colour, 0, 0, 1);
+  return cv;
+}
+
+// ---- the course: a small picture redrawn for each hole from its number.
+function g8Random(seed) {
+  let a = (seed * 2654435761) >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const G8_TEE = { x: 34, y: 84 };
+const G8_CUP = { x: 214, y: 70 };
+function g8Blob(ctx, cx, cy, rx, ry, colour) {
+  ctx.fillStyle = colour;
+  for (let y = -ry; y <= ry; y++) {
+    const half = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y * y) / (ry * ry + 0.01))));
+    ctx.fillRect(cx - half, cy + y, half * 2, 1);
+  }
+}
+/** Draw the hole. `players` stand at the tee; `ball` is where the ball is, if it is in the air or at rest. */
+function g8DrawScene(ctx, { seed = 1, players = [], ball = null, wave = 0 } = {}) {
+  const W = 256; const H = 112; const rnd = g8Random(seed);
+  ctx.fillStyle = '#6ec3ff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#a6dcff'; ctx.fillRect(0, 34, W, 12);
+  for (let i = 0; i < 3; i++) { // clouds
+    const cx = Math.floor(rnd() * 220) + 10; const cy = Math.floor(rnd() * 16) + 6;
+    ctx.fillStyle = '#fcfcfc';
+    ctx.fillRect(cx, cy + 3, 26, 5); ctx.fillRect(cx + 4, cy, 12, 4); ctx.fillRect(cx + 14, cy + 1, 8, 3);
+  }
+  ctx.fillStyle = '#1f7a44'; // far hills
+  for (let i = 0; i < 4; i++) { const hx = Math.floor(rnd() * 230); const hw = 30 + Math.floor(rnd() * 40); for (let s = 0; s < 6; s++) ctx.fillRect(hx + s * 3, 44 - s * 2, Math.max(2, hw - s * 6), 2); }
+  ctx.fillStyle = '#2f9e4f'; ctx.fillRect(0, 46, W, H - 46); // rough
+  for (let x = 8; x < 248; x += 16) { ctx.fillStyle = (x / 16) % 2 ? '#5fd068' : '#52c05c'; ctx.fillRect(x, 58, 16, 44); } // mown fairway
+  ctx.fillStyle = '#2f9e4f'; ctx.fillRect(8, 58, 6, 4); ctx.fillRect(8, 98, 6, 4); ctx.fillRect(242, 58, 6, 4); ctx.fillRect(242, 98, 6, 4);
+  if (rnd() < 0.5) { const px = 90 + Math.floor(rnd() * 70); g8Blob(ctx, px, 92, 16, 6, '#2a6fd6'); ctx.fillStyle = '#8fd3ff'; ctx.fillRect(px - 8, 90, 6, 1); ctx.fillRect(px + 2, 93, 5, 1); }
+  const bunkers = 1 + Math.floor(rnd() * 3);
+  for (let i = 0; i < bunkers; i++) g8Blob(ctx, 70 + Math.floor(rnd() * 110), 62 + Math.floor(rnd() * 18), 7 + Math.floor(rnd() * 6), 3 + Math.floor(rnd() * 2), '#f2d16b');
+  for (let i = 0; i < 7; i++) { // trees along the edges
+    const tx = Math.floor(rnd() * 244) + 4; const ty = rnd() < 0.6 ? 44 + Math.floor(rnd() * 8) : 102 + Math.floor(rnd() * 4);
+    ctx.fillStyle = '#5a3a1a'; ctx.fillRect(tx + 3, ty + 6, 2, 4);
+    ctx.fillStyle = '#16603a'; ctx.fillRect(tx + 1, ty, 6, 2); ctx.fillRect(tx, ty + 2, 8, 4);
+  }
+  g8Blob(ctx, G8_CUP.x, G8_CUP.y + 2, 20, 9, '#9af08a'); // the green
+  ctx.fillStyle = '#101820'; ctx.fillRect(G8_CUP.x - 1, G8_CUP.y + 1, 3, 2);
+  ctx.fillStyle = '#fcfcfc'; ctx.fillRect(G8_CUP.x, G8_CUP.y - 22, 1, 24);
+  ctx.fillStyle = '#e4433b'; const f = wave ? 1 : 0; ctx.fillRect(G8_CUP.x + 1, G8_CUP.y - 22 + f, 9, 3); ctx.fillRect(G8_CUP.x + 1, G8_CUP.y - 19 + f, 6, 2);
+  ctx.fillStyle = '#9af08a'; ctx.fillRect(G8_TEE.x - 14, G8_TEE.y - 2, 30, 10); // tee box
+  players.forEach((p, i) => g8DrawSprite(ctx, p.character, p.colour, G8_TEE.x - 12 + i * 15, G8_TEE.y - 14 + (i % 2) * 2, 1));
+  if (ball) { ctx.fillStyle = 'rgba(16,24,32,.35)'; ctx.fillRect(Math.round(ball.x), Math.round(ball.ground ?? ball.y) + 2, 2, 1); ctx.fillStyle = '#fcfcfc'; ctx.fillRect(Math.round(ball.x), Math.round(ball.y), 2, 2); }
+}
+
+let g8Anim = 0;
+/** One shot: the ball flies from the tee to the cup, or drops short when the hole was not finished. */
+function g8Shot(scene, { holed }) {
+  cancelAnimationFrame(g8Anim);
+  const ctx = $('golf-scene').getContext('2d');
+  const end = holed ? { x: G8_CUP.x, y: G8_CUP.y } : { x: G8_CUP.x - 60, y: G8_CUP.y + 16 };
+  const from = { x: G8_TEE.x + 6, y: G8_TEE.y };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { g8DrawScene(ctx, { ...scene, ball: holed ? null : end }); return; }
+  const t0 = performance.now(); const ms = 1100;
+  const frame = (now) => {
+    const t = Math.min(1, (now - t0) / ms);
+    const x = from.x + (end.x - from.x) * t;
+    const ground = from.y + (end.y - from.y) * t;
+    const y = ground - Math.sin(Math.PI * t) * 46;
+    g8DrawScene(ctx, { ...scene, ball: t < 1 || !holed ? { x, y, ground } : null, wave: t >= 1 && holed ? 1 : 0 });
+    if (t < 1) g8Anim = requestAnimationFrame(frame);
+  };
+  g8Anim = requestAnimationFrame(frame);
+}
+
+// ---- state kept on this side
 let golfSeen = null;                  // the phase last acted on, so a change is handled once
 let golfTeeing = false;               // between pressing Tee off and the state arriving
-let golfNames = ['', ''];
+let golfPick = [];                    // ids of the players chosen for the next round, in tee order
+const golfOpts = { holes: 3, length: 'medium', handicaps: false };
 const golfPlaying = () => golfTeeing || state?.golf?.phase === 'playing';
 const strokesText = (n) => `${n} ${n === 1 ? 'stroke' : 'strokes'}`;
 const toParText = (d) => (d === 0 ? 'level par' : d > 0 ? `${d} over par` : `${-d} under par`);
+const toParShort = (d) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
+const hcpText = (h) => (h == null ? 'HCP --' : h === 0 ? 'SCRATCH' : `HCP ${h}`);
 
 function golfVisit(url) {
   if (!state?.golf && !golfTeeing) return;
@@ -1398,51 +1685,15 @@ function golfVisit(url) {
     if (what === 'start') { try { reader.clearHistory(); } catch { /* not attached */ } updateNav(); }
   }).catch(() => {});
 }
-
-function golfPlayerRows() {
-  const box = $('golf-players');
-  box.replaceChildren(...golfNames.map((name, i) => {
-    const row = el('div', 'golf-player');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.maxLength = 24;
-    input.value = name;
-    input.placeholder = `Player ${i + 1}`;
-    input.setAttribute('aria-label', `Name of player ${i + 1}`);
-    input.addEventListener('input', () => { golfNames[i] = input.value; });
-    row.append(input);
-    if (golfNames.length > 1) {
-      const remove = el('button', 'btn small quiet', 'Remove');
-      remove.type = 'button';
-      remove.setAttribute('aria-label', `Remove player ${i + 1}`);
-      remove.addEventListener('click', () => { golfNames.splice(i, 1); golfPlayerRows(); });
-      row.append(remove);
-    }
-    return row;
-  }));
-  $('golf-add').hidden = golfNames.length >= 6;
-}
-
-function openGolfSetup() {
-  $('golf-error').hidden = true;
-  golfPlayerRows();
-  $('golf-dialog').showModal();
-  $('golf-players').querySelector('input')?.focus();
-}
-$('golf-add').addEventListener('click', () => {
-  if (golfNames.length < 6) golfNames.push('');
-  golfPlayerRows();
-  [...$('golf-players').querySelectorAll('input')].pop()?.focus();
+// A page is also recognised by its title, in case its address is spelled another way.
+reader.addEventListener('page-title-updated', (e) => {
+  if (state?.golf?.phase !== 'playing' && !golfTeeing) return;
+  let url = '';
+  try { url = reader.getURL(); } catch { return; }
+  api.golfTitle(url, e.title).catch(() => {});
 });
-$('golf-cancel').addEventListener('click', () => $('golf-dialog').close());
-$('golf-go').addEventListener('click', () => guard(async () => {
-  await api.golfStart({ players: golfNames, holes: Number($('golf-holes').value), length: $('golf-length').value });
-  $('golf-dialog').close();
-}, $('golf-error')));
-$('nav-golf').addEventListener('click', () => {
-  if (!state?.golf) openGolfSetup();
-  else if (!golfPlaying()) showView('golf');
-});
+
+$('nav-golf').addEventListener('click', () => { if (!golfPlaying()) showView('golf'); });
 $('golfbar-return').addEventListener('click', () => showView('golf'));
 $('golfbar-target').addEventListener('click', () => {
   const open = $('golfbar-lead').hidden;
@@ -1460,116 +1711,311 @@ function twoStep(button, label, sure, fn) {
   });
   return button;
 }
-twoStep($('golfbar-give-up'), 'Pick up', 'Pick up and take the limit?', () => api.golfGiveUp());
+twoStep($('golfbar-give-up'), 'Pick up', 'Pick up? Press again', () => api.golfGiveUp());
 
-function golfButton(label, fn, primary) {
-  const b = el('button', `btn${primary ? ' primary' : ''}`, label);
-  b.addEventListener('click', () => guard(fn, null));
+const g8El = (tag, cls, text) => el(tag, cls, text);
+function g8Button(label, fn, kind = '') {
+  const b = el('button', `g8-btn${kind ? ` ${kind}` : ''}`, label);
+  b.type = 'button';
+  b.addEventListener('click', () => guard(fn, $('golf-error')));
   return b;
 }
-const endRoundButton = () => twoStep(el('button', 'btn quiet'), 'End the round', 'End it? Press again', () => api.golfQuit());
-
-function golfHoleBlock(g) {
-  const block = el('div', 'golf-hole');
-  const from = el('div', 'golf-end');
-  from.append(el('span', 'golf-end-label', 'From'), el('strong', '', g.hole.start.title));
-  const to = el('div', 'golf-end golf-target');
-  to.append(el('span', 'golf-end-label', 'To'), el('strong', '', g.hole.target.title));
-  if (g.hole.target.lead) to.append(el('p', '', g.hole.target.lead));
-  block.append(from, to);
-  return block;
+const g8EndRound = () => twoStep(Object.assign(el('button', 'g8-btn quiet'), { type: 'button' }), 'End the round', 'End it? Press again', () => api.golfQuit());
+function g8Box(title, ...kids) {
+  const box = el('section', 'g8-box');
+  if (title) box.append(el('h2', 'g8-h', title));
+  box.append(...kids.filter(Boolean));
+  return box;
+}
+const g8Profile = (g, name) => g.profiles.find((p) => p.name === name) || {};
+function g8Who(g, name) {
+  const span = el('span', 'who');
+  const p = g8Profile(g, name);
+  span.append(g8Sprite(p.character, p.colour), el('span', '', name));
+  return span;
 }
 
-function golfStandingsLine(g) {
-  const st = g.standings;
-  if (!st.holesPlayed) return null;
-  const parts = st.rows.map((r) => `${r.name} ${r.strokes} (${toParText(r.toPar)})`);
-  return el('p', 'golf-standing', `After ${st.holesPlayed} ${st.holesPlayed === 1 ? 'hole' : 'holes'}: ${parts.join(', ')}.`);
+// ---- the clubhouse: who is playing, the round, and the records
+function g8PlayerDialog(player) {
+  const dlg = $('golf-player-dialog');
+  const club = state.golfClub;
+  const draft = { id: player?.id || null, name: player?.name || '', character: player?.character || club.characters[club.players.length % club.characters.length], colour: player?.colour || club.colours[club.players.length % club.colours.length] };
+  $('g8-player-title').textContent = player ? player.name : 'New player';
+  const body = $('g8-player-body');
+  const preview = el('div', 'g8-preview');
+  const paintPreview = () => preview.replaceChildren(g8Sprite(draft.character, draft.colour), el('span', '', `${G8_NAMES[draft.character] || ''}`));
+  const name = document.createElement('input');
+  name.type = 'text'; name.maxLength = 24; name.value = draft.name; name.id = 'g8-name'; name.placeholder = 'NAME';
+  name.addEventListener('input', () => { draft.name = name.value; });
+  const nameLabel = el('label', 'g8-label', 'Name'); nameLabel.htmlFor = 'g8-name';
+  const chars = el('div', 'g8-choices');
+  const colours = el('div', 'g8-choices');
+  const paintChoices = () => {
+    chars.replaceChildren(...club.characters.map((c) => {
+      const b = el('button', 'g8-choice'); b.type = 'button'; b.title = G8_NAMES[c] || c; b.setAttribute('aria-label', G8_NAMES[c] || c); b.setAttribute('aria-pressed', String(c === draft.character));
+      b.append(g8Sprite(c, draft.colour));
+      b.addEventListener('click', () => { draft.character = c; paintChoices(); paintPreview(); });
+      return b;
+    }));
+    colours.replaceChildren(...club.colours.map((c, i) => {
+      const b = el('button', 'g8-choice swatch'); b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', `Colour ${i + 1}`); b.setAttribute('aria-pressed', String(c === draft.colour));
+      b.addEventListener('click', () => { draft.colour = c; paintChoices(); paintPreview(); });
+      return b;
+    }));
+  };
+  paintChoices(); paintPreview();
+  const error = el('p', 'g8-plain bad'); error.hidden = true;
+  const actions = el('div', 'g8-actions');
+  const save = el('button', 'g8-btn go', player ? 'Save' : 'Add player'); save.type = 'button';
+  save.addEventListener('click', () => guard(async () => {
+    const id = await api.golfSavePlayer(draft);
+    if (!player && golfPick.length < 6 && !golfPick.includes(id)) golfPick.push(id);
+    dlg.close();
+  }, error));
+  const close = el('button', 'g8-btn', 'Cancel'); close.type = 'button'; close.addEventListener('click', () => dlg.close());
+  actions.append(save, close);
+  if (player) {
+    actions.append(twoStep(Object.assign(el('button', 'g8-btn quiet'), { type: 'button' }), 'Remove player', 'Remove and lose the records?', () => guard(async () => {
+      await api.golfDeletePlayer(player.id);
+      golfPick = golfPick.filter((id) => id !== player.id);
+      dlg.close();
+    }, error)));
+  }
+  const kids = [preview, nameLabel, name, el('span', 'g8-label', 'Character'), chars, el('span', 'g8-label', 'Colour'), colours];
+  if (player) {
+    const s = player.stats;
+    const stat = (value, label) => { const d = el('div', 'g8-stat'); d.append(el('b', '', String(value)), el('span', '', label)); return d; };
+    const stats = el('div', 'g8-stats');
+    stats.append(
+      stat(s.rounds, 'Rounds'), stat(`${s.wins}-${s.losses}-${s.ties}`, 'Won-lost-tied'), stat(player.handicap == null ? '-' : player.handicap, 'Handicap'),
+      stat(s.perHole == null ? '-' : `${s.perHole > 0 ? '+' : ''}${s.perHole.toFixed(2)}`, 'To par per hole'),
+      stat(s.best ? `${toParShort(s.best.toPar)} (${s.best.holes})` : '-', 'Best round (holes)'),
+      stat(s.aces, 'Holes in one'), stat(s.eagles + s.birdies, 'Under par holes'), stat(s.pickups, 'Not finished'),
+    );
+    kids.push(el('span', 'g8-label', 'Record'), stats);
+    if (player.rounds.length) {
+      const table = el('table', 'g8-table');
+      const head = el('tr'); head.append(el('th', '', 'Date'), el('th', '', 'Played in'), el('th', 'num', 'Holes'), el('th', 'num', 'Score'), el('th', 'num', 'Place'));
+      const thead = el('thead'); thead.append(head);
+      const tb = el('tbody');
+      for (const r of player.rounds.slice(0, 10)) {
+        const tr = el('tr');
+        tr.append(el('td', '', new Date(r.at).toLocaleDateString()), el('td', '', r.library), el('td', 'num', String(r.holes)), el('td', 'num', `${r.strokes} (${toParShort(r.strokes - r.par)})`), el('td', 'num', r.field > 1 ? `${r.place} of ${r.field}` : 'solo'));
+        tb.append(tr);
+      }
+      table.append(thead, tb);
+      const wrap = el('div', 'g8-scroll'); wrap.append(table);
+      kids.push(el('span', 'g8-label', 'Recent rounds'), wrap);
+    }
+  }
+  kids.push(error, actions);
+  body.replaceChildren(...kids);
+  dlg.showModal();
+  name.focus();
 }
 
-function golfScorecard(g) {
-  const table = el('table', 'golf-card-table');
+function g8Clubhouse() {
+  const club = state.golfClub;
+  golfPick = golfPick.filter((id) => club.players.some((p) => p.id === id));
+  const chosen = golfPick.map((id) => club.players.find((p) => p.id === id));
+  const key = JSON.stringify(['club', club.players.map((p) => [p.id, p.name, p.character, p.colour, p.stats.rounds]), golfPick, golfOpts, state.activeLibrary, Boolean(state.engine?.ready)]);
+  const card = $('golf-card');
+  if (card.dataset.key === key) return;
+  card.dataset.key = key;
+  cancelAnimationFrame(g8Anim);
+  g8DrawScene($('golf-scene').getContext('2d'), { seed: 18, players: chosen });
+  $('golf-banner').className = 'g8-banner';
+  $('golf-banner').textContent = 'WIKI GOLF';
+
+  const roster = el('div', 'g8-roster');
+  for (const p of club.players) {
+    const order = golfPick.indexOf(p.id);
+    const b = el('button', 'g8-player'); b.type = 'button'; b.dataset.player = p.name;
+    b.setAttribute('aria-pressed', String(order >= 0));
+    b.title = order >= 0 ? 'Playing. Press to take out of the round.' : 'Press to add to the round.';
+    b.append(g8Sprite(p.character, p.colour), el('span', 'g8-name', p.name), el('span', 'g8-sub', `${hcpText(p.handicap)}  W${p.stats.wins} L${p.stats.losses}`));
+    if (order >= 0) b.append(el('span', 'g8-order', String(order + 1)));
+    b.addEventListener('click', () => {
+      if (order >= 0) golfPick.splice(order, 1); else if (golfPick.length < 6) golfPick.push(p.id);
+      g8Clubhouse();
+    });
+    roster.append(b);
+  }
+  const add = el('button', 'g8-player new', '+ New player'); add.type = 'button'; add.id = 'g8-new';
+  add.addEventListener('click', () => g8PlayerDialog(null));
+  roster.append(add);
+  const edits = el('div', 'g8-edit');
+  for (const p of chosen) edits.append(g8Button(`${p.name}: card and look`, () => g8PlayerDialog(state.golfClub.players.find((q) => q.id === p.id)), 'quiet'));
+  const playersBox = g8Box('1. Who is playing', el('p', 'g8-plain dim', club.players.length ? 'Press each player in the order they will tee off. Up to six. Players and their records are kept on this computer.' : 'Make a player to begin: a name, a character and a colour. Players and their records are kept on this computer.'), roster, edits);
+
+  const seg = (label, key, options) => {
+    const row = el('div', 'g8-opts');
+    row.append(el('span', 'g8-label', label));
+    for (const [value, text] of options) {
+      const b = el('button', 'g8-btn', text); b.type = 'button'; b.setAttribute('aria-pressed', String(golfOpts[key] === value)); b.dataset.opt = `${key}:${value}`;
+      b.addEventListener('click', () => { golfOpts[key] = value; g8Clubhouse(); });
+      row.append(b);
+    }
+    return row;
+  };
+  const anyHcp = chosen.some((p) => p.handicap != null);
+  if (chosen.length < 2 || !anyHcp) golfOpts.handicaps = false;
+  const hRow = seg('Handicaps', 'handicaps', [[false, 'Off'], [true, 'On']]);
+  if (chosen.length < 2 || !anyHcp) for (const b of hRow.querySelectorAll('button')) b.disabled = true;
+  const libName = libraryName(state.activeLibrary);
+  const start = g8Button('Tee off', () => api.golfStart({ playerIds: golfPick, holes: golfOpts.holes, length: golfOpts.length, handicaps: golfOpts.handicaps }), 'go');
+  start.id = 'g8-start';
+  start.disabled = !chosen.length || !state.engine?.ready;
+  const error = el('p', 'g8-plain bad'); error.id = 'golf-error'; error.hidden = true;
+  const startRow = el('div', 'g8-actions'); startRow.append(start, el('span', 'g8-plain dim', `Played in ${libName}.`));
+  const roundBox = g8Box('2. The round',
+    seg('Holes', 'holes', [[1, '1'], [3, '3'], [6, '6'], [9, '9']]),
+    seg('Length', 'length', [['short', 'Short par 3'], ['medium', 'Medium par 4'], ['long', 'Long par 5'], ['mixed', 'Mix']]),
+    hRow,
+    el('p', 'g8-plain dim', anyHcp && chosen.length > 1 ? 'With handicaps on, weaker players get strokes taken off and the reduced totals decide the winner.' : 'A handicap appears after three rounds; with two or more players it can be used to even out the scores.'),
+    error, startRow);
+
+  const table = el('table', 'g8-table');
   const head = el('tr');
-  head.append(el('th', '', 'Hole'), el('th', 'golf-wide', 'From and to'), el('th', 'num', 'Par'), ...g.players.map((p) => el('th', 'num', p)));
+  head.append(el('th', '', 'Player'), el('th', 'num', 'Rounds'), el('th', 'num', 'W-L-T'), el('th', 'num', 'HCP'), el('th', 'num', 'Per hole'), el('th', 'num', 'Best'), el('th', 'num', 'Aces'));
+  const thead = el('thead'); thead.append(head);
+  const tb = el('tbody');
+  for (const p of club.players) {
+    const s = p.stats;
+    const tr = el('tr');
+    const who = el('td'); const w = el('span', 'who'); w.append(g8Sprite(p.character, p.colour), el('span', '', p.name)); who.append(w);
+    tr.append(who, el('td', 'num', String(s.rounds)), el('td', 'num', `${s.wins}-${s.losses}-${s.ties}`), el('td', 'num', p.handicap == null ? '-' : String(p.handicap)),
+      el('td', 'num', s.perHole == null ? '-' : `${s.perHole > 0 ? '+' : ''}${s.perHole.toFixed(2)}`), el('td', 'num', s.best ? toParShort(s.best.toPar) : '-'), el('td', 'num', String(s.aces)));
+    tb.append(tr);
+  }
+  table.append(thead, tb);
+  const wrap = el('div', 'g8-scroll'); wrap.append(table);
+  const records = club.players.length ? g8Box('Clubhouse records', wrap) : null;
+
+  const how = g8Box('How to play',
+    el('p', 'g8-plain', 'Each hole is a start article and a target article. Get from one to the other using only the links inside the articles. Every article you open is a stroke, and the fewest strokes over the round wins.'),
+    el('p', 'g8-plain dim', 'Everyone plays the same hole, one after another, on this computer. Search and Ask are switched off during a turn, going back costs a stroke, and the routes are shown once all have played.'),
+    g8Button('Back to reading', async () => { if (currentUrl) showView('reader'); else openUrl(state.engine.homeUrl); }, 'quiet'));
+  card.replaceChildren(playersBox, roundBox, ...(records ? [records] : []), how);
+}
+
+// ---- a round in progress
+function g8Scorecard(g) {
+  const table = el('table', 'g8-table'); table.id = 'g8-scorecard';
+  const head = el('tr');
+  head.append(el('th', '', 'Hole'), el('th', '', 'From and to'), el('th', 'num', 'Par'), ...g.players.map((p) => el('th', 'num', p)));
   const thead = el('thead'); thead.append(head);
   const body = el('tbody');
   for (const h of g.scorecard) {
     const tr = el('tr');
     const best = Math.min(...h.strokes);
-    tr.append(el('td', '', String(h.number)), el('td', 'golf-wide', `${h.from} to ${h.to}`), el('td', 'num', String(h.par)),
-      ...h.strokes.map((n) => el('td', `num${n === best && g.players.length > 1 ? ' best' : ''}`, String(n))));
+    const route = el('td', 'g8-path', `${h.from} to ${h.to}`);
+    tr.append(el('td', '', String(h.number)), route, el('td', 'num', String(h.par)), ...h.strokes.map((n) => el('td', `num${n === best && g.players.length > 1 ? ' best' : ''}`, String(n))));
     body.append(tr);
   }
   const foot = el('tfoot');
-  const total = el('tr');
-  const byName = Object.fromEntries(g.standings.rows.map((r) => [r.name, r]));
-  total.append(el('th', '', 'Total'), el('td', 'golf-wide', ''), el('td', 'num', String(g.standings.par)), ...g.players.map((p) => el('td', 'num', String(byName[p].strokes))));
-  const rel = el('tr');
-  rel.append(el('th', '', 'To par'), el('td', 'golf-wide', ''), el('td', 'num', ''), ...g.players.map((p) => { const d = byName[p].toPar; return el('td', 'num', d === 0 ? 'E' : d > 0 ? `+${d}` : String(d)); }));
-  foot.append(total, rel);
+  const by = Object.fromEntries(g.standings.rows.map((r) => [r.name, r]));
+  const row = (label, cells, par = '') => { const tr = el('tr'); tr.append(el('th', '', label), el('td', '', ''), el('td', 'num', par), ...cells.map((c) => el('td', 'num', c))); return tr; };
+  foot.append(row('Total', g.players.map((p) => String(by[p].strokes)), String(g.standings.par)), row('To par', g.players.map((p) => toParShort(by[p].toPar))));
+  if (g.useHandicaps) foot.append(row('Handicap', g.players.map((p) => (by[p].shots ? `-${by[p].shots}` : '0'))), row('Net', g.players.map((p) => String(by[p].net))));
   table.append(thead, body, foot);
-  return table;
+  const wrap = el('div', 'g8-scroll'); wrap.append(table);
+  return wrap;
 }
 
-function renderGolfCard(g) {
+function g8Round(g) {
   const card = $('golf-card');
-  const key = JSON.stringify([g.phase, g.holeNumber, g.player, g.error, g.hole?.start.url, g.live?.strokes]);
+  const key = JSON.stringify(['round', g.phase, g.holeNumber, g.player, g.error, g.hole?.start.url, g.live?.strokes]);
   if (card.dataset.key === key) return;
   card.dataset.key = key;
-  const kids = [];
-  const actions = el('div', 'actions');
+  cancelAnimationFrame(g8Anim);
+  const ctx = $('golf-scene').getContext('2d');
+  const banner = $('golf-banner');
+  banner.className = 'g8-banner small';
   const where = `Hole ${g.holeNumber} of ${g.holeCount}`;
+  const seed = g.holeNumber * 7 + g.holeCount;
+  const me = g.player ? [g8Profile(g, g.player)] : g.profiles;
+  const kids = [];
+  const actions = el('div', 'g8-actions');
+  const error = el('p', 'g8-plain bad'); error.id = 'golf-error'; error.hidden = true;
+  const routeBlock = () => {
+    const block = el('div', 'g8-route');
+    const from = el('div', 'g8-end'); from.append(el('span', 'g8-end-label', 'From'), el('strong', '', g.hole.start.title));
+    const to = el('div', 'g8-end target'); to.append(el('span', 'g8-end-label', 'To the flag'), el('strong', '', g.hole.target.title));
+    if (g.hole.target.lead) to.append(el('p', '', g.hole.target.lead));
+    block.append(from, to);
+    return block;
+  };
+
   if (g.phase === 'layout') {
-    kids.push(el('p', 'golf-kicker', `${where}, in ${g.library}`), el('h1', '', g.error ? 'The hole could not be laid out' : 'Laying out the hole'));
-    kids.push(el('p', g.error ? 'error-text' : '', g.error || 'Choosing a start and a target that can be reached from it.'));
-    if (g.error) actions.append(golfButton('Try again', () => api.golfRelay(), true));
-    actions.append(endRoundButton());
+    g8DrawScene(ctx, { seed, players: g.profiles });
+    banner.textContent = g.error ? 'NO HOLE' : `${where.toUpperCase()}`;
+    kids.push(el('p', 'g8-kicker', `${where}, in ${g.library}`), el('p', 'g8-big', g.error ? 'The hole could not be laid out' : 'Laying out the hole...'), el('p', `g8-plain${g.error ? ' bad' : ' dim'}`, g.error || 'Choosing a start and a target that can be reached from it.'));
+    if (g.error) actions.append(g8Button('Try again', () => api.golfRelay(), 'go'));
+    actions.append(g8EndRound());
   } else if (g.phase === 'tee') {
-    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}, in ${g.library}`), golfHoleBlock(g));
-    const up = el('p', 'golf-up');
-    up.append(el('strong', '', g.player), g.players.length > 1 ? ', you are up. Everyone else looks away.' : ', you are up.');
-    kids.push(up, el('p', 'small-print', `Use only the links inside the articles. Every article you open is a stroke, going back included. The hole is over at ${g.hole.limit} strokes, which is also what picking up scores.`));
-    actions.append(golfButton('Tee off', async () => {
+    g8DrawScene(ctx, { seed, players: me, ball: { x: G8_TEE.x + 6, y: G8_TEE.y } });
+    banner.textContent = `${where.toUpperCase()}  PAR ${g.hole.par}`;
+    kids.push(el('p', 'g8-kicker', `${where}, par ${g.hole.par}, in ${g.library}`), routeBlock());
+    const up = el('p', 'g8-up'); up.id = 'g8-up';
+    const p = g8Profile(g, g.player);
+    up.append(g8Sprite(p.character, p.colour), el('span', '', g.players.length > 1 ? `${g.player}, you are up. Everyone else looks away.` : `${g.player}, you are up.`));
+    up.querySelector('canvas').style.cssText = 'width:48px;height:48px;flex:none';
+    kids.push(up, el('p', 'g8-plain dim', `Use only the links inside the articles. Every article you open is a stroke, going back included. The hole is over at ${g.hole.limit} strokes, which is also what picking up scores.`));
+    actions.append(g8Button('Tee off', async () => {
       golfTeeing = true;
       try { const r = await api.golfTee(); $('golfbar-lead').hidden = true; $('golfbar-target').setAttribute('aria-expanded', 'false'); openUrl(r.url, { golf: true }); } finally { golfTeeing = false; }
-    }, true));
-    if (g.canRelay) actions.append(golfButton('Lay out a different hole', () => api.golfRelay()));
-    actions.append(endRoundButton());
+    }, 'go'));
+    if (g.canRelay) actions.append(g8Button('Lay out a different hole', () => api.golfRelay()));
+    actions.append(g8EndRound());
   } else if (g.phase === 'playing') {
-    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', '', `${g.player} is on the course`));
-    actions.append(golfButton('Back to the article', () => showView('reader'), true));
+    g8DrawScene(ctx, { seed, players: me });
+    banner.textContent = `${g.player.toUpperCase()} IS ON THE COURSE`;
+    kids.push(el('p', 'g8-kicker', `${where}, par ${g.hole.par}`));
+    actions.append(g8Button('Back to the article', () => showView('reader'), 'go'));
   } else if (g.phase === 'done') {
     const d = g.last.strokes - g.hole.par;
-    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', 'golf-result', g.last.name));
-    kids.push(el('p', '', g.last.holed
+    banner.className = 'g8-banner';
+    banner.textContent = `${g.last.name.toUpperCase()}${g.last.holed && d <= 0 ? '!' : ''}`;
+    g8Shot({ seed, players: me }, { holed: g.last.holed });
+    kids.push(el('p', 'g8-kicker', `${where}, par ${g.hole.par}`), el('p', `g8-big${g.last.holed && d < 0 ? ' win' : ''}`, g.last.name));
+    kids.push(el('p', 'g8-plain', g.last.holed
       ? `${g.player} reached ${g.hole.target.title} in ${strokesText(g.last.strokes)}, ${toParText(d)}.`
       : `${g.player} did not reach ${g.hole.target.title}. That scores the limit of ${strokesText(g.last.strokes)}.`));
-    actions.append(golfButton(g.nextPlayer ? `Pass to ${g.nextPlayer}` : 'See how the hole played', () => api.golfNext(), true), endRoundButton());
+    actions.append(g8Button(g.nextPlayer ? `Pass to ${g.nextPlayer}` : 'See how the hole played', () => api.golfNext(), 'go'), g8EndRound());
   } else if (g.phase === 'summary') {
-    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', '', `${g.hole.start.title} to ${g.hole.target.title}`));
-    const table = el('table', 'golf-card-table');
+    g8DrawScene(ctx, { seed, players: g.profiles });
+    banner.textContent = `${where.toUpperCase()} PLAYED`;
+    kids.push(el('p', 'g8-kicker', `${where}, par ${g.hole.par}`), el('p', 'g8-big', `${g.hole.start.title} to ${g.hole.target.title}`));
+    const table = el('table', 'g8-table'); table.id = 'g8-summary';
     const body = el('tbody');
     for (const c of g.cards) {
       const tr = el('tr');
-      tr.append(el('th', '', c.player), el('td', 'num', String(c.strokes)), el('td', '', c.name), el('td', 'golf-wide golf-path', c.path.join('  ›  ')));
+      const who = el('td'); who.append(g8Who(g, c.player));
+      tr.append(who, el('td', 'num', String(c.strokes)), el('td', '', c.name), el('td', 'g8-path', c.path.join('  ›  ')));
       body.append(tr);
     }
     table.append(body);
-    kids.push(table, el('p', 'small-print', `The hole was laid out along ${g.hole.route.join('  ›  ')}.`));
-    const line = golfStandingsLine(g);
-    if (line) kids.push(line);
-    actions.append(golfButton(g.holeNumber < g.holeCount ? 'Next hole' : 'Final scores', () => api.golfNext(), true), endRoundButton());
+    const wrap = el('div', 'g8-scroll'); wrap.append(table);
+    kids.push(wrap, el('p', 'g8-plain dim', `The hole was laid out along ${g.hole.route.join('  ›  ')}.`));
+    const st = g.standings;
+    if (st.holesPlayed) kids.push(el('p', 'g8-plain', `After ${st.holesPlayed} ${st.holesPlayed === 1 ? 'hole' : 'holes'}: ${st.rows.map((r) => `${r.name} ${r.strokes} (${toParText(r.toPar)})`).join(', ')}.`));
+    actions.append(g8Button(g.holeNumber < g.holeCount ? 'Next hole' : 'Final scores', () => api.golfNext(), 'go'), g8EndRound());
   } else if (g.phase === 'finished') {
     const rows = g.standings.rows;
     const winners = rows.filter((r) => r.place === 1).map((r) => r.name);
-    const title = g.players.length === 1 ? `Round finished: ${strokesText(rows[0].strokes)}, ${toParText(rows[0].toPar)}`
+    const title = g.players.length === 1 ? `${strokesText(rows[0].strokes)}, ${toParText(rows[0].toPar)}`
       : winners.length === 1 ? `${winners[0]} wins` : `${winners.slice(0, -1).join(', ')} and ${winners.at(-1)} share the win`;
-    kids.push(el('p', 'golf-kicker', `${g.holeCount} ${g.holeCount === 1 ? 'hole' : 'holes'} in ${g.library}`), el('h1', 'golf-result', title), golfScorecard(g));
-    actions.append(golfButton('Play again', async () => { await api.golfQuit(); openGolfSetup(); }, true), golfButton('Close', () => api.golfQuit()));
+    g8DrawScene(ctx, { seed: 18, players: g.players.length === 1 ? g.profiles : winners.map((n) => g8Profile(g, n)), wave: 1 });
+    banner.className = 'g8-banner';
+    banner.textContent = g.players.length === 1 ? 'ROUND OVER' : winners.length === 1 ? `${winners[0].toUpperCase()} WINS!` : 'A TIE!';
+    kids.push(el('p', 'g8-kicker', `${g.holeCount} ${g.holeCount === 1 ? 'hole' : 'holes'} in ${g.library}${g.useHandicaps ? ', with handicaps' : ''}`), el('p', 'g8-big win', title), g8Scorecard(g));
+    kids.push(el('p', 'g8-plain dim', 'The round has been added to the clubhouse records.'));
+    actions.append(g8Button('Back to the clubhouse', () => api.golfQuit(), 'go'));
   }
-  kids.push(actions);
-  card.replaceChildren(...kids);
-  card.querySelector('.btn.primary')?.focus();
+  kids.push(error, actions);
+  card.replaceChildren(g8Box('', ...kids));
+  card.querySelector('.g8-btn.go')?.focus();
 }
 
 function renderGolf() {
@@ -1577,31 +2023,32 @@ function renderGolf() {
   const playing = golfPlaying();
   document.body.classList.toggle('golf-playing', playing);
   for (const id of ['search', 'nav-home', 'nav-random', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
-  $('nav-golf').setAttribute('aria-pressed', String(Boolean(g)));
+  $('nav-golf').setAttribute('aria-pressed', String(Boolean(g) || view === 'golf'));
 
   const seen = g ? `${g.holeNumber}:${g.player}:${g.phase}` : null;
   if (seen !== golfSeen) {
     golfSeen = seen;
-    if (!g) { if (view === 'golf') { if (currentUrl) showView('reader'); else openUrl(state.engine.homeUrl); } } else if (g.phase !== 'playing') showView('golf');
+    if (g && g.phase !== 'playing') showView('golf');
   }
 
   const bar = $('golfbar');
   bar.hidden = !g || (view === 'golf');
-  if (!g) { $('golf-card').replaceChildren(); delete $('golf-card').dataset.key; return; }
-  const live = g.phase === 'playing';
-  for (const id of ['golfbar-route', 'golfbar-strokes', 'golfbar-target', 'golfbar-give-up']) $(id).hidden = !live;
-  $('golfbar-return').hidden = live;
-  if (live) {
-    $('golfbar-hole').textContent = `Hole ${g.holeNumber} of ${g.holeCount}, par ${g.hole.par}`;
-    const route = $('golfbar-route');
-    route.replaceChildren(el('span', '', `${g.player}: from ${g.hole.start.title} to `), el('strong', '', g.hole.target.title));
-    $('golfbar-strokes').textContent = `${strokesText(g.live.strokes)} of ${g.hole.limit}`;
-    $('golfbar-lead').textContent = g.hole.target.lead || 'No description of this article is available.';
-  } else {
-    $('golfbar-hole').textContent = g.phase === 'finished' ? 'Wiki golf: the round is finished' : `Wiki golf: hole ${g.holeNumber} of ${g.holeCount} is waiting`;
-    $('golfbar-lead').hidden = true;
+  if (g) {
+    const live = g.phase === 'playing';
+    for (const id of ['golfbar-route', 'golfbar-strokes', 'golfbar-target', 'golfbar-give-up']) $(id).hidden = !live;
+    $('golfbar-return').hidden = live;
+    if (live) {
+      $('golfbar-hole').textContent = `Hole ${g.holeNumber}/${g.holeCount}  Par ${g.hole.par}`;
+      $('golfbar-route').replaceChildren(el('span', '', `${g.player}: to `), el('strong', '', g.hole.target.title));
+      $('golfbar-strokes').textContent = `${strokesText(g.live.strokes)} of ${g.hole.limit}`;
+      $('golfbar-lead').textContent = g.hole.target.lead || 'No description of this article is available.';
+    } else {
+      $('golfbar-hole').textContent = g.phase === 'finished' ? 'Wiki golf: the round is finished' : `Wiki golf: hole ${g.holeNumber} of ${g.holeCount} is waiting`;
+      $('golfbar-lead').hidden = true;
+    }
   }
-  if (view === 'golf') renderGolfCard(g);
+  if (view !== 'golf' || !state?.golfClub) return;
+  if (g) g8Round(g); else g8Clubhouse();
 }
 
 // ------------------------------------------------------------ ask panel
@@ -1837,6 +2284,7 @@ function render() {
   renderAgreement();
   renderLibraries();
   renderGolf();
+  maybeTour();
   const e = state.edition;
   const active = e?.active;
   $('edition-label').textContent = active ? (active.date ? `${editionName(active.date)} edition` : 'Local edition') : 'No edition yet';

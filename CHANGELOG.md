@@ -2,6 +2,16 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.15.0 (2026-11-16)
+
+- Wiki golf, fixed: on a real edition a player could reach the target and nothing happened. The target (and the start) are now also recognised by the page's title, not only by its address; addresses are compared in one normalised spelling, so titles containing a question mark, a percent sign or other escaped characters match; and category pages are no longer walked through when a hole is laid out. Every hole and every click of a turn is written to the log, with what the game made of it.
+- Wiki golf, new look: the game is drawn in an 8-bit style, with a pixel course that changes from hole to hole, a ball that flies to the flag when a hole is finished, and a pixel typeface (Press Start 2P, under the SIL Open Font Licence).
+- The clubhouse: players are saved on this computer with a name, one of eight characters and a colour. Each has a card with rounds played, won-lost-tied, handicap, score to par per hole, best round, holes in one and recent rounds. The round is set up there instead of in a dialog, and a finished round is added to the records.
+- Handicaps: after three rounds a player has a handicap (strokes over par per nine holes, from the better half of the last ten rounds). With two or more players it can be switched on for a round; strokes are then taken off in proportion to the holes played and the reduced totals decide the winner.
+- A guided tour: numbered pins on the buttons along the top and a card that says what each does. It opens at every start until "Don't show again" is chosen, opens once more the first time each new version runs (with a short list of what is new), and can be opened at any time from Library > About.
+- Back now returns from the Library page to the clubhouse when that is where you came from.
+- Uninstalling with "remove my data" now also deletes Wikibooks and Wikiversity. Before, their files were left behind in the library folder.
+
 ## 0.14.0 (2026-11-16)
 
 - How much of Wikipedia is kept can now be changed after setup, under Library > How much of Wikipedia: everything with images, every article without images, or introductions only, each with its real size. The copy in use stays until the other size has been downloaded and checked, and is deleted only then. A size that cannot be fetched that way is greyed out with the reason. Until now the choice appeared only on the first-run screen, so an install that already had a library never saw it.

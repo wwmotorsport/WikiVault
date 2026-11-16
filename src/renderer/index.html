@@ -155,8 +155,14 @@
       </section>
 
       <!-- Library: edition, updates, answers -->
-      <section class="view pad" id="view-golf" hidden>
-        <div class="column wide golf" id="golf-card"></div>
+      <section class="view" id="view-golf" hidden>
+        <div class="g8" id="golf-screen">
+          <div class="g8-stage">
+            <canvas id="golf-scene" width="256" height="112" role="img" aria-label="A golf hole drawn in large pixels"></canvas>
+            <p class="g8-banner" id="golf-banner" aria-live="polite"></p>
+          </div>
+          <div class="g8-body" id="golf-card"></div>
+        </div>
       </section>
 
       <section class="view pad" id="view-library" hidden>
@@ -324,7 +330,9 @@
           <div class="actions">
             <button class="btn" id="about-licence" type="button">Licence</button>
             <button class="btn" id="about-notices" type="button">Third-party notices</button>
+            <button class="btn" id="about-tour" type="button">Show the tour</button>
           </div>
+          <label class="check"><input type="checkbox" id="about-tour-auto"><span>Show the tour each time Wikivault starts</span></label>
           <p class="error-text" id="about-error" hidden></p>
         </div>
       </section>
@@ -371,30 +379,27 @@
     </div>
   </dialog>
 
-  <dialog id="golf-dialog" aria-labelledby="golf-title">
-    <h2 id="golf-title">Wiki golf</h2>
-    <p>Get from one article to another using only the links inside the articles. Every article you open is a stroke, and the fewest strokes over the round wins.</p>
-    <p class="small-print">Take turns on this computer. Everyone plays the same hole, one after another, and the routes are shown once all have played. Search and Ask are switched off during a turn, and going back costs a stroke.</p>
-    <div class="field">
-      <span class="field-label" id="golf-players-label">Players</span>
-      <div id="golf-players" role="group" aria-labelledby="golf-players-label"></div>
-      <div><button class="btn small" id="golf-add" type="button">Add a player</button></div>
-    </div>
-    <div class="field two">
-      <div>
-        <label class="field-label" for="golf-holes">Holes</label>
-        <select id="golf-holes"><option value="1">1</option><option value="3" selected>3</option><option value="6">6</option><option value="9">9</option></select>
+  <dialog id="tour" aria-labelledby="tour-title">
+    <div id="tour-pins" aria-hidden="true"></div>
+    <div class="tour-card">
+      <h2 id="tour-title">A quick look around</h2>
+      <div id="tour-new" hidden>
+        <p class="tour-new-title" id="tour-new-title"></p>
+        <ul id="tour-new-list"></ul>
       </div>
-      <div>
-        <label class="field-label" for="golf-length">Length of each hole</label>
-        <select id="golf-length"><option value="short">Short, par 3</option><option value="medium" selected>Medium, par 4</option><option value="long">Long, par 5</option><option value="mixed">A mix</option></select>
+      <p class="small-print">The numbers match the buttons along the top of the window.</p>
+      <ol id="tour-list"></ol>
+      <div class="actions">
+        <button class="btn primary" id="tour-ok" type="button">Got it</button>
+        <button class="btn" id="tour-never" type="button">Don't show again</button>
       </div>
+      <p class="small-print" id="tour-foot"></p>
     </div>
-    <p class="error-text" id="golf-error" hidden></p>
-    <div class="actions">
-      <button class="btn" id="golf-cancel" type="button">Cancel</button>
-      <button class="btn primary" id="golf-go" type="button">Start the round</button>
-    </div>
+  </dialog>
+
+  <dialog id="golf-player-dialog" class="g8-dialog" aria-labelledby="g8-player-title">
+    <h2 id="g8-player-title" class="g8-h"></h2>
+    <div id="g8-player-body"></div>
   </dialog>
 
   <dialog id="partition-confirm" aria-labelledby="confirm-title">
