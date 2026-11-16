@@ -18,6 +18,9 @@
       <button class="icon-btn" id="nav-home" title="Main page" aria-label="Main page">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 9.5 10 4l6.5 5.5M5.5 8.5V16h9V8.5"/></svg>
       </button>
+      <button class="icon-btn" id="nav-golf" title="Wiki golf: a game for one to six players" aria-label="Wiki golf" aria-pressed="false">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 17V3l8 3.200L7 9.400M3.500 17h7"/></svg>
+      </button>
       <button class="icon-btn" id="nav-random" title="Open a random article" aria-label="Open a random article">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h3.2c2.6 0 3.9 8 6.6 8H17M3 14h3.2c1 0 1.8-1.200 2.500-2.700M17 6h-4.200c-1 0-1.800 1.100-2.500 2.600M14.500 3.500 17 6l-2.500 2.500M14.500 11.500 17 14l-2.500 2.500"/></svg>
       </button>
@@ -46,6 +49,16 @@
     <button class="btn small quiet" id="external-dismiss">Stay here</button>
   </div>
   <div class="notice warn" id="engine-error" hidden></div>
+
+  <div class="golfbar" id="golfbar" hidden>
+    <span class="golfbar-hole" id="golfbar-hole"></span>
+    <span class="golfbar-route" id="golfbar-route"></span>
+    <span class="golfbar-strokes" id="golfbar-strokes" aria-live="polite"></span>
+    <button class="btn small" id="golfbar-target" aria-expanded="false">About the target</button>
+    <button class="btn small" id="golfbar-give-up">Pick up</button>
+    <button class="btn small" id="golfbar-return" hidden>Back to the game</button>
+    <p class="golfbar-lead" id="golfbar-lead" hidden></p>
+  </div>
 
   <div class="layout">
     <main class="main" id="main">
@@ -142,6 +155,10 @@
       </section>
 
       <!-- Library: edition, updates, answers -->
+      <section class="view pad" id="view-golf" hidden>
+        <div class="column wide golf" id="golf-card"></div>
+      </section>
+
       <section class="view pad" id="view-library" hidden>
         <div class="column">
           <h1 class="display" id="lib-title">Library</h1>
@@ -338,6 +355,32 @@
     <div class="actions">
       <button class="btn" id="ack-licence" type="button">Read the licence</button>
       <button class="btn primary" id="ack-go" type="button">I understand and agree</button>
+    </div>
+  </dialog>
+
+  <dialog id="golf-dialog" aria-labelledby="golf-title">
+    <h2 id="golf-title">Wiki golf</h2>
+    <p>Get from one article to another using only the links inside the articles. Every article you open is a stroke, and the fewest strokes over the round wins.</p>
+    <p class="small-print">Take turns on this computer. Everyone plays the same hole, one after another, and the routes are shown once all have played. Search and Ask are switched off during a turn, and going back costs a stroke.</p>
+    <div class="field">
+      <span class="field-label" id="golf-players-label">Players</span>
+      <div id="golf-players" role="group" aria-labelledby="golf-players-label"></div>
+      <div><button class="btn small" id="golf-add" type="button">Add a player</button></div>
+    </div>
+    <div class="field two">
+      <div>
+        <label class="field-label" for="golf-holes">Holes</label>
+        <select id="golf-holes"><option value="1">1</option><option value="3" selected>3</option><option value="6">6</option><option value="9">9</option></select>
+      </div>
+      <div>
+        <label class="field-label" for="golf-length">Length of each hole</label>
+        <select id="golf-length"><option value="short">Short, par 3</option><option value="medium" selected>Medium, par 4</option><option value="long">Long, par 5</option><option value="mixed">A mix</option></select>
+      </div>
+    </div>
+    <p class="error-text" id="golf-error" hidden></p>
+    <div class="actions">
+      <button class="btn" id="golf-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="golf-go" type="button">Start the round</button>
     </div>
   </dialog>
 

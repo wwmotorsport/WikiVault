@@ -24,6 +24,7 @@ const { Engine, probeZim, locateEngine, installEngine } = require('../core/engin
 const os = require('node:os');
 const { LlmService, refreshWindowsPath, fastest } = require('../core/llm');
 const { smartSearch } = require('../core/search');
+const { GolfGame, makeHole } = require('../core/golf');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -149,6 +150,29 @@ const extras = new Map();   // id -> { manager, engine }
 const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
 let activeLib = 'wikipedia';
 /** The engine of the library that is open: the chosen extra one if it is running, else Wikipedia's. */
+// Wiki golf: one round at a time, played in the library that was open when it started.
+let golf = null;            // { game, engine, libId }
+function golfState() {
+  if (golf && !golf.engine?.running) golf = null; // the library was switched to a new edition or removed
+  return golf ? golf.game.snapshot() : null;
+}
+async function layGolfHole() {
+  const g = golf;
+  if (!g) return;
+  g.game.error = null;
+  pushState();
+  try {
+    const e = g.engine;
+    const hole = await makeHole({ getPage: (url) => e.fetchHtml(url), randomUrl: e.randomUrl(), contentBase: e.contentBase(), steps: g.game.stepsForNext() });
+    if (golf !== g || g.game.phase !== 'layout') return;
+    g.game.setHole(hole);
+  } catch (err) {
+    if (golf === g) g.game.layoutFailed(err.message);
+  }
+  pushState();
+}
+const golfInPlay = () => Boolean(golfState() && golf.game.phase !== 'finished');
+
 const cur = () => (extras.get(activeLib)?.engine?.running ? extras.get(activeLib).engine : engine);
 const curLibId = () => (extras.get(activeLib)?.engine?.running ? activeLib : 'wikipedia');
 let engineState = { installing: null, error: null, version: null };
@@ -256,6 +280,7 @@ async function getState() {
       ...engineState,
     },
     activeLibrary: curLibId(),
+    golf: golfState(),
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
       const snap = x?.manager.snapshot();
@@ -1224,11 +1249,36 @@ function registerIpc() {
   handle('library:extra-remove', ({ id }) => removeExtra(String(id)));
   handle('library:select', ({ id }) => {
     const want = String(id);
+    if (golfInPlay() && want !== activeLib) throw new Error('A round of wiki golf is in progress. Finish or end it before changing library.');
     if (want !== 'wikipedia' && !extras.get(want)?.engine?.running) throw new Error('That library is not downloaded yet.');
     if (want !== activeLib) { activeLib = want; conversation.length = 0; }
     pushState();
     return { homeUrl: cur().homeUrl() };
   });
+  handle('golf:start', ({ players, holes, length }) => {
+    if (!cur()?.running) throw new Error('There is no library to play in yet.');
+    const libId = curLibId();
+    golf = { engine: cur(), libId, game: new GolfGame({ players, holes, length, library: libId === 'wikipedia' ? 'Wikipedia' : LIBRARIES[libId].name }) };
+    layGolfHole();
+    return true;
+  });
+  const inGolf = (fn) => (arg) => {
+    if (!golfState()) throw new Error('No round of wiki golf is in progress.');
+    const out = fn(golf.game, arg || {});
+    if (golf.game.phase === 'layout' && !golf.game.error) layGolfHole(); else pushState();
+    return out ?? true;
+  };
+  handle('golf:relay', inGolf((game) => { if (game.phase === 'layout') game.error = null; else game.relay(); }));
+  handle('golf:tee', inGolf((game) => ({ url: game.teeOff() })));
+  handle('golf:visit', ({ url }) => {
+    if (!golfState()) return null;
+    const what = golf.game.visit(String(url || ''));
+    if (what) pushState();
+    return what;
+  });
+  handle('golf:give-up', inGolf((game) => game.giveUp()));
+  handle('golf:next', inGolf((game) => { game.next(); }));
+  handle('golf:quit', () => { golf = null; pushState(); return true; });
   handle('search:suggest', ({ term }) => (cur()?.running ? cur().suggest(term, 8) : []));
   handle('search:query', ({ q, start = 0 }) => (cur()?.running ? smartSearch(cur(), q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
 

@@ -93,6 +93,29 @@ Newer editions are looked for on the same schedule as Wikipedia and installed th
 
 These libraries live in `<library>\more\`. They are not moved when you move the library or return the partition: remove them first, then download them again afterwards.
 
+## Wiki golf
+
+A game for one to six players on one computer, played entirely in the offline copy. Press the flag button in the top bar.
+
+**The idea.** Each hole has a start article and a target article. Get from one to the other using only the links inside the articles. Every article you open is a stroke. The fewest strokes over the round wins.
+
+**Setting up.** Enter the players' names, choose 1, 3, 6 or 9 holes, and choose how long the holes are: short (par 3), medium (par 4), long (par 5) or a mix. The game is played in whichever library is open, so open Wikibooks or Wikiversity first if you want to play there.
+
+**How a hole is made.** The app starts at a random article and follows a few links from its text, never visiting a page twice. Where it ends up is the target, so every hole can be reached, and par is one more than the number of links it followed. Lists, disambiguation pages and bare years are skipped. Before the first player tees off you can ask for a different hole.
+
+**Taking a turn.** The hole card shows the start, the target and the opening lines of the target article. Press **Tee off** and the start article opens. A green bar shows the hole, the target and your strokes; **About the target** shows the target's opening lines again. During a turn:
+
+- search, Ask, the home and random buttons and the library list are switched off;
+- going back or forward counts as a stroke, like any other article you open;
+- jumping around inside one article is free, and so is find on page (`Ctrl+F`);
+- the hole ends when you reach the target, or at three times par. **Pick up** ends your turn early and scores that same limit.
+
+**Several players.** Everyone plays the same hole, one after another, and the player who goes first changes each hole. The others should look away during a turn: the app hides each route until everyone has played the hole, but it cannot stop anyone watching the screen. After the last player, the hole's summary shows every route and the route the hole was laid out along.
+
+**Scoring.** One stroke is a hole in one; otherwise scores are named against par (eagle, birdie, par, bogey and so on). The scorecard at the end lists every hole, the totals and each player's score to par. Equal totals share the win. Nothing about a round is saved once you close it.
+
+If the library is switched to a newer edition during a round, the round ends, because the articles of the old edition are no longer open.
+
 ## Download speed
 
 A plain download from download.kiwix.org is one connection to whichever mirror its load balancer picks, which can be far slower than your line. Wikivault instead:

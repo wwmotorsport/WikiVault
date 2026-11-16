@@ -65,9 +65,10 @@ function showView(next) {
   if (view === next) return;
   if (view && view !== 'setup') prevView = view;
   view = next;
-  for (const v of ['setup', 'results', 'reader', 'library']) $(`view-${v}`).hidden = v !== next;
+  for (const v of ['setup', 'results', 'reader', 'library', 'golf']) $(`view-${v}`).hidden = v !== next;
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
   if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
+  if (state?.golf) renderGolf();
   updateNav();
 }
 
@@ -76,12 +77,13 @@ function updateNav() {
   let fwd = false;
   if (view === 'reader' && readerReady) {
     try { back = reader.canGoBack(); fwd = reader.canGoForward(); } catch { /* not attached yet */ }
-  } else if ((view === 'results' || view === 'library') && prevView) back = true;
+  } else if ((view === 'results' || view === 'library') && prevView && prevView !== 'golf') back = true;
   $('nav-back').disabled = !back;
   $('nav-forward').disabled = !fwd;
   const ready = Boolean(state?.engine.ready);
   $('nav-home').disabled = !ready;
   $('nav-random').disabled = !ready;
+  $('nav-golf').disabled = !ready;
   $('search-input').disabled = !ready;
   const onArticle = view === 'reader' && currentUrl && state?.engine.origin && currentUrl.startsWith(`${state.engine.origin}/content/`);
   $('ask-pin-row').hidden = !onArticle;
@@ -89,18 +91,21 @@ function updateNav() {
 }
 
 function goBack() {
+  if (view === 'golf') return;
   if (view === 'reader') { try { reader.goBack(); } catch { /* nothing to go back to */ } } else if (prevView) showView(prevView);
 }
 
-function openUrl(url) {
+function openUrl(url, { golf = false } = {}) {
   if (!url) return;
+  // During a turn of wiki golf the only way to move is a link inside the article.
+  if (golfPlaying() && !golf) return;
   $('reader-msg').hidden = true;
   showView('reader');
   if (reader.getAttribute('src') === url && readerReady) { try { reader.loadURL(url); } catch { reader.src = url; } } else reader.src = url;
 }
 
 reader.addEventListener('dom-ready', () => { readerReady = true; updateNav(); });
-reader.addEventListener('did-navigate', (e) => { currentUrl = e.url; updateNav(); });
+reader.addEventListener('did-navigate', (e) => { currentUrl = e.url; updateNav(); golfVisit(e.url); });
 reader.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) { currentUrl = e.url; updateNav(); } });
 reader.addEventListener('page-title-updated', (e) => { if (view === 'reader') document.title = `${e.title} - Wikivault`; });
 reader.addEventListener('did-fail-load', (e) => {
@@ -156,7 +161,7 @@ function setZoom(z) {
 
 function shortcut(action) {
   if (action === 'find') openFind();
-  else if (action === 'search') { $('search-input').focus(); $('search-input').select(); }
+  else if (action === 'search') { if (!golfPlaying()) { $('search-input').focus(); $('search-input').select(); } }
   else if (action === 'back') goBack();
   else if (action === 'forward') { try { reader.goForward(); } catch { /* none */ } }
   else if (action === 'zoom-in') setZoom(zoom + 0.1);
@@ -1301,6 +1306,229 @@ $('lib-select').addEventListener('change', (e) => guard(async () => {
   openUrl(r.homeUrl);
 }, null));
 
+// ------------------------------------------------------------ wiki golf
+// The rules and the scorecard are kept by the main process (src/core/golf.js). This part shows
+// the state it sends, reports each page the reader arrives at, and locks the shortcuts during a turn.
+let golfSeen = null;                  // the phase last acted on, so a change is handled once
+let golfTeeing = false;               // between pressing Tee off and the state arriving
+let golfNames = ['', ''];
+const golfPlaying = () => golfTeeing || state?.golf?.phase === 'playing';
+const strokesText = (n) => `${n} ${n === 1 ? 'stroke' : 'strokes'}`;
+const toParText = (d) => (d === 0 ? 'level par' : d > 0 ? `${d} over par` : `${-d} under par`);
+
+function golfVisit(url) {
+  if (!state?.golf && !golfTeeing) return;
+  api.golfVisit(url).then((what) => {
+    // Pages read before the tee shot are not part of the hole, so Back cannot return to them.
+    if (what === 'start') { try { reader.clearHistory(); } catch { /* not attached */ } updateNav(); }
+  }).catch(() => {});
+}
+
+function golfPlayerRows() {
+  const box = $('golf-players');
+  box.replaceChildren(...golfNames.map((name, i) => {
+    const row = el('div', 'golf-player');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 24;
+    input.value = name;
+    input.placeholder = `Player ${i + 1}`;
+    input.setAttribute('aria-label', `Name of player ${i + 1}`);
+    input.addEventListener('input', () => { golfNames[i] = input.value; });
+    row.append(input);
+    if (golfNames.length > 1) {
+      const remove = el('button', 'btn small quiet', 'Remove');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `Remove player ${i + 1}`);
+      remove.addEventListener('click', () => { golfNames.splice(i, 1); golfPlayerRows(); });
+      row.append(remove);
+    }
+    return row;
+  }));
+  $('golf-add').hidden = golfNames.length >= 6;
+}
+
+function openGolfSetup() {
+  $('golf-error').hidden = true;
+  golfPlayerRows();
+  $('golf-dialog').showModal();
+  $('golf-players').querySelector('input')?.focus();
+}
+$('golf-add').addEventListener('click', () => {
+  if (golfNames.length < 6) golfNames.push('');
+  golfPlayerRows();
+  [...$('golf-players').querySelectorAll('input')].pop()?.focus();
+});
+$('golf-cancel').addEventListener('click', () => $('golf-dialog').close());
+$('golf-go').addEventListener('click', () => guard(async () => {
+  await api.golfStart({ players: golfNames, holes: Number($('golf-holes').value), length: $('golf-length').value });
+  $('golf-dialog').close();
+}, $('golf-error')));
+$('nav-golf').addEventListener('click', () => {
+  if (!state?.golf) openGolfSetup();
+  else if (!golfPlaying()) showView('golf');
+});
+$('golfbar-return').addEventListener('click', () => showView('golf'));
+$('golfbar-target').addEventListener('click', () => {
+  const open = $('golfbar-lead').hidden;
+  $('golfbar-lead').hidden = !open;
+  $('golfbar-target').setAttribute('aria-expanded', String(open));
+});
+
+/** A button that asks once more before doing something that cannot be undone. */
+function twoStep(button, label, sure, fn) {
+  let armed = false;
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    if (!armed) { armed = true; button.textContent = sure; setTimeout(() => { armed = false; button.textContent = label; }, 4000); return; }
+    fn();
+  });
+  return button;
+}
+twoStep($('golfbar-give-up'), 'Pick up', 'Pick up and take the limit?', () => api.golfGiveUp());
+
+function golfButton(label, fn, primary) {
+  const b = el('button', `btn${primary ? ' primary' : ''}`, label);
+  b.addEventListener('click', () => guard(fn, null));
+  return b;
+}
+const endRoundButton = () => twoStep(el('button', 'btn quiet'), 'End the round', 'End it? Press again', () => api.golfQuit());
+
+function golfHoleBlock(g) {
+  const block = el('div', 'golf-hole');
+  const from = el('div', 'golf-end');
+  from.append(el('span', 'golf-end-label', 'From'), el('strong', '', g.hole.start.title));
+  const to = el('div', 'golf-end golf-target');
+  to.append(el('span', 'golf-end-label', 'To'), el('strong', '', g.hole.target.title));
+  if (g.hole.target.lead) to.append(el('p', '', g.hole.target.lead));
+  block.append(from, to);
+  return block;
+}
+
+function golfStandingsLine(g) {
+  const st = g.standings;
+  if (!st.holesPlayed) return null;
+  const parts = st.rows.map((r) => `${r.name} ${r.strokes} (${toParText(r.toPar)})`);
+  return el('p', 'golf-standing', `After ${st.holesPlayed} ${st.holesPlayed === 1 ? 'hole' : 'holes'}: ${parts.join(', ')}.`);
+}
+
+function golfScorecard(g) {
+  const table = el('table', 'golf-card-table');
+  const head = el('tr');
+  head.append(el('th', '', 'Hole'), el('th', 'golf-wide', 'From and to'), el('th', 'num', 'Par'), ...g.players.map((p) => el('th', 'num', p)));
+  const thead = el('thead'); thead.append(head);
+  const body = el('tbody');
+  for (const h of g.scorecard) {
+    const tr = el('tr');
+    const best = Math.min(...h.strokes);
+    tr.append(el('td', '', String(h.number)), el('td', 'golf-wide', `${h.from} to ${h.to}`), el('td', 'num', String(h.par)),
+      ...h.strokes.map((n) => el('td', `num${n === best && g.players.length > 1 ? ' best' : ''}`, String(n))));
+    body.append(tr);
+  }
+  const foot = el('tfoot');
+  const total = el('tr');
+  const byName = Object.fromEntries(g.standings.rows.map((r) => [r.name, r]));
+  total.append(el('th', '', 'Total'), el('td', 'golf-wide', ''), el('td', 'num', String(g.standings.par)), ...g.players.map((p) => el('td', 'num', String(byName[p].strokes))));
+  const rel = el('tr');
+  rel.append(el('th', '', 'To par'), el('td', 'golf-wide', ''), el('td', 'num', ''), ...g.players.map((p) => { const d = byName[p].toPar; return el('td', 'num', d === 0 ? 'E' : d > 0 ? `+${d}` : String(d)); }));
+  foot.append(total, rel);
+  table.append(thead, body, foot);
+  return table;
+}
+
+function renderGolfCard(g) {
+  const card = $('golf-card');
+  const key = JSON.stringify([g.phase, g.holeNumber, g.player, g.error, g.hole?.start.url, g.live?.strokes]);
+  if (card.dataset.key === key) return;
+  card.dataset.key = key;
+  const kids = [];
+  const actions = el('div', 'actions');
+  const where = `Hole ${g.holeNumber} of ${g.holeCount}`;
+  if (g.phase === 'layout') {
+    kids.push(el('p', 'golf-kicker', `${where}, in ${g.library}`), el('h1', '', g.error ? 'The hole could not be laid out' : 'Laying out the hole'));
+    kids.push(el('p', g.error ? 'error-text' : '', g.error || 'Choosing a start and a target that can be reached from it.'));
+    if (g.error) actions.append(golfButton('Try again', () => api.golfRelay(), true));
+    actions.append(endRoundButton());
+  } else if (g.phase === 'tee') {
+    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}, in ${g.library}`), golfHoleBlock(g));
+    const up = el('p', 'golf-up');
+    up.append(el('strong', '', g.player), g.players.length > 1 ? ', you are up. Everyone else looks away.' : ', you are up.');
+    kids.push(up, el('p', 'small-print', `Use only the links inside the articles. Every article you open is a stroke, going back included. The hole is over at ${g.hole.limit} strokes, which is also what picking up scores.`));
+    actions.append(golfButton('Tee off', async () => {
+      golfTeeing = true;
+      try { const r = await api.golfTee(); $('golfbar-lead').hidden = true; $('golfbar-target').setAttribute('aria-expanded', 'false'); openUrl(r.url, { golf: true }); } finally { golfTeeing = false; }
+    }, true));
+    if (g.canRelay) actions.append(golfButton('Lay out a different hole', () => api.golfRelay()));
+    actions.append(endRoundButton());
+  } else if (g.phase === 'playing') {
+    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', '', `${g.player} is on the course`));
+    actions.append(golfButton('Back to the article', () => showView('reader'), true));
+  } else if (g.phase === 'done') {
+    const d = g.last.strokes - g.hole.par;
+    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', 'golf-result', g.last.name));
+    kids.push(el('p', '', g.last.holed
+      ? `${g.player} reached ${g.hole.target.title} in ${strokesText(g.last.strokes)}, ${toParText(d)}.`
+      : `${g.player} did not reach ${g.hole.target.title}. That scores the limit of ${strokesText(g.last.strokes)}.`));
+    actions.append(golfButton(g.nextPlayer ? `Pass to ${g.nextPlayer}` : 'See how the hole played', () => api.golfNext(), true), endRoundButton());
+  } else if (g.phase === 'summary') {
+    kids.push(el('p', 'golf-kicker', `${where}, par ${g.hole.par}`), el('h1', '', `${g.hole.start.title} to ${g.hole.target.title}`));
+    const table = el('table', 'golf-card-table');
+    const body = el('tbody');
+    for (const c of g.cards) {
+      const tr = el('tr');
+      tr.append(el('th', '', c.player), el('td', 'num', String(c.strokes)), el('td', '', c.name), el('td', 'golf-wide golf-path', c.path.join('  ›  ')));
+      body.append(tr);
+    }
+    table.append(body);
+    kids.push(table, el('p', 'small-print', `The hole was laid out along ${g.hole.route.join('  ›  ')}.`));
+    const line = golfStandingsLine(g);
+    if (line) kids.push(line);
+    actions.append(golfButton(g.holeNumber < g.holeCount ? 'Next hole' : 'Final scores', () => api.golfNext(), true), endRoundButton());
+  } else if (g.phase === 'finished') {
+    const rows = g.standings.rows;
+    const winners = rows.filter((r) => r.place === 1).map((r) => r.name);
+    const title = g.players.length === 1 ? `Round finished: ${strokesText(rows[0].strokes)}, ${toParText(rows[0].toPar)}`
+      : winners.length === 1 ? `${winners[0]} wins` : `${winners.slice(0, -1).join(', ')} and ${winners.at(-1)} share the win`;
+    kids.push(el('p', 'golf-kicker', `${g.holeCount} ${g.holeCount === 1 ? 'hole' : 'holes'} in ${g.library}`), el('h1', 'golf-result', title), golfScorecard(g));
+    actions.append(golfButton('Play again', async () => { await api.golfQuit(); openGolfSetup(); }, true), golfButton('Close', () => api.golfQuit()));
+  }
+  kids.push(actions);
+  card.replaceChildren(...kids);
+  card.querySelector('.btn.primary')?.focus();
+}
+
+function renderGolf() {
+  const g = state?.golf || null;
+  const playing = golfPlaying();
+  document.body.classList.toggle('golf-playing', playing);
+  for (const id of ['search', 'nav-home', 'nav-random', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
+  $('nav-golf').setAttribute('aria-pressed', String(Boolean(g)));
+
+  const seen = g ? `${g.holeNumber}:${g.player}:${g.phase}` : null;
+  if (seen !== golfSeen) {
+    golfSeen = seen;
+    if (!g) { if (view === 'golf') { if (currentUrl) showView('reader'); else openUrl(state.engine.homeUrl); } } else if (g.phase !== 'playing') showView('golf');
+  }
+
+  const bar = $('golfbar');
+  bar.hidden = !g || (view === 'golf');
+  if (!g) { $('golf-card').replaceChildren(); delete $('golf-card').dataset.key; return; }
+  const live = g.phase === 'playing';
+  for (const id of ['golfbar-route', 'golfbar-strokes', 'golfbar-target', 'golfbar-give-up']) $(id).hidden = !live;
+  $('golfbar-return').hidden = live;
+  if (live) {
+    $('golfbar-hole').textContent = `Hole ${g.holeNumber} of ${g.holeCount}, par ${g.hole.par}`;
+    const route = $('golfbar-route');
+    route.replaceChildren(el('span', '', `${g.player}: from ${g.hole.start.title} to `), el('strong', '', g.hole.target.title));
+    $('golfbar-strokes').textContent = `${strokesText(g.live.strokes)} of ${g.hole.limit}`;
+    $('golfbar-lead').textContent = g.hole.target.lead || 'No description of this article is available.';
+  } else {
+    $('golfbar-hole').textContent = g.phase === 'finished' ? 'Wiki golf: the round is finished' : `Wiki golf: hole ${g.holeNumber} of ${g.holeCount} is waiting`;
+    $('golfbar-lead').hidden = true;
+  }
+  if (view === 'golf') renderGolfCard(g);
+}
+
 // ------------------------------------------------------------ ask panel
 
 const thread = $('ask-thread');
@@ -1527,6 +1755,7 @@ api.onOpenUrl(({ url }) => openUrl(url));
 function render() {
   renderAgreement();
   renderLibraries();
+  renderGolf();
   const e = state.edition;
   const active = e?.active;
   $('edition-label').textContent = active ? (active.date ? `${editionName(active.date)} edition` : 'Local edition') : 'No edition yet';
