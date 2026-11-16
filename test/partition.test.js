@@ -344,3 +344,18 @@ test('merge: rejects bad letters before anything runs', async () => {
   await assert.rejects(tool.merge('C', 'C'), /drive letters are not valid/);
   await assert.rejects(tool.merge('C', 'w:'), /drive letters are not valid/);
 });
+
+test('other libraries on the same partition raise the smallest and the recommended size', () => {
+  const base = { editionBytes: 115 * GB, volumeFree: 800 * GB, partitionSize: 953 * GB, sizeMin: 200 * GB, editions: 1 };
+  const plain = sizePlan(base);
+  assert.equal(plain.otherBytes, 0);
+  // Nothing downloaded yet: the smallest size is unchanged, the recommendation leaves room for them.
+  const roomy = sizePlan({ ...base, otherAllowance: 21 * GB });
+  assert.equal(roomy.minBytes, plain.minBytes);
+  assert.equal(roomy.recommendedBytes, plain.recommendedBytes + 20 * GB);
+  assert.equal(roomy.otherBytes, 21 * GB);
+  // 8 GB of them already downloaded: they have to fit, and need as much again while one is updated.
+  const have = sizePlan({ ...base, otherBytes: 8 * GB, otherAllowance: 10 * GB });
+  assert.equal(have.minBytes, plain.minBytes + 8 * GB);
+  assert.equal(have.otherBytes, 16 * GB);
+});

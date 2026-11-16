@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { EditionManager, copyLibrary, removeLibraryFiles } = require('../src/core/updater');
+const { EditionManager, copyLibrary, removeLibraryFiles, kindOf } = require('../src/core/updater');
 const { probeZim } = require('../src/core/engine');
 const { partialBytes } = require('../src/core/downloader');
 const catalog = require('../src/core/catalog');
@@ -507,5 +507,32 @@ test('another Kiwix library (Wikibooks) is found, downloaded and kept apart from
     assert.deepEqual(await zims(dir), ['wikibooks_en_all_maxi_2026-10.zim']);
     assert.equal(opened.at(-1), path.join(dir, 'zim', 'wikibooks_en_all_maxi_2026-10.zim'));
     assert.equal(t.mgr.snapshot().active, null, 'the Wikipedia manager was not touched');
+  } finally { await t.done(); }
+});
+
+test('choosing another size of the same library replaces the copy in use, whatever its date', async () => {
+  const t = await setup();
+  try {
+    t.srv.addFixture(NOV);
+    t.srv.addCopy('wikipedia_en_all_nopic_2026-10.zim', OCT);
+    await t.mgr.update();
+    assert.equal(t.mgr.snapshot().active.file, NOV);
+    assert.equal(t.mgr.snapshot().updateAvailable, false);
+
+    t.settings.flavour = 'nopic';
+    await t.mgr.forgetLatest();
+    await t.mgr.update();
+    const s = t.mgr.snapshot();
+    assert.equal(s.active.file, 'wikipedia_en_all_nopic_2026-10.zim', 'an older date is accepted when the size is what changed');
+    assert.deepEqual(await zims(t.dataDir), ['wikipedia_en_all_nopic_2026-10.zim'], 'the larger copy is deleted only after the switch');
+    assert.equal(s.updateAvailable, false);
+    assert.equal(kindOf('wikibooks_en_all_maxi_2026-10.zim'), 'wikibooks_en_all_maxi');
+
+    // Back again: the newest edition with images is fetched.
+    t.settings.flavour = 'maxi';
+    await t.mgr.forgetLatest();
+    assert.equal(t.mgr.snapshot().updateAvailable, false, 'nothing is known about the other size until the server is asked');
+    await t.mgr.update();
+    assert.equal(t.mgr.snapshot().active.file, NOV);
   } finally { await t.done(); }
 });

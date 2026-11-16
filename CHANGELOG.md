@@ -2,6 +2,13 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.14.0 (2026-11-16)
+
+- How much of Wikipedia is kept can now be changed after setup, under Library > How much of Wikipedia: everything with images, every article without images, or introductions only, each with its real size. The copy in use stays until the other size has been downloaded and checked, and is deleted only then. A size that cannot be fetched that way is greyed out with the reason. Until now the choice appeared only on the first-run screen, so an install that already had a library never saw it.
+- Wikibooks and Wikiversity now move with Wikipedia. Move library, moving onto a new partition and returning a partition all copy every downloaded library, check each copy against its checksum, switch, and only then remove the originals. The earlier rule of removing them first is gone.
+- One partition holds all the libraries. Its smallest size counts the other libraries already downloaded, and the recommended size leaves room for Wikibooks and Wikiversity and an update of each (about 20 GB more than before).
+- Links from one project to another (a Wikiversity page pointing at a Wikipedia or Wikibooks page, for example) open in the offline copy when that project is downloaded and has the page, and the open library switches with them. When it is not downloaded, or does not have the page, the usual notice says so instead of only offering the website.
+
 ## 0.13.0 (2026-11-16)
 
 - Wiki golf, a game for one to six players taking turns on the same computer (the flag button in the top bar). Each hole is a start article and a target article; the target has to be reached using only the links inside the articles, and every article opened is a stroke. Lowest total over 1, 3, 6 or 9 holes wins.

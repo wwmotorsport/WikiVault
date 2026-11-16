@@ -130,8 +130,13 @@ class EditionManager extends EventEmitter {
     if (!latest) return false;
     if (!active) return true;
     if (!active.date) return active.file !== latest.file;
+    // A different kind of the same library (with or without images, say) is wanted whatever its date.
+    if (kindOf(active.file) !== kindOf(latest.file)) return true;
     return latest.date > active.date;
   }
+
+  /** Forget what the server last offered, so the next check asks again. Used when the wanted kind changes. */
+  async forgetLatest() { this.saved.latest = null; await this._save(); this.emit('change', this.snapshot()); }
 
   _set(phase, patch = {}) {
     this.phase = phase;
@@ -583,6 +588,9 @@ const BUSY_PHASES = ['checking', 'downloading', 'verifying', 'switching', 'movin
  * @param {string} o.toDir             new library folder (created if needed)
  * @param {(p:{stage:'copy'|'verify',done:number,total:number})=>void} [o.onProgress]
  */
+/** "wikipedia_en_all_nopic_2026-10.zim" -> "wikipedia_en_all_nopic": everything but the date. */
+function kindOf(file) { return String(file || '').replace(/_\d{4}-\d{2}\.zim$/i, ''); }
+
 async function copyLibrary({ manager, toDir, signal, onProgress = () => {}, freeBytes: freeFn = freeBytes, now = () => Date.now() }) {
   const active = manager.saved.active;
   if (!active) throw new Error('There is no edition to move yet.');
@@ -651,4 +659,4 @@ async function removeLibraryFiles(dir, { log = () => {} } = {}) {
   return removed;
 }
 
-module.exports = { EditionManager, dateFromFile, freeBytes, copyResumable, copyLibrary, removeLibraryFiles };
+module.exports = { EditionManager, dateFromFile, freeBytes, copyResumable, copyLibrary, removeLibraryFiles, kindOf };

@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('api', {
   chooseDir: () => call('setup:choose-dir'),
   beginSetup: (opts) => call('setup:begin', opts),
   setupFlavours: () => call('setup:flavours'),
+  libraryFlavours: () => call('library:flavours'),
+  changeFlavour: (flavour) => call('library:set-flavour', { flavour }),
   extraInfo: (id) => call('library:extra-info', { id }),
   extraDownload: (id) => call('library:extra-download', { id }),
   extraCancel: (id) => call('library:extra-cancel', { id }),

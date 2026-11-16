@@ -10,7 +10,7 @@ How to set the app up and use it. For what it is and how to install it, see the 
 - **Every article, no images.** The full text, about a quarter of the size. Diagrams, maps and photographs are missing, which matters most for how-to, medical and identification topics.
 - **Introductions only.** The opening section and fact box of each article, about a twentieth of the size.
 
-Under each is a verdict for the place you chose: whether it fits, how much it leaves free, and whether there is also room for monthly updates (an update needs the edition's size again while the old copy is replaced, unless you use a dedicated partition). The largest size that fits with room to spare is selected for you. The choice is made at setup; changing it later means removing the library and setting up again.
+Under each is a verdict for the place you chose: whether it fits, how much it leaves free, and whether there is also room for monthly updates (an update needs the edition's size again while the old copy is replaced, unless you use a dedicated partition). The largest size that fits with room to spare is selected for you. The choice can be changed at any time afterwards under Library (see *Changing how much of Wikipedia is kept*).
 
 
 1. Pick where to store the library. The default is `%LOCALAPPDATA%\Wikivault\library`. Or give it its own partition (next section).
@@ -34,8 +34,8 @@ There are two layouts, chosen with the checkbox at the top of the panel:
 | | Updates download to C: first (default) | Self-contained |
 |---|---|---|
 | Partition holds | one edition | two editions during an update |
-| Recommended size today | about 160 GB (edition plus 30% for growth) | about 270 GB (two editions plus 15%) |
-| Smallest allowed | edition plus 5%, plus 2 GB | two editions plus 4 GB |
+| Recommended size today | about 180 GB (edition plus 30% for growth, plus about 20 GB for Wikibooks and Wikiversity) | about 290 GB (two editions plus 15%, plus the same 20 GB) |
+| Smallest allowed | edition plus 5%, plus 2 GB, plus any other libraries already downloaded | two editions plus 4 GB, plus any other libraries already downloaded |
 | What an update needs | about one edition's worth of free space on `C:` while it downloads and is checked | nothing outside the partition |
 | If `C:` is too full at update time | the update waits; the current edition is unaffected | not applicable |
 
@@ -76,7 +76,18 @@ A partition made by version 0.4 is recognised automatically.
 
 ### Moving the library
 
-**Library > Move library** copies the edition to any folder you choose, checks the copy against its checksum, switches to it, and only then removes the old copy. If the copy does not verify, nothing changes.
+**Library > Move library** copies the edition, and Wikibooks and Wikiversity if you have them, to any folder you choose, checks the copy against its checksum, switches to it, and only then removes the old copy. If the copy does not verify, nothing changes.
+
+## Changing how much of Wikipedia is kept
+
+**Library > How much of Wikipedia** lists the same three sizes as the first-run screen, with the real size of each and a mark on the one you have. Tick another and press the button that appears; nothing happens before that.
+
+The other size is downloaded and checked while you keep using the copy you have, which is deleted only after the switch. That means both have to fit for a while:
+
+- with the library in a folder, the drive needs free space for the new size;
+- with a dedicated partition and staged updates, the system drive needs that space while the download is checked, and the partition has to be large enough for the new size once the old copy is gone.
+
+A size that cannot be fetched this way is greyed out and says what is short. Going to a smaller size removes content; getting it back means downloading the larger size again. While a switch is under way, **Keep the size I have** stops it and deletes what had been fetched.
 
 ## More libraries: Wikibooks and Wikiversity
 
@@ -91,7 +102,9 @@ Once one is downloaded, a list appears at the left of the top bar. Choosing a li
 
 Newer editions are looked for on the same schedule as Wikipedia and installed the same way: downloaded, verified, switched to, and only then is the old one deleted. **Remove** deletes a library's files and returns to Wikipedia.
 
-These libraries live in `<library>\more\`. They are not moved when you move the library or return the partition: remove them first, then download them again afterwards.
+These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving the library, moving it onto a new partition and returning a partition all copy them too, check each copy, and remove the originals only after the switch. One partition holds all of them; there is no partition per library, because free space cannot be shared between partitions and each one would need its own headroom for updates.
+
+**Links between projects.** Pages often link to a sister project, such as a Wikiversity lesson pointing at a Wikipedia article. When that project is downloaded and has the page, the link opens in the offline copy and the open library switches with it. When it is not downloaded, or does not have that page, the notice that normally offers to open the website says which.
 
 ## Wiki golf
 

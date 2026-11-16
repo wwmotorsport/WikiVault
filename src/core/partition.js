@@ -36,15 +36,20 @@ const ceilGb = (n) => Math.ceil(n / GB) * GB;
  * @param {number} a.partitionSize  current size of that drive's partition
  * @param {number|null} a.sizeMin   smallest size Windows says it can shrink to (null if unknown)
  * @param {1|2} [a.editions]
+ * @param {number} [a.otherBytes]   other libraries already downloaded, which will live on the partition too
+ * @param {number} [a.otherAllowance]  room to recommend for other libraries and their updates
  */
-function sizePlan({ editionBytes, volumeFree, partitionSize, sizeMin, editions = 2, reserveBytes = WINDOWS_RESERVE_BYTES }) {
+function sizePlan({ editionBytes, volumeFree, partitionSize, sizeMin, editions = 2, reserveBytes = WINDOWS_RESERVE_BYTES, otherBytes = 0, otherAllowance = 0 }) {
   const staged = editions === 1;
-  const minBytes = staged
+  const minBytes = (staged
     ? ceilGb(editionBytes * 1.05 + 2 * GB)
-    : ceilGb(2 * editionBytes + SLACK_BYTES);
-  const raw = staged
+    : ceilGb(2 * editionBytes + SLACK_BYTES)) + ceilGb(otherBytes);
+  // Other libraries are small and always update inside the partition, next to the copy in use.
+  const others = Math.max(otherAllowance, 2 * otherBytes);
+  const raw0 = staged
     ? editionBytes * 1.3 + SLACK_BYTES            // one edition and several years of growth; the partition cannot borrow space later
     : 2 * editionBytes * GROWTH + SLACK_BYTES;
+  const raw = raw0 + others;
   const wanted = Math.ceil(raw / (10 * GB)) * 10 * GB;
   // Staged updates borrow room for one edition from the system drive, so do not let the partition take it.
   const stagingBytes = staged ? ceilGb(editionBytes * GROWTH) : 0;
@@ -68,6 +73,7 @@ function sizePlan({ editionBytes, volumeFree, partitionSize, sizeMin, editions =
     shrinkLimitKnown: sizeMin != null,
     reserveBytes,
     stagingBytes,
+    otherBytes: others,
   };
 }
 

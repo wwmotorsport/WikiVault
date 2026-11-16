@@ -563,6 +563,7 @@ function renderPartition() {
     }
     const rec = Math.min(gbOf(plan.recommendedBytes), maxGb);
     $('partition-recommended').textContent = `Use recommended (${rec} GB)`;
+    $('partition-recommended').title = plan.otherBytes ? `Includes ${gbOf(plan.otherBytes)} GB for Wikibooks and Wikiversity and their updates` : '';
     $('partition-recommended').disabled = part.gb === rec || part.busy;
     const size = `${edition.known ? '' : 'about '}${gbOf(edition.bytes)} GB`;
     $('partition-why').textContent = part.staged
@@ -576,6 +577,7 @@ function renderPartition() {
 
   const notes = [];
   if (!feasible) notes.push(['warn', plan.reason || `Windows can shrink ${driveLetter}: by at most ${maxGb} GB, which is less than the ${gbOf(plan.minBytes)} GB this layout needs.`]);
+  if (feasible && plan.otherBytes) notes.push(['', `The recommended size includes ${gbOf(plan.otherBytes)} GB for Wikibooks and Wikiversity, which are kept on the same partition as Wikipedia.`]);
   if (feasible && part.staged) notes.push(['', `Each update needs about ${gbOf(plan.stagingBytes)} GB free on ${driveLetter}: for as long as it takes to download and check. If ${driveLetter}: is too full at that moment, the update waits and your current edition is unaffected.`]);
   if (feasible && onBattery) notes.push(['warn', 'The laptop is on battery power. Plug in the charger before creating the partition if you can; this updates by itself when you do. You can continue on battery, and will be asked to confirm.']);
   if (feasible && !plan.shrinkLimitKnown) notes.push(['', `How far Windows can shrink ${driveLetter}: is measured when you confirm. If it is less than the size you chose, nothing is changed and you can pick a smaller size.`]);
@@ -1238,6 +1240,78 @@ function renderAgreement() {
   if (state.acknowledged && dialog.open) dialog.close();
 }
 
+// Changing how much of Wikipedia is kept, after setup.
+let libFlavours = null;      // what the main process last reported
+let libFlavourKey = null;    // the state that report was asked for
+let libFlavourPick = null;   // the size ticked but not yet confirmed
+function renderLibraryFlavours() {
+  if (view !== 'library' || !state.edition?.active) return;
+  const key = `${state.edition.active.file}|${state.settings.flavour}|${state.settings.dataDir}`;
+  if (libFlavourKey !== key) {
+    libFlavourKey = key;
+    libFlavourPick = null;
+    api.libraryFlavours().then((info) => { libFlavours = info; renderLibraryFlavours(); }).catch(() => { libFlavours = { options: [] }; renderLibraryFlavours(); });
+  }
+  const info = libFlavours;
+  if (!info) return;
+  const box = $('lib-flavours');
+  if (!info.options.length) { box.replaceChildren(el('p', 'small-print', 'Kiwix could not be asked for the sizes just now.')); $('lib-flavour-actions').hidden = true; return; }
+  const switching = info.wanted !== info.current && info.options.some((o) => o.flavour === info.wanted);
+  const ticked = libFlavourPick || info.wanted;
+  const paint = JSON.stringify([info, ticked]);
+  if (box.dataset.key !== paint) {
+    box.dataset.key = paint;
+    box.replaceChildren(...info.options.map((f) => {
+      const [name, about] = FLAVOUR_TEXT[f.flavour] || [f.flavour, ''];
+      const row = el('label', `flavour${f.fits ? '' : ' unfit'}`);
+      const radio = document.createElement('input');
+      radio.type = 'radio'; radio.name = 'lib-flavour'; radio.value = f.flavour; radio.checked = f.flavour === ticked; radio.disabled = !f.fits;
+      radio.addEventListener('change', () => { libFlavourPick = f.flavour; $('lib-flavour-error').hidden = true; renderLibraryFlavours(); });
+      row.append(radio, el('span', 'f-name', name), el('span', 'f-size', `${f.known ? '' : 'about '}${bytes(f.bytes)}`), el('span', 'f-about', about));
+      if (f.current) row.append(el('span', 'f-fit', 'This is the copy on this computer now.'));
+      else if (!f.fits) row.append(el('span', 'f-fit no', f.why));
+      return row;
+    }));
+  }
+  const pick = info.options.find((o) => o.flavour === ticked);
+  const now = info.options.find((o) => o.current);
+  const note = $('lib-flavour-note');
+  const go = $('lib-flavour-go');
+  const keep = $('lib-flavour-keep');
+  note.hidden = true;
+  go.hidden = true;
+  keep.hidden = true;
+  if (libFlavourPick && pick && libFlavourPick !== info.wanted) {
+    // A size has been ticked and is waiting to be confirmed.
+    const name = (FLAVOUR_TEXT[pick.flavour] || [pick.flavour])[0].toLowerCase();
+    go.hidden = false;
+    if (pick.current) {
+      go.textContent = 'Keep the size I have';
+      note.textContent = 'The download of the other size is stopped and what it had fetched is deleted.';
+    } else {
+      go.textContent = `Switch to ${name} (${bytes(pick.bytes)} to download)`;
+      note.textContent = `${bytes(pick.bytes)} is downloaded and checked while you keep using the copy you have${now ? ` (${bytes(state.edition.active.bytes)})` : ''}, which is then deleted. ${({ mini: 0, nopic: 1, maxi: 2 }[pick.flavour] ?? 3) < ({ mini: 0, nopic: 1, maxi: 2 }[info.current] ?? 3) ? 'Going to a smaller size removes content: to get it back, the larger size has to be downloaded again.' : 'Progress is shown at the top of this page.'}`;
+    }
+    note.hidden = false;
+  } else if (switching) {
+    const name = (FLAVOUR_TEXT[info.wanted] || [info.wanted])[0].toLowerCase();
+    note.textContent = `Switching to ${name}. Progress is shown at the top of this page; the copy you have stays in use until the new one is checked.`;
+    note.hidden = false;
+    keep.hidden = false;
+  }
+  $('lib-flavour-actions').hidden = go.hidden && keep.hidden;
+}
+$('lib-flavour-go').addEventListener('click', () => guard(async () => {
+  if (!libFlavourPick) return;
+  await api.changeFlavour(libFlavourPick);
+  libFlavourKey = null;
+}, $('lib-flavour-error')));
+$('lib-flavour-keep').addEventListener('click', () => guard(async () => {
+  if (!libFlavours?.current) return;
+  await api.changeFlavour(libFlavours.current);
+  libFlavourKey = null;
+}, $('lib-flavour-error')));
+
 // More libraries (Wikibooks, Wikiversity): a switcher in the top bar and a section on the Library page.
 const libInfoAsked = new Set();
 function libraryName(id) { return id === 'wikipedia' ? 'Wikipedia' : (state.libraries.find((l) => l.id === id)?.name || id); }
@@ -1258,6 +1332,7 @@ function renderLibraries() {
   $('search-input').setAttribute('aria-label', $('search-input').placeholder);
 
   if (view !== 'library') return;
+  renderLibraryFlavours();
   const haveWikipedia = Boolean(state.edition?.active);
   $('more-libs').replaceChildren(...libs.map((lib) => {
     const box = el('div', 'more-lib');
@@ -1741,14 +1816,20 @@ thread.addEventListener('click', (e) => {
 
 // ------------------------------------------------------------ external links
 
-api.onExternalLink(({ url }) => {
+api.onExternalLink(({ url, hint }) => {
   externalUrl = url;
   try { $('external-host').textContent = new URL(url).host; } catch { $('external-host').textContent = url; }
+  $('external-hint').textContent = hint ? ` ${hint}` : '';
   $('external').hidden = false;
 });
 $('external-open').addEventListener('click', () => { if (externalUrl) api.openExternal(externalUrl); $('external').hidden = true; });
 $('external-dismiss').addEventListener('click', () => { $('external').hidden = true; });
-api.onOpenUrl(({ url }) => openUrl(url));
+api.onOpenUrl(({ url, switched }) => {
+  // A link into another downloaded library: the conversation and results belong to the one just left.
+  if (switched) { if (!$('ask-new').hidden) newConversation({ focus: false }); $('results').replaceChildren(); }
+  $('external').hidden = true;
+  openUrl(url);
+});
 
 // ------------------------------------------------------------ state
 

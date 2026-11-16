@@ -44,7 +44,7 @@
   </header>
 
   <div class="notice" id="external" hidden>
-    <span>This link leaves the offline copy and needs the internet: <strong id="external-host"></strong></span>
+    <span>This link leaves the offline copy and needs the internet: <strong id="external-host"></strong><span id="external-hint"></span></span>
     <button class="btn small" id="external-open">Open in browser</button>
     <button class="btn small quiet" id="external-dismiss">Stay here</button>
   </div>
@@ -195,6 +195,19 @@
             </select>
             <span class="field-help">The download is split across the fastest Kiwix mirrors, at most four connections to each. A change applies the next time a download starts or resumes.</span>
           </div>
+
+          <h2>How much of Wikipedia</h2>
+          <p class="small-print">This can be changed at any time. The copy you have stays in use until the other size has been downloaded and checked, and is deleted only then.</p>
+          <fieldset class="field flavours" id="lib-flavour-set">
+            <legend class="field-label" id="lib-flavour-legend">Size kept on this computer</legend>
+            <div id="lib-flavours"><p class="busy-text">Asking Kiwix for the current sizes</p></div>
+          </fieldset>
+          <p class="small-print" id="lib-flavour-note" hidden></p>
+          <div class="actions" id="lib-flavour-actions" hidden>
+            <button class="btn primary" id="lib-flavour-go"></button>
+            <button class="btn" id="lib-flavour-keep" hidden>Keep the size I have</button>
+          </div>
+          <p class="error-text" id="lib-flavour-error" hidden></p>
 
           <h2>More libraries</h2>
           <p class="small-print">Other collections published by Kiwix, kept alongside Wikipedia and updated the same way. Once one is downloaded, a list at the top left switches between libraries; search, reading and Ask then work on the one that is open.</p>

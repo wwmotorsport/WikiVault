@@ -25,6 +25,7 @@ const os = require('node:os');
 const { LlmService, refreshWindowsPath, fastest } = require('../core/llm');
 const { smartSearch } = require('../core/search');
 const { GolfGame, makeHole } = require('../core/golf');
+const { sisterLink, pathCandidates } = require('../core/links');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -143,8 +144,8 @@ let engine = null;
 // Other Kiwix libraries that can be kept alongside Wikipedia. Each has its own folder, its own
 // edition manager (download, verify, update) and its own reader engine; one library is open at a time.
 const LIBRARIES = {
-  wikibooks: { name: 'Wikibooks', project: 'wikibooks', about: 'Free textbooks and manuals: first aid, cooking, gardening, repairs, languages, mathematics, science and much more.' },
-  wikiversity: { name: 'Wikiversity', project: 'wikiversity', about: 'Courses, lessons and learning material arranged by subject and level.' },
+  wikibooks: { name: 'Wikibooks', project: 'wikibooks', approxBytes: 6 * 2 ** 30, about: 'Free textbooks and manuals: first aid, cooking, gardening, repairs, languages, mathematics, science and much more.' },
+  wikiversity: { name: 'Wikiversity', project: 'wikiversity', approxBytes: 3 * 2 ** 30, about: 'Courses, lessons and learning material arranged by subject and level.' },
 };
 const extras = new Map();   // id -> { manager, engine }
 const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
@@ -172,6 +173,33 @@ async function layGolfHole() {
   pushState();
 }
 const golfInPlay = () => Boolean(golfState() && golf.game.phase !== 'finished');
+
+/**
+ * A link that points at another Wikimedia project. When that project is downloaded and has the
+ * page, the reader goes there and the open library changes with it. Returns true when it did;
+ * otherwise a short reason for the notice, or null when the link is simply a web link.
+ */
+async function followSisterLink(url) {
+  const link = sisterLink(url, settings.language || 'en');
+  if (!link) return null;
+  const name = link.project === 'wikipedia' ? 'Wikipedia' : LIBRARIES[link.project]?.name;
+  const eng = link.project === 'wikipedia' ? engine : extras.get(link.project)?.engine;
+  if (!name) return null;
+  if (!eng?.running) return link.project === 'wikipedia' ? null : `${name} is not downloaded. It can be added under Library, More libraries.`;
+  if (golfInPlay()) return 'Links to other libraries are switched off during a round of wiki golf.';
+  for (const candidate of pathCandidates(link.path)) {
+    const page = eng.urlForPath(candidate);
+    try {
+      const r = await fetchText(page, { timeoutMs: 8000, allowError: true, maxBytes: 24 * 1024 * 1024 });
+      if (r.status !== 200) continue;
+      const switched = curLibId() !== link.project;
+      if (switched) { activeLib = link.project; conversation.length = 0; pushState(); }
+      send('open-url', { url: `${r.url || page}${link.hash}`, switched });
+      return true;
+    } catch { /* try the next spelling */ }
+  }
+  return `That page is not in the offline copy of ${name}.`;
+}
 
 const cur = () => (extras.get(activeLib)?.engine?.running ? extras.get(activeLib).engine : engine);
 const curLibId = () => (extras.get(activeLib)?.engine?.running ? activeLib : 'wikipedia');
@@ -233,6 +261,61 @@ async function flavourSizes() {
   return FLAVOURS.map(({ flavour, share }) => ({ flavour, bytes: Math.round(FALLBACK_EDITION_BYTES * share), date: null, known: false }));
 }
 
+/** "maxi", "nopic" or "mini" from an edition's file name; null for a file the user supplied under another name. */
+const flavourOf = (file) => (/_(maxi|nopic|mini)_\d{4}-\d{2}\.zim$/i.exec(file || '') || [])[1]?.toLowerCase() || null;
+
+/**
+ * The sizes Wikipedia can be switched to from the Library page, and whether each can be fetched
+ * with the copy in use kept until the new one has been checked.
+ */
+async function flavourOptions() {
+  const sizes = await flavourSizes();
+  const active = editions?.snapshot().active || null;
+  const current = flavourOf(active?.file);
+  const staged = Boolean(settings.stagingDir && libraryOnPartition());
+  const libFree = await freeAt(settings.dataDir);
+  const stageFree = staged ? await freeAt(settings.stagingDir) : null;
+  const gb = (n) => `${(n / 2 ** 30).toFixed(n < 10 * 2 ** 30 ? 1 : 0)} GB`;
+  return {
+    current, wanted: settings.flavour, hasEdition: Boolean(active),
+    options: sizes.map((f) => {
+      let fits = true;
+      let why = '';
+      if (active && f.flavour !== current) {
+        if (staged) {
+          const stageDrive = path.parse(path.resolve(settings.stagingDir)).root.replace(/[\\/]+$/, '') || 'the system drive';
+          if (stageFree != null && stageFree < f.bytes + 5 * 2 ** 30) { fits = false; why = `It is downloaded to ${stageDrive} and checked there first. That needs ${gb(f.bytes)} and ${stageDrive} has ${gb(stageFree)} free.`; }
+          else if (libFree != null && libFree + (active.bytes || 0) < f.bytes * 1.02) { fits = false; why = `The Wikivault partition is too small for it: ${gb(libFree + (active.bytes || 0))} once the current copy is gone, and it needs ${gb(f.bytes)}.`; }
+        } else if (libFree != null && libFree < f.bytes + 2 * 2 ** 30) {
+          fits = false;
+          why = `The copy you have is kept until the new one is checked, so it needs ${gb(f.bytes)} free and the library drive has ${gb(libFree)}.`;
+        }
+      }
+      return { ...f, current: f.flavour === current, fits, why };
+    }),
+  };
+}
+
+async function changeFlavour(flavour) {
+  if (!FLAVOURS.some((f) => f.flavour === flavour)) throw new Error('Unknown edition size.');
+  if (!editions?.snapshot().active) throw new Error('Set up the library first.');
+  if (maintenance && !maintenance.error) throw new Error('The library is being moved. Try again when that has finished.');
+  const info = await flavourOptions();
+  const pick = info.options.find((o) => o.flavour === flavour);
+  if (!pick) throw new Error('Kiwix does not offer that size at the moment.');
+  if (!pick.fits) throw new Error(pick.why);
+  // A download of another size that is under way or paused is dropped.
+  if (editions.snapshot().pending || isBusy()) await editions.cancel();
+  settings.flavour = flavour;
+  editionSizeCache = null;
+  saveSettings();
+  await editions.forgetLatest();
+  log(`wikipedia size: ${flavour}${pick.current ? ' (already installed)' : ''}`);
+  if (!pick.current) editions.update().catch((err) => log(`size change: ${err.message}`));
+  pushState();
+  return true;
+}
+
 /** Live power state. Read fresh every time, so plugging in the charger takes effect at once. */
 function onBattery() {
   if (partitionSim) {
@@ -244,7 +327,16 @@ function onBattery() {
 async function partitionInfo() {
   const driveLetter = systemLetter();
   const [analysis, edition] = await Promise.all([partitionTool.analyze(driveLetter), editionSize()]);
-  const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin };
+  // Wikibooks and Wikiversity live on the same partition: count the ones already downloaded, and
+  // recommend room for all of them with an update of each in progress.
+  let otherBytes = 0;
+  let otherAllowance = 0;
+  for (const [id, lib] of Object.entries(LIBRARIES)) {
+    const have = extras.get(id)?.manager.snapshot().active?.bytes || 0;
+    otherBytes += have;
+    otherAllowance += 2 * 1.15 * Math.max(have, extraLatest[id]?.bytes || lib.approxBytes);
+  }
+  const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin, otherBytes, otherAllowance };
   const plans = { staged: sizePlan({ ...base, editions: 1 }), selfContained: sizePlan({ ...base, editions: 2 }) };
   return { driveLetter, analysis, edition, plans, stagingDir: defaultStagingDir() };
 }
@@ -385,6 +477,7 @@ async function startEngine(zimPath) {
 
 async function initLibrary() {
   if (editions) { editions.stopSchedule(); editions.removeAllListeners(); }
+  await closeExtras();
   editions = new EditionManager({
     dataDir: settings.dataDir,
     getSettings: () => settings,
@@ -409,9 +502,19 @@ async function initLibrary() {
   editions.startSchedule();
   pushState();
   // Extra libraries downloaded earlier are opened too.
-  for (const id of Object.keys(LIBRARIES)) {
-    if (fs.existsSync(path.join(extraDir(id), 'state.json'))) ensureExtra(id).catch((err) => log(`${id}: ${err.message}`));
+  await Promise.all(Object.keys(LIBRARIES)
+    .filter((id) => fs.existsSync(path.join(extraDir(id), 'state.json')))
+    .map((id) => ensureExtra(id).catch((err) => log(`${id}: ${err.message}`))));
+}
+
+/** Stop every extra library's engine and updater, leaving its files alone. */
+async function closeExtras() {
+  for (const x of extras.values()) {
+    x.manager.stopSchedule();
+    x.manager.removeAllListeners();
+    if (x.engine) { x.engine.removeAllListeners('crash'); await x.engine.stop().catch(() => {}); }
   }
+  extras.clear();
 }
 
 // ---------------------------------------------------------------- more libraries
@@ -495,9 +598,11 @@ async function removeExtra(id) {
   return true;
 }
 
-/** Extra libraries live inside the library folder and are not carried along when it moves. */
-function extrasOnDisk() {
-  return Object.keys(LIBRARIES).filter((id) => fs.existsSync(extraDir(id))).map((id) => LIBRARIES[id].name);
+/** Free space on the drive a folder is (or will be) on, whether or not the folder exists yet. */
+async function freeAt(dir) {
+  let probe = path.resolve(String(dir || ''));
+  while (!fs.existsSync(probe) && path.dirname(probe) !== probe) probe = path.dirname(probe);
+  return freeBytes(probe);
 }
 
 // ---------------------------------------------------------------- security
@@ -556,7 +661,12 @@ app.on('web-contents-created', (_e, contents) => {
   });
 
   if (contents.getType() === 'webview') {
-    const outside = (url) => { if (/^https?:/i.test(url)) send('external-link', { url }); };
+    const outside = (url) => {
+      if (!/^https?:/i.test(url)) return;
+      followSisterLink(url)
+        .then((r) => { if (r !== true) send('external-link', { url, hint: r || null }); })
+        .catch(() => send('external-link', { url, hint: null }));
+    };
     contents.setWindowOpenHandler(({ url }) => {
       if (isEngineUrl(url)) send('open-url', { url }); else outside(url);
       return { action: 'deny' };
@@ -1065,16 +1175,43 @@ function setMaintenance(patch) {
 async function moveLibrary(toDir, kind = 'move') {
   if (!editions?.snapshot().active) throw new Error('There is no edition to move yet.');
   if (isBusy()) throw new Error('An update is in progress. Pause or finish it, then try again.');
-  if (extrasOnDisk().length) throw new Error(`Remove ${extrasOnDisk().join(' and ')} first (Library > More libraries). They are not moved with Wikipedia and can be downloaded again afterwards.`);
   const oldDir = settings.dataDir;
   const oldStaging = settings.stagingDir;
+  const busyExtra = [...extras].find(([, x]) => ['checking', 'downloading', 'verifying', 'switching'].includes(x.manager.snapshot().phase));
+  if (busyExtra) throw new Error(`${LIBRARIES[busyExtra[0]].name} is being downloaded. Let it finish or cancel it under More libraries, then try again.`);
+  // Wikibooks and Wikiversity go wherever Wikipedia goes.
+  const carried = [...extras].filter(([, x]) => x.manager.snapshot().active).map(([id, x]) => ({ id, x, name: LIBRARIES[id].name, bytes: x.manager.snapshot().active.bytes }));
+  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0);
+  const room = await freeAt(toDir);
+  const already = fs.existsSync(path.join(toDir, 'zim')) ? (await fsp.readdir(path.join(toDir, 'zim')).catch(() => [])).some((n) => n.endsWith('.copying')) : false;
+  if (room != null && !already && room < allBytes + 2 * 2 ** 30) {
+    throw new Error(`The libraries take ${(allBytes / 2 ** 30).toFixed(0)} GB together and that drive has ${(room / 2 ** 30).toFixed(0)} GB free. Choose a folder on a drive with more room.`);
+  }
   editions.stopSchedule();
+  for (const x of extras.values()) x.manager.stopSchedule();
   try {
     if (editions.snapshot().pending) await editions.cancel(); // a partial download is not worth carrying over
-    setMaintenance({ kind, step: 'Copying the library', done: 0, total: editions.snapshot().active.bytes, error: null });
+    for (const x of extras.values()) if (x.manager.snapshot().pending) await x.manager.cancel();
+    // The small ones first: if one of them cannot be copied, nothing large has been done yet.
+    for (const c of carried) {
+      const dest = path.join(toDir, 'more', c.id);
+      await removeLibraryFiles(dest).catch(() => {}); // left over from an attempt that did not finish
+      setMaintenance({ kind, step: `Copying ${c.name}`, done: 0, total: c.bytes, error: null });
+      try {
+        await copyLibrary({
+          manager: c.x.manager, toDir: dest,
+          onProgress: (p) => setMaintenance({ step: p.stage === 'copy' ? `Copying ${c.name}` : `Checking the copy of ${c.name} against the checksum`, done: p.done, total: p.total }),
+        });
+      } catch (err) {
+        for (const d of carried) await removeLibraryFiles(path.join(toDir, 'more', d.id)).catch(() => {});
+        await fsp.rmdir(path.join(toDir, 'more')).catch(() => {});
+        throw new Error(`${c.name}: ${err.message}`);
+      }
+    }
+    setMaintenance({ kind, step: 'Copying Wikipedia', done: 0, total: editions.snapshot().active.bytes, error: null });
     const res = await copyLibrary({
       manager: editions, toDir,
-      onProgress: (p) => setMaintenance({ step: p.stage === 'copy' ? 'Copying the library' : 'Checking the copy against the checksum', done: p.done, total: p.total }),
+      onProgress: (p) => setMaintenance({ step: p.stage === 'copy' ? 'Copying Wikipedia' : 'Checking the copy of Wikipedia against the checksum', done: p.done, total: p.total }),
     });
 
     setMaintenance({ step: 'Switching to the new location', done: null });
@@ -1083,15 +1220,18 @@ async function moveLibrary(toDir, kind = 'move') {
     settings.stagingDir = libraryOnPartition() ? oldStaging : null;
     saveSettings();
     await initLibrary();
-    if (!engine?.running || editions.snapshot().active?.path !== res.activePath) {
+    const lost = carried.filter((c) => !extras.get(c.id)?.engine?.running).map((c) => c.name);
+    if (!engine?.running || editions.snapshot().active?.path !== res.activePath || lost.length) {
       settings.dataDir = oldDir;
       settings.stagingDir = oldStaging;
       saveSettings();
       await initLibrary();
-      throw new Error('The copy was made and verified, but the reader could not open it from the new folder. The library is still in its original place.');
+      throw new Error(`The copy was made and verified, but the reader could not open ${lost.length ? lost.join(' and ') : 'it'} from the new folder. The library is still in its original place.`);
     }
 
     setMaintenance({ step: 'Removing the old copy', done: null });
+    for (const id of Object.keys(LIBRARIES)) await removeLibraryFiles(path.join(oldDir, 'more', id), { log });
+    await fsp.rmdir(path.join(oldDir, 'more')).catch(() => {});
     await removeLibraryFiles(oldDir, { log });
     if (oldStaging && !settings.stagingDir) {
       for (const name of await fsp.readdir(oldStaging).catch(() => [])) {
@@ -1103,6 +1243,7 @@ async function moveLibrary(toDir, kind = 'move') {
     return { dataDir: toDir };
   } finally {
     editions?.startSchedule();
+    for (const x of extras.values()) x.manager.startSchedule();
   }
 }
 
@@ -1121,7 +1262,6 @@ async function partitionStatus() {
 async function revertPartition({ toDir, allowBattery }) {
   const p = settings.partition;
   if (!p) throw new Error('Wikivault has no partition to remove.');
-  if (libraryOnPartition() && extrasOnDisk().length) throw new Error(`Remove ${extrasOnDisk().join(' and ')} first (Library > More libraries). They are not moved with Wikipedia and can be downloaded again afterwards.`);
   if (onBattery() && !allowBattery) throw new Error('The laptop is on battery power. Plug in the charger, or confirm that you want to continue on battery.');
   try {
     if (libraryOnPartition()) {
@@ -1399,6 +1539,8 @@ function registerIpc() {
     return shell.openExternal(url);
   });
   handle('setup:flavours', flavourSizes);
+  handle('library:flavours', flavourOptions);
+  handle('library:set-flavour', ({ flavour }) => changeFlavour(String(flavour)));
   handle('setup:set-flavour', ({ flavour }) => {
     if (!FLAVOURS.some((f) => f.flavour === flavour)) throw new Error('Unknown edition size.');
     if (settings.flavour !== flavour) { settings.flavour = flavour; editionSizeCache = null; saveSettings(); pushState(); }
