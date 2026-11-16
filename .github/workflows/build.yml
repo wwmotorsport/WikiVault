@@ -1,11 +1,18 @@
-# Builds the Windows installer on GitHub's own Windows machine.
-# Runs when a version tag (v0.10.0, v0.10.1, ...) is pushed, or by hand from the Actions tab.
+# Builds the Windows installer on GitHub's own Windows machine and attaches it to the release.
+# Runs when a version tag is pushed (v0.15.0 or V0.15.0), which is what creating a release in the
+# GitHub pages does. It can also be run by hand from the Actions tab: give it the tag of a release
+# that already exists and it builds that version and attaches the installer to it.
 name: Build installer
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'V*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of an existing release to build and attach the installer to. Leave empty to only build.
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -13,8 +20,12 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -28,10 +39,14 @@ jobs:
         with:
           name: Wikivault-Setup
           path: dist/Wikivault-Setup-*.exe
-      - name: Attach the installer to the release for this tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/Wikivault-Setup-*.exe
-          generate_release_notes: false
-          body: See CHANGELOG.md for what changed in this version.
+      # Only the installer is added. The release's title, notes and pre-release mark are left as written.
+      - name: Attach the installer to the release
+        if: env.RELEASE_TAG != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
+          fi
+          gh release upload "$RELEASE_TAG" dist/Wikivault-Setup-*.exe --clobber --repo "$GITHUB_REPOSITORY"
