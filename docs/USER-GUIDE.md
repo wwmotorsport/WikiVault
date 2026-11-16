@@ -1,6 +1,59 @@
 # Wikivault user guide
 
-How to set the app up and use it. For what it is and how to install it, see the [README](../README.md); for what changed in each version, the [changelog](../CHANGELOG.md).
+How to install the app, set it up and use it. For what it is, see the [README](../README.md); for what changed in each version, the [changelog](../CHANGELOG.md).
+
+## Installing, step by step
+
+Everything from finding the installer to reading your first article. Allow ten minutes for the steps, then however long the download of Wikipedia takes.
+
+**Before you start** you need a Windows 10 or 11 computer (64-bit), an internet connection for the setup, and free disk space: well over 100 GB for the full Wikipedia with images, roughly a quarter of that without images, and a few GB for introductions only. The setup screen shows the real size of each and whether your drive has room.
+
+### 1. Get the installer
+
+<!-- download:start -->
+The direct link is **[Wikivault-Setup-0.15.0.exe](https://github.com/wwmotorsport/WikiVault/releases/download/V0.15.0/Wikivault-Setup-0.15.0.exe)** (Version 0.15.0, 116 MB).
+<!-- download:end -->
+
+The installer is not in the list of files on the repository's front page, because GitHub does not allow files that large there. To find it by hand:
+
+1. Sign in to GitHub. While the repository is private, only invited accounts can see it or download from it.
+2. On the repository's front page, find **Releases**. On a computer it is in the right-hand column; on a phone it is further down the page, below the description.
+3. Click the newest release (the one at the top).
+4. Under **Assets**, click the file whose name ends in **`.exe`**, for example `Wikivault-Setup-0.15.0.exe`.
+
+Leave "Source code (zip)" and "Source code (tar.gz)" alone. GitHub adds those to every release; they contain the program's source, not an installer. If the release also offers a `.zip` with the same name as the installer, it is the same installer inside a zip folder: open it and drag the `.exe` out first.
+
+If the browser says the file "isn't commonly downloaded", keep it. In Edge: click the three dots beside the download and choose *Keep*, then *Keep anyway*. In Chrome: click the arrow beside the download and choose *Keep*.
+
+### 2. Run the installer
+
+1. Open your **Downloads** folder and double-click `Wikivault-Setup-0.15.0.exe` (the number will match the version you downloaded).
+2. A blue box saying **"Windows protected your PC"** appears, because the installer is not code-signed. Click **More info**, then **Run anyway**.
+3. The installer shows the licence and a short notice (answers can be wrong, it is not professional advice, it can change disk partitions when you ask it to). Read it and click **I Agree**.
+4. Accept what the next screens suggest (who the program is for, where it is installed) and click **Install**.
+5. Near the end it asks whether to install **Microsoft Foundry Local**, the program that writes the answers on your computer. **Yes** is right for most people. **No** leaves you with search and reading only; answers can be switched on later from the Library page.
+6. Click **Finish**. Wikivault starts, and a shortcut is added to the Start menu.
+
+**If Windows says "Smart App Control blocked an app that may be unsafe"** there is no "run anyway" button. Smart App Control only allows signed apps, and Wikivault is not signed. The only way to install is to switch Smart App Control off: *Windows Security > App & browser control > Smart App Control settings > Off*. Read what that screen says first. On many versions of Windows it cannot be switched back on without resetting the computer, and it is a real protection, so this is a decision to make deliberately, not a step to click through.
+
+### 3. First start
+
+1. Wikivault shows the same short notice once more. Click **I understand and agree**.
+2. **Choose how much of Wikipedia to keep.** Each size shows its real download size and whether it fits. If you have the room, take everything with images.
+3. **Choose where to keep it.** The folder that is suggested is fine. Giving Wikipedia its own partition is optional and explained later in this guide; it can also be done afterwards.
+4. Click **Download Wikipedia**. Progress, speed and the time left are shown. You can pause, close the window or restart the computer; the download picks up where it stopped. The full edition takes a few hours on a fast connection and much longer on a slow one. Keep the computer plugged in.
+5. When the download finishes, the app checks it against the published checksum and opens the front page of Wikipedia. A short tour points out what the buttons do.
+6. If you said yes to Foundry Local, the answer model (a few GB) is downloaded the first time you press **Ask**. After that, **Library > Answers > Tune for this computer** picks the best model for your hardware.
+
+From here on the app works with no internet.
+
+### Updating to a newer version
+
+Download the newer installer the same way and run it. It replaces the app and keeps your library, settings and wiki golf records. The tour opens once after each update with a short list of what is new.
+
+### Removing it
+
+*Windows Settings > Apps > Installed apps > Wikivault > Uninstall*. The uninstaller asks whether to remove the downloaded library and your settings as well; choose No if you plan to install again.
 
 ## First run
 

@@ -32,7 +32,7 @@ jobs:
           cache: npm
       - run: npm ci
       # The download, search-ordering, tuning and model tests need nothing but Node.
-      - run: node --test test/download.test.js test/parallel.test.js test/search.test.js test/tune.test.js
+      - run: node --test test/download.test.js test/parallel.test.js test/search.test.js test/tune.test.js test/download-link.test.js
       - run: node scripts/make-notices.js
       - run: npx electron-builder --win nsis --x64 --publish never
       - uses: actions/upload-artifact@v4
@@ -50,3 +50,22 @@ jobs:
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
           fi
           gh release upload "$RELEASE_TAG" dist/Wikivault-Setup-*.exe --clobber --repo "$GITHUB_REPOSITORY"
+      # The download links in the README, DOWNLOAD-INSTALLER.md and the user guide name one exact file.
+      # Now that the file is on the release, point them at it, so they never name something that is not there.
+      - name: Check out the main branch to update the download links
+        if: env.RELEASE_TAG != ''
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: _main
+      - name: Point the download links at this release
+        if: env.RELEASE_TAG != ''
+        shell: bash
+        run: |
+          installer=$(ls dist/Wikivault-Setup-*.exe | head -n 1)
+          node _main/scripts/set-download-link.js "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$installer" _main
+          cd _main
+          if ! git diff --quiet; then
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "Point the download links at $RELEASE_TAG"
+            git push origin HEAD:main
+          fi

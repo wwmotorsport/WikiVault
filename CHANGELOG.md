@@ -2,6 +2,11 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## Repository, 2026-11-16 (no change to the app)
+
+- The installer is easier to find: a download link at the top of the README and in `DOWNLOAD-INSTALLER.md`, with step-by-step instructions from finding the file to the first article, in the README and in the user guide.
+- The build on GitHub now starts for tags written `v0.15.0` or `V0.15.0`, attaches only the installer to the release, and then points the download links at it. It can also be run by hand for a release that already exists.
+
 ## 0.15.0 (2026-11-16)
 
 - Wiki golf, fixed: on a real edition a player could reach the target and nothing happened. The target (and the start) are now also recognised by the page's title, not only by its address; addresses are compared in one normalised spelling, so titles containing a question mark, a percent sign or other escaped characters match; and category pages are no longer walked through when a hole is laid out. Every hole and every click of a turn is written to the log, with what the game made of it.

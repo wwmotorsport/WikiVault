@@ -4,6 +4,29 @@ Offline English Wikipedia for a Windows 10/11: the full edition with images stor
 
 FULL DISCLOSURE: I am not a programmer or a software engineer. This entire project was vibe-coded with Claude and has only been tested on the machine it was developed from. USE AT YOUR OWN RISK. 
 
+## Download and install
+
+<!-- download:start -->
+### [Download the installer: Wikivault-Setup-0.15.0.exe](https://github.com/wwmotorsport/WikiVault/releases/download/V0.15.0/Wikivault-Setup-0.15.0.exe)
+
+Version 0.15.0, 116 MB, for Windows 10 and 11 (64-bit). Clicking the link starts the download.
+<!-- download:end -->
+
+**Looking for the installer in the list of files above? It is not there.** GitHub does not allow a file this large in that list, so it is kept on this repository's **Releases** page. The link above goes straight to it.
+
+From this page to a working app:
+
+1. **Sign in to GitHub.** While this repository is private, the page and the download only work for accounts that have been invited to it.
+2. **Download the installer** with the link above. To find it by hand instead: open **Releases** (in the right-hand column on a computer, further down the page on a phone), choose the newest release, open **Assets**, and click the file whose name ends in **`.exe`**. Do not take "Source code (zip)" or "Source code (tar.gz)": those are the program's source, not something you can run.
+3. **Keep the file** if the browser says it "isn't commonly downloaded" (in Edge: the three dots beside the download, then *Keep*).
+4. **Open your Downloads folder and double-click** `Wikivault-Setup-0.15.0.exe`.
+5. **"Windows protected your PC"** appears because the installer is not code-signed. Click *More info*, then *Run anyway*. If Windows instead says **Smart App Control** blocked it, there is no "run anyway": see the [user guide](docs/USER-GUIDE.md#installing-step-by-step).
+6. **Follow the installer.** It shows the licence and the points below and asks you to agree, then asks whether to install Microsoft Foundry Local, the program that writes the answers. Say yes unless you only want search and reading.
+7. **Start Wikivault.** Choose how much of Wikipedia to keep and where to keep it, then press **Download Wikipedia**. The full edition is more than 100 GB and takes hours on most connections; it can be paused and picks up where it stopped.
+8. **To update later**, download the newer installer the same way and run it. Your library and settings are kept.
+
+The [user guide](docs/USER-GUIDE.md#installing-step-by-step) has the same steps in more detail.
+
 ## Before you use it
 
 - **Answers can be wrong.** They are written by a small AI model on your computer from a copy of Wikipedia. Either can be mistaken. Check the cited articles.
@@ -31,13 +54,10 @@ It runs on any 64-bit Windows 10/11 machine: the app measures the computer it is
 - **[Changelog](CHANGELOG.md)**: every revision.
 - **[Third-party notices](THIRD-PARTY-NOTICES.txt)** and **[licence](LICENSE)**.
 
-## Install
+## Running from source
 
-**Installer:** download the latest `Wikivault-Setup-x.y.z.exe` from this repository's Releases (currently `Wikivault-Setup-0.15.0.exe`) and run it. It shows the licence and the points above and asks you to agree. It is not code-signed, so Windows SmartScreen will show "Windows protected your PC": choose *More info*, then *Run anyway*. Windows 11's Smart App Control, where it is switched on, blocks unsigned installers outright and has no per-app exception; the app can then only be installed with Smart App Control off.
+Most people want the installer: see [Download and install](#download-and-install) at the top. To run the code directly instead (Node.js 20 or newer):
 
-Near the end the installer asks whether to install Microsoft Foundry Local, the program that runs the answer model. Say yes and it is installed with `winget`; Wikivault then downloads the model (a few GB) the first time it starts, with no further steps. Say no and the question is not asked again on later upgrades; answers can still be set up inside the app. The question is skipped when Foundry Local is already installed. For scripted installs, `/S` skips it and `/S --with-foundry` includes it.
-
-**From source** (Node.js 20 or newer):
 
 ```
 npm install
@@ -70,7 +90,7 @@ Nothing else. The browser engine inside the app has its own background traffic (
 
 Tested in a Linux build environment:
 
-- `npm test`: 153 automated tests (22 of them need PowerShell 7 `pwsh` and are skipped without it). Parallel download across several mirrors of differing speed, a mirror that drops connections, one that lacks the file and one that serves bad data; download resume across dropped connections, servers that ignore Range, mirror redirects, cancel; checksum match, mismatch and missing checksum; the full update cycle including "old edition is removed only after the new one verifies"; staged updates through a second folder, including an interrupted move, a corrupted copy and a full drive; pause, app restart and resume; search, suggestions and article extraction against the real Kiwix reader engine (kiwix-serve 3.5.0) on a small Wikipedia-shaped test file; retrieval quality on sample questions; streaming answers; follow-up questions and conversation memory; the partition script, run for real under PowerShell against mocked Storage commands and a pretend disk (normal run, shrink limit exceeded, failed create with roll-back, failed format, declined approval, and merging back, including six kinds of partition it must refuse to remove); moving the library; a model that Foundry Local unloaded while idle (the service still lists it, inference refuses it) being loaded again through the service or, failing that, the command line; Foundry Local 0.14's local API as recorded from a real install (different routes from earlier versions, and a model list that is the whole catalog rather than what is loaded); search ordering on the real "differential" case; the tuning plan on catalogues shaped like an NPU laptop, an NVIDIA desktop and a CPU-only machine; releasing memory without touching another program's model; reading Foundry Local's catalogue file, timing builds of different speeds and picking the fastest, and pinning an exact build; the Foundry Local flow against a stand-in CLI in both its current (`foundry server …`) and older (`foundry service …`) spellings.
+- `npm test`: 155 automated tests (22 of them need PowerShell 7 `pwsh` and are skipped without it). Parallel download across several mirrors of differing speed, a mirror that drops connections, one that lacks the file and one that serves bad data; download resume across dropped connections, servers that ignore Range, mirror redirects, cancel; checksum match, mismatch and missing checksum; the full update cycle including "old edition is removed only after the new one verifies"; staged updates through a second folder, including an interrupted move, a corrupted copy and a full drive; pause, app restart and resume; search, suggestions and article extraction against the real Kiwix reader engine (kiwix-serve 3.5.0) on a small Wikipedia-shaped test file; retrieval quality on sample questions; streaming answers; follow-up questions and conversation memory; the partition script, run for real under PowerShell against mocked Storage commands and a pretend disk (normal run, shrink limit exceeded, failed create with roll-back, failed format, declined approval, and merging back, including six kinds of partition it must refuse to remove); moving the library; a model that Foundry Local unloaded while idle (the service still lists it, inference refuses it) being loaded again through the service or, failing that, the command line; Foundry Local 0.14's local API as recorded from a real install (different routes from earlier versions, and a model list that is the whole catalog rather than what is loaded); search ordering on the real "differential" case; the tuning plan on catalogues shaped like an NPU laptop, an NVIDIA desktop and a CPU-only machine; releasing memory without touching another program's model; reading Foundry Local's catalogue file, timing builds of different speeds and picking the fastest, and pinning an exact build; the Foundry Local flow against a stand-in CLI in both its current (`foundry server …`) and older (`foundry service …`) spellings.
 - The desktop app itself, driven with real mouse and keyboard input from first-run download through an edition update, including the checks that article pages cannot reach the internet.
 
 - The installer, run under Wine (a Windows compatibility layer): a clean install, an in-place upgrade from 0.4.0 that kept settings, library and start-with-Windows entries, an install with `--with-foundry` on a machine without winget (the install completes and the app is told to finish the job), an uninstall that kept the data, and an uninstall with data removal that deleted the app's files and left an unrelated file in the library folder alone.
