@@ -1,14 +1,8 @@
 # Wikivault
 
-An offline replicate of Wikipedia with automatic monthly backup updates, searching and reading, and a light local AI assisted search feature. Hopefully this will never be needed, but in the case that web-services go down for an extended amount of time, having a local cache of information that is easy to use is a cheap safeguard!
+Offline English Wikipedia for a Windows 10/11: the full edition with images stored on your own drive, replaced by a verified newer edition about once a month, searchable with no internet, and able to answer questions through an AI model running on the computer itself.
 
-Offline English Wikipedia for a Windows 11 laptop: the full edition with images stored on your own drive, replaced by a verified newer edition about once a month, searchable with no internet, and able to answer questions through an AI model running on the computer itself.
-
-It runs on any 64-bit Windows 10/11 machine: the app measures the computer it is on and chooses between NPU, GPU and CPU, and between model sizes, by timing them there.
-
-- **[User guide](docs/USER-GUIDE.md)**: first run, the optional partition, search, asking questions, tuning, memory and disk use, updating, uninstalling, troubleshooting.
-- **[Changelog](CHANGELOG.md)**: every revision.
-- **[Third-party notices](THIRD-PARTY-NOTICES.txt)** and **[licence](LICENSE)**.
+FULL DISCLOSURE: I am not a programmer or a software engineer. This entire project was vibe-coded with Claude and has only been tested on the machine it was developed from. USE AT YOUR OWN RISK. 
 
 ## Before you use it
 
@@ -27,6 +21,12 @@ It runs on any 64-bit Windows 10/11 machine: the app measures the computer it is
 | Offline search | Title suggestions as you type and full-text search over every article, served by the Kiwix reader engine on 127.0.0.1. |
 | Local AI | Finds the passages that match your question, hands only those to a local model, and shows the answer with numbered links to the source articles. |
 | A desktop window | Electron app with its own reader. No browser involved. Lives in the tray so updates happen on their own. |
+
+It runs on any 64-bit Windows 10/11 machine: the app measures the computer it is on and chooses between NPU, GPU and CPU, and between model sizes, by timing them there.
+
+- **[User guide](docs/USER-GUIDE.md)**: first run, the optional partition, search, asking questions, tuning, memory and disk use, updating, uninstalling, troubleshooting.
+- **[Changelog](CHANGELOG.md)**: every revision.
+- **[Third-party notices](THIRD-PARTY-NOTICES.txt)** and **[licence](LICENSE)**.
 
 ## Install
 
