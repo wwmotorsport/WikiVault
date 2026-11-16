@@ -67,7 +67,7 @@ function showView(next) {
   view = next;
   for (const v of ['setup', 'results', 'reader', 'library']) $(`view-${v}`).hidden = v !== next;
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
-  if (next === 'library') { renderLibrary(); loadModelList(); }
+  if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
   updateNav();
 }
 
@@ -858,7 +858,7 @@ function renderLibrary() {
   if (dl.dataset.key !== key) {
     dl.dataset.key = key;
     dl.replaceChildren();
-    fact(dl, 'Contents', 'English Wikipedia, full articles with images');
+    fact(dl, 'Contents', /_nopic_/.test(a.file) ? 'English Wikipedia, full articles without pictures' : /_mini_/.test(a.file) ? 'English Wikipedia, article introductions only' : 'English Wikipedia, full articles with images');
     if (state.engine.info?.articleCount) fact(dl, 'Articles', state.engine.info.articleCount.toLocaleString());
     fact(dl, 'Size on disk', bytes(a.bytes));
     if (a.sha256) fact(dl, 'Integrity', `Matched the published SHA-256 checksum, ${when(a.verifiedAt)}`, 'verified');
@@ -1233,6 +1233,74 @@ function renderAgreement() {
   if (state.acknowledged && dialog.open) dialog.close();
 }
 
+// More libraries (Wikibooks, Wikiversity): a switcher in the top bar and a section on the Library page.
+const libInfoAsked = new Set();
+function libraryName(id) { return id === 'wikipedia' ? 'Wikipedia' : (state.libraries.find((l) => l.id === id)?.name || id); }
+
+function renderLibraries() {
+  const libs = state.libraries || [];
+  const ready = libs.filter((l) => l.ready);
+  const select = $('lib-select');
+  select.hidden = !ready.length;
+  const key = ['wikipedia', ...ready.map((l) => l.id)].join('|');
+  if (select.dataset.key !== key) {
+    select.dataset.key = key;
+    select.replaceChildren(new Option('Wikipedia', 'wikipedia'), ...ready.map((l) => new Option(l.name, l.id)));
+  }
+  if (document.activeElement !== select) select.value = state.activeLibrary;
+  const where = libraryName(state.activeLibrary);
+  $('search-input').placeholder = ready.length ? `Search ${where}` : 'Search this edition';
+  $('search-input').setAttribute('aria-label', $('search-input').placeholder);
+
+  if (view !== 'library') return;
+  const haveWikipedia = Boolean(state.edition?.active);
+  $('more-libs').replaceChildren(...libs.map((lib) => {
+    const box = el('div', 'more-lib');
+    box.dataset.lib = lib.id;
+    box.append(el('h3', '', lib.name), el('p', '', lib.about));
+    const busy = ['checking', 'downloading', 'verifying', 'switching'].includes(lib.phase);
+    const status = el('p', 'lib-status');
+    const actions = el('div', 'actions');
+    const button = (label, fn, primary) => {
+      const b = el('button', `btn${primary ? ' primary' : ''}`, label);
+      b.addEventListener('click', () => { $('more-error').hidden = true; guard(fn, $('more-error')); });
+      actions.append(b);
+      return b;
+    };
+    if (busy) {
+      const p = lib.progress;
+      const pct = p?.total ? Math.floor((p.received / p.total) * 100) : null;
+      status.textContent = lib.phase === 'downloading' ? `Downloading${pct != null ? ` ${pct}%` : ''}${p?.total ? ` of ${bytes(p.total)}` : ''}` : lib.phase === 'verifying' ? 'Checking the download against the published checksum' : lib.phase === 'switching' ? 'Opening it' : 'Looking for the newest edition';
+      box.append(status);
+      if (pct != null && lib.phase === 'downloading') { const bar = document.createElement('progress'); bar.max = 100; bar.value = pct; box.append(bar); }
+      button('Cancel', () => api.extraCancel(lib.id));
+    } else if (lib.active) {
+      status.textContent = `${lib.active.date ? `${editionName(lib.active.date)} edition` : lib.active.file}, ${bytes(lib.active.bytes)}. ${lib.updateAvailable ? 'A newer edition is available.' : 'Checked for newer editions along with Wikipedia.'}${lib.error ? ` Last problem: ${lib.error}` : ''}`;
+      box.append(status);
+      if (state.activeLibrary !== lib.id && lib.ready) button('Open', async () => { const r = await api.selectLibrary(lib.id); openUrl(r.homeUrl); }, true);
+      if (lib.updateAvailable) button('Download the newer edition', () => api.extraDownload(lib.id));
+      button('Remove', () => api.extraRemove(lib.id));
+    } else {
+      if (!lib.latest && haveWikipedia && !libInfoAsked.has(lib.id)) {
+        libInfoAsked.add(lib.id);
+        api.extraInfo(lib.id).then((info) => { lib.latest = info; renderLibraries(); }).catch(() => {});
+      }
+      status.textContent = lib.error ? `Could not be downloaded: ${lib.error}` : !haveWikipedia ? 'Available once Wikipedia is set up.' : lib.latest?.bytes ? `Not downloaded. The newest edition is ${bytes(lib.latest.bytes)}.` : 'Not downloaded.';
+      box.append(status);
+      const b = button(lib.latest?.bytes ? `Download (${bytes(lib.latest.bytes)})` : 'Download', () => api.extraDownload(lib.id), true);
+      b.disabled = !haveWikipedia;
+    }
+    box.append(actions);
+    return box;
+  }));
+}
+$('lib-select').addEventListener('change', (e) => guard(async () => {
+  const r = await api.selectLibrary(e.target.value);
+  if (!$('ask-new').hidden) newConversation({ focus: false });
+  $('results').replaceChildren();
+  openUrl(r.homeUrl);
+}, null));
+
 // ------------------------------------------------------------ ask panel
 
 const thread = $('ask-thread');
@@ -1458,9 +1526,12 @@ api.onOpenUrl(({ url }) => openUrl(url));
 
 function render() {
   renderAgreement();
+  renderLibraries();
   const e = state.edition;
   const active = e?.active;
   $('edition-label').textContent = active ? (active.date ? `${editionName(active.date)} edition` : 'Local edition') : 'No edition yet';
+  const openLib = state.activeLibrary !== 'wikipedia' && (state.libraries || []).find((l) => l.id === state.activeLibrary);
+  if (openLib?.active) $('edition-label').textContent = `${openLib.name}, ${openLib.active.date ? `${editionName(openLib.active.date)} edition` : 'local edition'}`;
   const busy = (e && BUSY.includes(e.phase)) || state.engine.installing;
   $('edition-dot').className = `dot ${busy ? 'busy' : e?.error || state.engine.error ? 'bad' : active ? 'ok' : ''}`;
   $('edition-stamp').title = busy ? 'An update is in progress' : active ? 'Stored and verified on this laptop' : 'Nothing downloaded yet';

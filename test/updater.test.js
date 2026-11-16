@@ -7,6 +7,7 @@ const path = require('node:path');
 const { EditionManager, copyLibrary, removeLibraryFiles } = require('../src/core/updater');
 const { probeZim } = require('../src/core/engine');
 const { partialBytes } = require('../src/core/downloader');
+const catalog = require('../src/core/catalog');
 const { startDownloadServer, tmpDir, sha256, kiwixServePath, FIXTURES } = require('./helpers');
 
 const OCT = 'wikipedia_en_all_maxi_2026-10.zim';
@@ -477,5 +478,34 @@ test('if a mirror serves bad data, the checksum catches it and the retry avoids 
     assert.equal(t.mgr.snapshot().active.file, NOV, t.mgr.snapshot().error || '');
     assert.ok(!t.srv.log.some((l) => l.includes('/mirrors/') && l.includes('.zim ')), 'second attempt did not use the mirrors');
     assert.ok(!t.srv.log.some((l) => l.startsWith('GET /mirrors/')), 'second attempt did not use the mirrors');
+  } finally { await t.done(); }
+});
+
+test('another Kiwix library (Wikibooks) is found, downloaded and kept apart from Wikipedia', async () => {
+  const t = await setup();
+  try {
+    t.srv.addFixture(OCT);
+    t.srv.addCopy('wikibooks_en_all_maxi_2026-09.zim', OCT);
+    t.srv.addCopy('wikibooks_en_all_maxi_2026-10.zim', OCT);
+    t.srv.addCopy('wikiversity_en_all_maxi_2026-11.zim', OCT);
+    const books = await catalog.findLatestEdition({ baseUrl: t.srv.baseUrl, project: 'wikibooks' });
+    assert.equal(books.file, 'wikibooks_en_all_maxi_2026-10.zim');
+    assert.match(books.url, /\/zim\/wikibooks\/wikibooks_en_all_maxi_2026-10\.zim$/);
+    assert.equal((await catalog.findLatestEdition({ baseUrl: t.srv.baseUrl })).file, OCT, 'Wikipedia is unaffected by the other projects');
+
+    const dir = path.join(t.dataDir, 'more', 'wikibooks');
+    const opened = [];
+    const mgr = new EditionManager({
+      dataDir: dir,
+      getSettings: () => ({ ...t.settings, project: 'wikibooks', flavour: 'maxi' }),
+      probe: async () => ({ ok: true }),
+      activate: async (file) => { opened.push(file); },
+    });
+    await mgr.init();
+    await mgr.update();
+    assert.equal(mgr.snapshot().active.file, 'wikibooks_en_all_maxi_2026-10.zim');
+    assert.deepEqual(await zims(dir), ['wikibooks_en_all_maxi_2026-10.zim']);
+    assert.equal(opened.at(-1), path.join(dir, 'zim', 'wikibooks_en_all_maxi_2026-10.zim'));
+    assert.equal(t.mgr.snapshot().active, null, 'the Wikipedia manager was not touched');
   } finally { await t.done(); }
 });

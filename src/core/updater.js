@@ -189,7 +189,7 @@ class EditionManager extends EventEmitter {
     if (!busy) this._set('checking', { error: null });
     try {
       const s = this.getSettings();
-      const latest = await catalog.findLatestEdition({ baseUrl: s.baseUrl, language: s.language, flavour: s.flavour });
+      const latest = await catalog.findLatestEdition({ baseUrl: s.baseUrl, project: s.project, language: s.language, flavour: s.flavour });
       this.saved.latest = latest;
       this.saved.lastCheck = this.now();
       this.saved.lastCheckOk = this.now();
@@ -270,7 +270,7 @@ class EditionManager extends EventEmitter {
     let pending = this.saved.pending;
     if (!this.saved.latest || !pending) {
       this._set('checking', { error: null });
-      this.saved.latest = await catalog.findLatestEdition({ baseUrl: s.baseUrl, language: s.language, flavour: s.flavour, signal });
+      this.saved.latest = await catalog.findLatestEdition({ baseUrl: s.baseUrl, project: s.project, language: s.language, flavour: s.flavour, signal });
       this.saved.lastCheck = this.saved.lastCheckOk = this.now();
     }
     const latest = this.saved.latest;

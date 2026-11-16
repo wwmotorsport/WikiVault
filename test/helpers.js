@@ -52,9 +52,12 @@ async function startDownloadServer() {
     const url = new URL(req.url, 'http://x');
     log.push(`${req.method} ${url.pathname} ${req.headers.range || ''}`.trim());
     const dir = '/zim/wikipedia/';
+    // Every Kiwix project has its own folder; here they share one set of files, told apart by name.
+    const project = (/^\/zim\/([a-z]+)\/$/.exec(url.pathname) || [])[1];
+    if (!project) url.pathname = url.pathname.replace(/\/zim\/[a-z]+\//, dir);
 
-    if (url.pathname === dir) {
-      const rows = [...files.keys()].map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
+    if (project) {
+      const rows = [...files.keys()].filter((n) => n.startsWith(`${project}_`)).map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       return res.end(`<html><body><pre><a href="../">../</a>\n${rows}\n</pre></body></html>`);
     }

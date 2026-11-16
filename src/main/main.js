@@ -138,6 +138,19 @@ let tray = null;
 let quitting = false;
 let editions = null;
 let engine = null;
+
+// Other Kiwix libraries that can be kept alongside Wikipedia. Each has its own folder, its own
+// edition manager (download, verify, update) and its own reader engine; one library is open at a time.
+const LIBRARIES = {
+  wikibooks: { name: 'Wikibooks', project: 'wikibooks', about: 'Free textbooks and manuals: first aid, cooking, gardening, repairs, languages, mathematics, science and much more.' },
+  wikiversity: { name: 'Wikiversity', project: 'wikiversity', about: 'Courses, lessons and learning material arranged by subject and level.' },
+};
+const extras = new Map();   // id -> { manager, engine }
+const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
+let activeLib = 'wikipedia';
+/** The engine of the library that is open: the chosen extra one if it is running, else Wikipedia's. */
+const cur = () => (extras.get(activeLib)?.engine?.running ? extras.get(activeLib).engine : engine);
+const curLibId = () => (extras.get(activeLib)?.engine?.running ? activeLib : 'wikipedia');
 let engineState = { installing: null, error: null, version: null };
 let engineRestarts = [];
 let blockerId = null;
@@ -235,13 +248,19 @@ async function getState() {
     freeBytes: await freeBytes(probeDir),
     edition: editions ? editions.snapshot() : null,
     engine: {
-      ready: Boolean(engine?.running),
-      origin: engine?.running ? engine.origin : null,
-      homeUrl: engine?.running ? engine.homeUrl() : null,
-      randomUrl: engine?.running ? engine.randomUrl() : null,
+      ready: Boolean(cur()?.running),
+      origin: cur()?.running ? cur().origin : null,
+      homeUrl: cur()?.running ? cur().homeUrl() : null,
+      randomUrl: cur()?.running ? cur().randomUrl() : null,
       info: engine?.running ? engine.info : null,
       ...engineState,
     },
+    activeLibrary: curLibId(),
+    libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
+      const x = extras.get(id);
+      const snap = x?.manager.snapshot();
+      return { id, name: lib.name, about: lib.about, ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
+    }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
     partition: settings.partition,
     libraryOnPartition: libraryOnPartition(),
@@ -364,12 +383,105 @@ async function initLibrary() {
   }
   editions.startSchedule();
   pushState();
+  // Extra libraries downloaded earlier are opened too.
+  for (const id of Object.keys(LIBRARIES)) {
+    if (fs.existsSync(path.join(extraDir(id), 'state.json'))) ensureExtra(id).catch((err) => log(`${id}: ${err.message}`));
+  }
+}
+
+// ---------------------------------------------------------------- more libraries
+
+const extraDir = (id) => path.join(settings.dataDir, 'more', id);
+
+async function startExtraEngine(id, zimPath) {
+  const x = extras.get(id);
+  const bin = await ensureEngineBinary();
+  if (x.engine) { x.engine.removeAllListeners('crash'); await x.engine.stop(); }
+  const next = new Engine({ binPath: bin, log });
+  await next.start(zimPath, { threads: 4 });
+  x.engine = next;
+  next.on('crash', (err) => {
+    log(`${id} engine stopped: ${err.message}`);
+    x.engine = null;
+    pushState();
+    if (activeLib === id) { activeLib = 'wikipedia'; if (engine?.running) send('edition-switched', { homeUrl: engine.homeUrl() }); }
+  });
+  lockReaderSession();
+  pushState();
+  if (activeLib === id) send('edition-switched', { homeUrl: next.homeUrl() });
+}
+
+/** The edition manager for one extra library, created on first use and opened if already downloaded. */
+async function ensureExtra(id) {
+  if (!LIBRARIES[id]) throw new Error('Unknown library.');
+  if (extras.has(id)) return extras.get(id);
+  const x = { engine: null, manager: null };
+  x.manager = new EditionManager({
+    dataDir: extraDir(id),
+    // Same servers and update rhythm as Wikipedia. Never staged: these are small next to Wikipedia.
+    getSettings: () => ({ ...settings, project: LIBRARIES[id].project, flavour: 'maxi', stagingDir: null }),
+    probe: async (file) => probeZim(await ensureEngineBinary(), file, { log }),
+    activate: (zimPath) => startExtraEngine(id, zimPath),
+    log: (m) => log(`${id}: ${m}`),
+  });
+  x.manager.on('change', () => pushState());
+  extras.set(id, x);
+  const snap = await x.manager.init();
+  if (snap.active) await startExtraEngine(id, snap.active.path).catch((err) => log(`${id}: could not open: ${err.message}`));
+  x.manager.startSchedule();
+  pushState();
+  return x;
+}
+
+/** Newest edition of an extra library on Kiwix and its size, for the Library page. */
+async function extraInfo(id) {
+  const lib = LIBRARIES[id];
+  if (!lib) throw new Error('Unknown library.');
+  const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, project: lib.project, language: settings.language, flavour: 'maxi' });
+  const bytes = await catalog.fetchRemoteSize(latest.url);
+  const info = { date: latest.date, file: latest.file, bytes: bytes || null };
+  extraLatest[id] = info;
+  return info;
+}
+
+async function downloadExtra(id) {
+  if (!editions?.snapshot().active) throw new Error('Set up Wikipedia first; other libraries are kept alongside it.');
+  const info = await extraInfo(id);
+  const free = await freeBytes(settings.dataDir);
+  if (info.bytes && free != null && free < info.bytes * 1.1) throw new Error(`${LIBRARIES[id].name} needs ${(info.bytes / 2 ** 30).toFixed(1)} GB and the library drive has ${(free / 2 ** 30).toFixed(1)} GB free.`);
+  const x = await ensureExtra(id);
+  x.manager.update().catch((err) => log(`${id}: ${err.message}`));
+  return true;
+}
+
+async function removeExtra(id) {
+  const x = extras.get(id);
+  if (activeLib === id) { activeLib = 'wikipedia'; if (engine?.running) send('edition-switched', { homeUrl: engine.homeUrl() }); }
+  if (x) {
+    x.manager.stopSchedule();
+    await x.manager.cancel().catch(() => {});
+    x.manager.removeAllListeners();
+    if (x.engine) { x.engine.removeAllListeners('crash'); await x.engine.stop().catch(() => {}); }
+    extras.delete(id);
+  }
+  await removeLibraryFiles(extraDir(id)).catch((err) => log(`${id}: ${err.message}`));
+  await fsp.rmdir(path.join(settings.dataDir, 'more')).catch(() => {}); // only if now empty
+  pushState();
+  return true;
+}
+
+/** Extra libraries live inside the library folder and are not carried along when it moves. */
+function extrasOnDisk() {
+  return Object.keys(LIBRARIES).filter((id) => fs.existsSync(extraDir(id))).map((id) => LIBRARIES[id].name);
 }
 
 // ---------------------------------------------------------------- security
 
 const isEngineUrl = (url) => {
-  try { return Boolean(engine?.running) && new URL(url).origin === engine.origin; } catch { return false; }
+  try {
+    const { origin } = new URL(url);
+    return [engine, ...[...extras.values()].map((x) => x.engine)].some((e) => e?.running && e.origin === origin);
+  } catch { return false; }
 };
 
 let readerLocked = false;
@@ -928,6 +1040,7 @@ function setMaintenance(patch) {
 async function moveLibrary(toDir, kind = 'move') {
   if (!editions?.snapshot().active) throw new Error('There is no edition to move yet.');
   if (isBusy()) throw new Error('An update is in progress. Pause or finish it, then try again.');
+  if (extrasOnDisk().length) throw new Error(`Remove ${extrasOnDisk().join(' and ')} first (Library > More libraries). They are not moved with Wikipedia and can be downloaded again afterwards.`);
   const oldDir = settings.dataDir;
   const oldStaging = settings.stagingDir;
   editions.stopSchedule();
@@ -983,6 +1096,7 @@ async function partitionStatus() {
 async function revertPartition({ toDir, allowBattery }) {
   const p = settings.partition;
   if (!p) throw new Error('Wikivault has no partition to remove.');
+  if (libraryOnPartition() && extrasOnDisk().length) throw new Error(`Remove ${extrasOnDisk().join(' and ')} first (Library > More libraries). They are not moved with Wikipedia and can be downloaded again afterwards.`);
   if (onBattery() && !allowBattery) throw new Error('The laptop is on battery power. Plug in the charger, or confirm that you want to continue on battery.');
   try {
     if (libraryOnPartition()) {
@@ -1104,11 +1218,22 @@ function registerIpc() {
   handle('edition:pause', () => editions.pause());
   handle('edition:cancel', () => editions.cancel());
 
-  handle('search:suggest', ({ term }) => (engine?.running ? engine.suggest(term, 8) : []));
-  handle('search:query', ({ q, start = 0 }) => (engine?.running ? smartSearch(engine, q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
+  handle('library:extra-info', ({ id }) => extraInfo(String(id)));
+  handle('library:extra-download', ({ id }) => downloadExtra(String(id)));
+  handle('library:extra-cancel', async ({ id }) => { await extras.get(String(id))?.manager.cancel(); return true; });
+  handle('library:extra-remove', ({ id }) => removeExtra(String(id)));
+  handle('library:select', ({ id }) => {
+    const want = String(id);
+    if (want !== 'wikipedia' && !extras.get(want)?.engine?.running) throw new Error('That library is not downloaded yet.');
+    if (want !== activeLib) { activeLib = want; conversation.length = 0; }
+    pushState();
+    return { homeUrl: cur().homeUrl() };
+  });
+  handle('search:suggest', ({ term }) => (cur()?.running ? cur().suggest(term, 8) : []));
+  handle('search:query', ({ q, start = 0 }) => (cur()?.running ? smartSearch(cur(), q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
 
   handle('ask:start', ({ question, pinnedUrl, retry }) => {
-    if (!engine?.running) throw new Error('There is no edition on this laptop yet.');
+    if (!cur()?.running) throw new Error('There is no edition on this laptop yet.');
     // Asking the same question again once answers are set up: forget the passages-only attempt,
     // so the question is not mistaken for a follow-up to itself.
     if (retry && conversation.at(-1)?.question === question) conversation.pop();
@@ -1132,9 +1257,9 @@ function registerIpc() {
         pushState();
       }
       const out = await answerQuestion({
-        engine, llm: model, question, pinnedUrl: pinnedUrl || null,
+        engine: cur(), llm: model, question, pinnedUrl: pinnedUrl || null,
         history: conversation.slice(),
-        settings: settings.ai, editionDate: editions?.snapshot().active?.date,
+        settings: settings.ai, source: curLibId() === 'wikipedia' ? 'Wikipedia' : LIBRARIES[curLibId()].name, editionDate: (curLibId() === 'wikipedia' ? editions : extras.get(curLibId())?.manager)?.snapshot().active?.date,
         signal: ac.signal,
         onStatus: (text) => emit('status', { text }),
         onUnderstood: (text) => emit('understood', { text }),
@@ -1322,6 +1447,7 @@ if (!app.requestSingleInstanceLock()) {
     for (const ac of asks.values()) ac.abort('quit');
     if (engine) engine.stopping = true;
     try { engine?.proc?.kill(); } catch { /* already gone */ }
+    for (const x of extras.values()) { if (x.engine) { x.engine.stopping = true; try { x.engine.proc?.kill(); } catch { /* already gone */ } } }
     try { fs.rmSync(enginePidFile(), { force: true }); } catch { /* fine */ }
   });
 }

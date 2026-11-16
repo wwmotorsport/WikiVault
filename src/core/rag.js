@@ -218,11 +218,11 @@ function editionLabel(date) {
   return month ? `${month} ${y}` : date;
 }
 
-function buildMessages(question, passages, { editionDate, history = [], standalone } = {}) {
+function buildMessages(question, passages, { editionDate, history = [], standalone, source = 'Wikipedia' } = {}) {
   const edition = editionLabel(editionDate);
   const turns = history.slice(-HISTORY_TURNS).filter((t) => stripCites(t.answer));
   const system = [
-    `You answer questions from an offline copy of English Wikipedia${edition ? ` (the ${edition} edition)` : ''}.`,
+    `You answer questions from an offline copy of English ${source}${edition ? ` (the ${edition} edition)` : ''}.`,
     'Use only the numbered excerpts below. Do not use anything else you know.',
     'After each sentence, cite the excerpt it came from like [1] or [2].',
     'If the excerpts do not answer the question, say that the offline copy did not turn up an answer, and say what the excerpts do cover.',
@@ -245,7 +245,7 @@ function buildMessages(question, passages, { editionDate, history = [], standalo
  * Full pipeline. If no model is available the passages are still returned so
  * the app can show them on their own. `history` is the conversation so far.
  */
-async function answerQuestion({ engine, llm, question, history = [], settings = {}, editionDate, pinnedUrl, signal, onStatus = () => {}, onToken = () => {}, onSources = () => {}, onUnderstood = () => {} }) {
+async function answerQuestion({ engine, llm, question, history = [], settings = {}, editionDate, source, pinnedUrl, signal, onStatus = () => {}, onToken = () => {}, onSources = () => {}, onUnderstood = () => {} }) {
   const useLlm = Boolean(llm);
   const turns = history.slice(-HISTORY_TURNS);
 
@@ -274,7 +274,7 @@ async function answerQuestion({ engine, llm, question, history = [], settings = 
 
   onStatus('Writing the answer');
   const text = await llm.chat({
-    messages: buildMessages(question, found.passages, { editionDate, history: turns, standalone }),
+    messages: buildMessages(question, found.passages, { editionDate, source, history: turns, standalone }),
     maxTokens: settings.maxAnswerTokens || 400,
     temperature: 0.2,
     signal, onToken,

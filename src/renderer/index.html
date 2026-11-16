@@ -23,6 +23,7 @@
       </button>
     </nav>
 
+    <select class="lib-select" id="lib-select" aria-label="Library to read and search" hidden></select>
     <div class="search" id="search" role="combobox" aria-expanded="false" aria-owns="suggestions" aria-haspopup="listbox">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 4 4"/></svg>
       <input id="search-input" type="text" placeholder="Search this edition" autocomplete="off" spellcheck="false" aria-label="Search this edition" aria-controls="suggestions">
@@ -177,6 +178,11 @@
             </select>
             <span class="field-help">The download is split across the fastest Kiwix mirrors, at most four connections to each. A change applies the next time a download starts or resumes.</span>
           </div>
+
+          <h2>More libraries</h2>
+          <p class="small-print">Other collections published by Kiwix, kept alongside Wikipedia and updated the same way. Once one is downloaded, a list at the top left switches between libraries; search, reading and Ask then work on the one that is open.</p>
+          <div id="more-libs"></div>
+          <p class="error-text" id="more-error" hidden></p>
 
           <h2>Answers</h2>
           <p id="ai-status"></p>

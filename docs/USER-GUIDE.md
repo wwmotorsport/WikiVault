@@ -78,6 +78,21 @@ A partition made by version 0.4 is recognised automatically.
 
 **Library > Move library** copies the edition to any folder you choose, checks the copy against its checksum, switches to it, and only then removes the old copy. If the copy does not verify, nothing changes.
 
+## More libraries: Wikibooks and Wikiversity
+
+**Library > More libraries** lists two other collections that Kiwix publishes:
+
+- **Wikibooks**: free textbooks and manuals, including first aid, cooking, gardening, repairs, languages, mathematics and science.
+- **Wikiversity**: courses, lessons and learning material arranged by subject and level.
+
+Each shows its real download size, read from Kiwix. **Download** fetches the newest edition with images, checks it against the published checksum and opens it. Both are small next to Wikipedia (a few gigabytes each), and the app refuses a download that would not fit on the library drive.
+
+Once one is downloaded, a list appears at the left of the top bar. Choosing a library there changes what search, the home and random buttons, and Ask work on; the edition label on the right shows which one is open. Switching starts a new conversation, because an answer's numbered links point into one library.
+
+Newer editions are looked for on the same schedule as Wikipedia and installed the same way: downloaded, verified, switched to, and only then is the old one deleted. **Remove** deletes a library's files and returns to Wikipedia.
+
+These libraries live in `<library>\more\`. They are not moved when you move the library or return the partition: remove them first, then download them again afterwards.
+
 ## Download speed
 
 A plain download from download.kiwix.org is one connection to whichever mirror its load balancer picks, which can be far slower than your line. Wikivault instead:
@@ -243,6 +258,7 @@ When no article contains every word, the search is retried without filler words 
 | Editions | `<library>\zim\` |
 | Partial downloads | `<library>\downloads\` |
 | Edition state | `<library>\state.json` |
+| Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
 
 ## If something goes wrong

@@ -305,3 +305,9 @@ test('a turn remembers the articles it cited', () => {
   assert.deepEqual(turnSources('Launched by a Saturn V [2, 3].', passages).map((s) => s.title), ['Apollo 11', 'Saturn V']);
   assert.deepEqual(turnSources('', passages).map((s) => s.url), ['http://127.0.0.1:1/content/z/Apollo_11']);
 });
+
+test('the prompt names the library that is open', () => {
+  const p = [{ n: 1, title: 'T', section: '', text: 'x' }];
+  assert.match(buildMessages('Q?', p, {})[0].content, /offline copy of English Wikipedia\./);
+  assert.match(buildMessages('Q?', p, { source: 'Wikibooks', editionDate: '2026-10' })[0].content, /offline copy of English Wikibooks \(the October 2026 edition\)/);
+});
