@@ -1,0 +1,1299 @@
+'use strict';
+// Electron main process: owns the window, the tray, the reader engine, the
+// edition updater and the local model, and exposes them to the UI over IPC.
+// The UI itself never touches the network.
+
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, session, powerSaveBlocker, powerMonitor } = require('electron');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const path = require('node:path');
+
+if (process.env.WIKIVAULT_USER_DATA) app.setPath('userData', process.env.WIKIVAULT_USER_DATA);
+
+// Chromium's own background traffic (component updates, field trials and the like) has no place
+// in an offline tool: the only network use is what this file does on purpose.
+app.commandLine.appendSwitch('disable-background-networking');
+app.commandLine.appendSwitch('disable-component-update');
+app.commandLine.appendSwitch('disable-domain-reliability');
+app.commandLine.appendSwitch('no-pings');
+if (process.platform === 'win32') app.setAppUserModelId('local.wikivault.app');
+
+const { EditionManager, freeBytes, copyLibrary, removeLibraryFiles } = require('../core/updater');
+const { execFile } = require('node:child_process');
+const { Engine, probeZim, locateEngine, installEngine } = require('../core/engine');
+const os = require('node:os');
+const { LlmService, refreshWindowsPath, fastest } = require('../core/llm');
+const { smartSearch } = require('../core/search');
+const tune = require('../core/tune');
+const { answerQuestion, turnSources } = require('../core/rag');
+const { fetchText } = require('../core/httpx');
+const catalog = require('../core/catalog');
+const { PartitionTool, SimulatedPartitionTool, sizePlan, FALLBACK_EDITION_BYTES, GB } = require('../core/partition');
+
+const { DEFAULT_BASE } = catalog;
+
+const ROOT = path.join(__dirname, '..', '..');
+const START_HIDDEN = process.argv.includes('--background');
+// `Wikivault.exe --quit` asks a running copy to close cleanly; the uninstaller uses it.
+const QUIT_REQUEST = process.argv.includes('--quit');
+const LOGIN_ITEM_NAME = 'Wikivault';
+
+// ---------------------------------------------------------------- settings
+
+const DEFAULTS = {
+  dataDir: null,
+  stagingDir: null, // set when updates are downloaded on another drive before moving into the library
+  partition: null,  // { driveLetter, sourceLetter, sizeBytes } when the app created a dedicated partition
+  baseUrl: process.env.WIKIVAULT_BASE_URL || DEFAULT_BASE,
+  language: 'en',
+  flavour: 'maxi',
+  autoUpdate: true,
+  checkIntervalHours: 24,
+  downloadConnections: 8, // simultaneous connections for edition downloads (1 = the old single-connection method)
+  keepInTray: true,
+  launchAtLogin: true,
+  enginePath: null,
+  ai: {
+    enabled: true,
+    provider: 'foundry',
+    foundryModel: 'phi-4-mini',
+    foundryModelId: null,
+    foundryModelFor: null,
+    baseUrl: 'http://localhost:11434/v1',
+    model: '',
+    apiKey: '',
+    contextChars: 6000,
+    maxAnswerTokens: 400,
+    rewriteQueries: true,
+    speedTests: {}, // measured on this computer, by exact build id
+    tuning: null,   // what "Tune for this computer" last measured and chose
+    tunePreference: 2, // 0 fastest answers ... 4 most thorough answers; sets the targets tuning aims for
+    idleMinutes: 3, // take the model out of memory after this long without a question; 0 keeps it loaded
+    autoSetup: null, // 'pending' once the person has agreed to set answers up; then 'done' or 'failed'
+  },
+};
+
+let settings = structuredClone(DEFAULTS);
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) } };
+  } catch { /* first run */ }
+  if (process.env.WIKIVAULT_BASE_URL) settings.baseUrl = process.env.WIKIVAULT_BASE_URL;
+}
+
+function saveSettings() {
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2));
+  syncRegistry();
+}
+
+/**
+ * The uninstaller cannot read settings.json, so the few facts it needs (where
+ * the library is, whether a partition exists) are mirrored to the registry.
+ */
+function syncRegistry() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  const values = {
+    DataDir: settings.dataDir || '',
+    StagingDir: settings.stagingDir || '',
+    Partition: settings.partition?.driveLetter || '',
+  };
+  for (const [name, value] of Object.entries(values)) {
+    execFile('reg.exe', ['add', 'HKCU\\Software\\Wikivault', '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
+  }
+}
+
+function defaultDataDir() {
+  // Roaming profiles are the wrong place for 100+ GB, so prefer LocalAppData on Windows.
+  const base = process.platform === 'win32' && process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'Wikivault')
+    : app.getPath('userData');
+  return path.join(base, 'library');
+}
+
+/** Where staged updates are downloaded: on the system drive, outside the library's partition. */
+function defaultStagingDir() {
+  return path.join(path.dirname(defaultDataDir()), 'staging');
+}
+
+// ---------------------------------------------------------------- logging
+
+function log(msg) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  if (!app.isPackaged) process.stdout.write(line);
+  try {
+    const file = path.join(app.getPath('userData'), 'wikivault.log');
+    if (fs.existsSync(file) && fs.statSync(file).size > 1024 * 1024) fs.renameSync(file, `${file}.old`);
+    fs.appendFileSync(file, line);
+  } catch { /* logging must never break the app */ }
+}
+
+// ---------------------------------------------------------------- state
+
+let win = null;
+let tray = null;
+let quitting = false;
+let editions = null;
+let engine = null;
+let engineState = { installing: null, error: null, version: null };
+let engineRestarts = [];
+let blockerId = null;
+let stateTimer = null;
+const asks = new Map();
+let askSeq = 0;
+// The current Ask conversation. Lives in memory only: it is never written to disk,
+// and it is gone when the person starts a new conversation or the app closes.
+let conversation = [];
+const MAX_TURNS = 8;
+let aiBusy = null;
+let aiResting = false;      // the model was taken out of memory while idle; it loads again on the next question
+let lastAiUse = Date.now();
+// A long-running library operation (move, or returning the partition), shown on the Library page.
+let maintenance = null;
+
+// Optional dedicated partition (Windows). WIKIVAULT_PARTITION_SIM swaps in a pretend drive for development.
+const partitionSim = process.env.WIKIVAULT_PARTITION_SIM || null;
+const partitionTool = partitionSim ? new SimulatedPartitionTool(partitionSim) : new PartitionTool({ log });
+const partitionAvailable = () => process.platform === 'win32' || Boolean(partitionSim);
+const systemLetter = () => (process.env.SystemDrive || 'C:').charAt(0).toUpperCase();
+let editionSizeCache = null;
+
+/** Size of the edition that would be downloaded, asked from the server; an estimate if it cannot be reached. */
+async function editionSize() {
+  if (editionSizeCache) return editionSizeCache;
+  if (partitionSim) {
+    try { const s = JSON.parse(fs.readFileSync(partitionSim, 'utf8')); if (s.editionBytes) return { bytes: s.editionBytes, known: true }; } catch { /* use the server */ }
+  }
+  try {
+    const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, language: settings.language, flavour: settings.flavour });
+    const bytes = await catalog.fetchRemoteSize(latest.url);
+    if (bytes) { editionSizeCache = { bytes, known: true }; return editionSizeCache; }
+  } catch { /* offline: fall through */ }
+  return { bytes: FALLBACK_EDITION_BYTES, known: false };
+}
+
+/** Live power state. Read fresh every time, so plugging in the charger takes effect at once. */
+function onBattery() {
+  if (partitionSim) {
+    try { return Boolean(JSON.parse(fs.readFileSync(partitionSim, 'utf8')).onBattery); } catch { return false; }
+  }
+  try { return powerMonitor.isOnBatteryPower(); } catch { return false; }
+}
+
+async function partitionInfo() {
+  const driveLetter = systemLetter();
+  const [analysis, edition] = await Promise.all([partitionTool.analyze(driveLetter), editionSize()]);
+  const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin };
+  const plans = { staged: sizePlan({ ...base, editions: 1 }), selfContained: sizePlan({ ...base, editions: 2 }) };
+  return { driveLetter, analysis, edition, plans, stagingDir: defaultStagingDir() };
+}
+
+const llm = new LlmService({
+  getSettings: () => settings.ai,
+  saveSettings: (patch) => { Object.assign(settings.ai, patch); saveSettings(); },
+  log,
+});
+
+async function getState() {
+  const dir = settings.dataDir || defaultDataDir();
+  let probeDir = dir;
+  while (!fs.existsSync(probeDir) && path.dirname(probeDir) !== probeDir) probeDir = path.dirname(probeDir);
+  const pub = { ...settings, ai: { ...settings.ai, apiKey: settings.ai.apiKey ? '•••' : '' } };
+  return {
+    version: app.getVersion(),
+    acknowledged: Number(settings.acknowledged) >= TERMS_VERSION,
+    platform: process.platform,
+    packaged: app.isPackaged,
+    partitionAvailable: partitionAvailable(),
+    onBattery: onBattery(),
+    settings: pub,
+    suggestedDataDir: dir,
+    freeBytes: await freeBytes(probeDir),
+    edition: editions ? editions.snapshot() : null,
+    engine: {
+      ready: Boolean(engine?.running),
+      origin: engine?.running ? engine.origin : null,
+      homeUrl: engine?.running ? engine.homeUrl() : null,
+      randomUrl: engine?.running ? engine.randomUrl() : null,
+      info: engine?.running ? engine.info : null,
+      ...engineState,
+    },
+    ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
+    partition: settings.partition,
+    libraryOnPartition: libraryOnPartition(),
+    maintenance,
+    defaultLibraryDir: defaultDataDir(),
+  };
+}
+
+// Snapshots are sent one at a time, so a slow one can never arrive after a newer one.
+let stateSending = false;
+let stateAgain = false;
+function pushState() {
+  if (stateTimer) return;
+  stateTimer = setTimeout(async () => {
+    stateTimer = null;
+    if (stateSending) { stateAgain = true; return; }
+    stateSending = true;
+    try {
+      do {
+        stateAgain = false;
+        const snapshot = await getState();
+        if (win && !win.isDestroyed()) win.webContents.send('state', snapshot);
+      } while (stateAgain);
+    } catch (err) { log(`state: ${err.message}`); } finally { stateSending = false; }
+  }, 120);
+}
+
+function send(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+// ---------------------------------------------------------------- engine
+
+const engineDir = () => path.join(app.getPath('userData'), 'engine');
+const enginePidFile = () => path.join(app.getPath('userData'), 'engine.json');
+
+/** If a previous run crashed, its engine may still hold the edition file open. */
+async function reapOrphanEngine() {
+  try {
+    const { pid, port } = JSON.parse(await fsp.readFile(enginePidFile(), 'utf8'));
+    const r = await fetchText(`http://127.0.0.1:${port}/catalog/v2/entries`, { timeoutMs: 1500, allowError: true });
+    if (r.status === 200 && /opds/i.test(r.text)) { process.kill(pid); log(`stopped leftover engine ${pid}`); }
+  } catch { /* nothing to clean up */ }
+  await fsp.rm(enginePidFile(), { force: true });
+}
+
+async function ensureEngineBinary() {
+  let bin = await locateEngine({ configuredPath: settings.enginePath, engineDir: engineDir() });
+  if (bin) return bin;
+  if (process.platform !== 'win32') {
+    throw new Error('kiwix-serve was not found. Install kiwix-tools, or set WIKIVAULT_KIWIX_SERVE to its path.');
+  }
+  engineState = { ...engineState, installing: { step: 'Finding the reader engine' }, error: null };
+  pushState();
+  try {
+    const res = await installEngine({
+      engineDir: engineDir(), baseUrl: settings.baseUrl,
+      onProgress: (p) => { engineState = { ...engineState, installing: p }; pushState(); },
+    });
+    bin = res.path;
+    engineState = { installing: null, error: null, version: res.version };
+    log(`engine installed: ${bin}`);
+    return bin;
+  } catch (err) {
+    engineState = { ...engineState, installing: null, error: `The reader engine could not be downloaded: ${err.message}` };
+    pushState();
+    throw err;
+  }
+}
+
+async function startEngine(zimPath) {
+  const bin = await ensureEngineBinary();
+  if (engine) { engine.removeAllListeners('crash'); await engine.stop(); }
+  const next = new Engine({ binPath: bin, log });
+  await next.start(zimPath);
+  engine = next;
+  engineState = { ...engineState, error: null };
+  await fsp.writeFile(enginePidFile(), JSON.stringify({ pid: next.proc.pid, port: next.port })).catch(() => {});
+  next.on('crash', async (err) => {
+    log(`engine crashed: ${err.message}`);
+    const now = Date.now();
+    engineRestarts = engineRestarts.filter((t) => now - t < 60000);
+    if (quitting || engineRestarts.length >= 3) {
+      engineState = { ...engineState, error: 'The reader engine keeps stopping. Restart Wikivault; if it happens again, the edition file may be damaged.' };
+      return pushState();
+    }
+    engineRestarts.push(now);
+    try { await startEngine(zimPath); } catch (e) { engineState = { ...engineState, error: e.message }; }
+    return pushState();
+  });
+  lockReaderSession();
+  pushState();
+  send('edition-switched', { homeUrl: next.homeUrl() });
+}
+
+// ---------------------------------------------------------------- library
+
+async function initLibrary() {
+  if (editions) { editions.stopSchedule(); editions.removeAllListeners(); }
+  editions = new EditionManager({
+    dataDir: settings.dataDir,
+    getSettings: () => settings,
+    probe: async (file) => probeZim(await ensureEngineBinary(), file, { log }),
+    activate: startEngine,
+    log,
+  });
+  editions.on('change', (s) => {
+    const busy = ['downloading', 'verifying', 'switching', 'moving'].includes(s.phase);
+    if (busy && blockerId == null) blockerId = powerSaveBlocker.start('prevent-app-suspension');
+    if (!busy && blockerId != null) { powerSaveBlocker.stop(blockerId); blockerId = null; }
+    pushState();
+    updateTray();
+  });
+  const snap = await editions.init();
+  if (snap.active) {
+    try { await startEngine(snap.active.path); } catch (err) {
+      log(`could not start engine: ${err.message}`);
+      engineState = { ...engineState, error: engineState.error || err.message };
+    }
+  }
+  editions.startSchedule();
+  pushState();
+}
+
+// ---------------------------------------------------------------- security
+
+const isEngineUrl = (url) => {
+  try { return Boolean(engine?.running) && new URL(url).origin === engine.origin; } catch { return false; }
+};
+
+let readerLocked = false;
+/** Article pages may only load from the engine on this machine. Everything else is cancelled. */
+function lockReaderSession() {
+  if (readerLocked) return;
+  readerLocked = true;
+  const reader = session.fromPartition('persist:reader');
+  reader.webRequest.onBeforeRequest((details, done) => {
+    const u = details.url;
+    const ok = isEngineUrl(u) || /^(data|blob|about|devtools|chrome-devtools):/i.test(u);
+    done({ cancel: !ok });
+  });
+  reader.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  silenceSpellCheck(reader);
+}
+
+/**
+ * Where Chromium uses its own spell checker (not on current Windows, which uses the system one) it
+ * downloads a dictionary from Google. Turn spell checking off and point the downloader at nothing.
+ */
+function silenceSpellCheck(ses) {
+  try { ses.setSpellCheckerDictionaryDownloadURL('http://127.0.0.1:9/'); } catch { /* not supported on this platform */ }
+  try { ses.setSpellCheckerLanguages([]); } catch { /* not supported on this platform */ }
+  try { ses.setSpellCheckerEnabled(false); } catch { /* older Electron */ }
+}
+
+function lockAppSession() {
+  // The app's own pages are local files; they have no business on the network.
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] },
+    (_details, done) => done({ cancel: true }),
+  );
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  silenceSpellCheck(session.defaultSession);
+  silenceSpellCheck(session.fromPartition('persist:reader'));
+}
+
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (event, prefs, params) => {
+    delete prefs.preload;
+    prefs.nodeIntegration = false;
+    prefs.contextIsolation = true;
+    prefs.sandbox = true;
+    prefs.spellcheck = false;
+    if (params.src && params.src !== 'about:blank' && !isEngineUrl(params.src)) event.preventDefault();
+  });
+
+  if (contents.getType() === 'webview') {
+    const outside = (url) => { if (/^https?:/i.test(url)) send('external-link', { url }); };
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isEngineUrl(url)) send('open-url', { url }); else outside(url);
+      return { action: 'deny' };
+    });
+    contents.on('will-navigate', (event, url) => {
+      if (!isEngineUrl(url)) { event.preventDefault(); outside(url); }
+    });
+    // Keyboard shortcuts still work while the article has focus.
+    contents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      const mod = input.control || input.meta;
+      let action = null;
+      if (mod && key === 'f') action = 'find';
+      else if (mod && key === 'k') action = 'search';
+      else if (mod && (key === '=' || key === '+')) action = 'zoom-in';
+      else if (mod && key === '-') action = 'zoom-out';
+      else if (mod && key === '0') action = 'zoom-reset';
+      else if (input.alt && key === 'arrowleft') action = 'back';
+      else if (input.alt && key === 'arrowright') action = 'forward';
+      else if (key === 'escape') action = 'escape';
+      if (action) { if (action !== 'escape') event.preventDefault(); send('shortcut', action); }
+    });
+  } else {
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', (event) => event.preventDefault());
+  }
+});
+
+// ---------------------------------------------------------------- window & tray
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1320, height: 880, minWidth: 920, minHeight: 600,
+    show: false,
+    backgroundColor: '#F3F6F8',
+    title: 'Wikivault',
+    icon: path.join(ROOT, 'assets', 'icon.png'),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+      spellcheck: false,
+    },
+  });
+  win.removeMenu();
+  win.loadFile(path.join(ROOT, 'src', 'renderer', 'index.html'));
+  win.once('ready-to-show', () => { if (!START_HIDDEN) win.show(); });
+  win.on('close', (event) => {
+    // Closing the window keeps downloads and the daily check running in the tray.
+    if (!quitting && settings.keepInTray && tray && settings.dataDir) {
+      event.preventDefault();
+      win.hide();
+      // Nothing needs the model while the window is closed: give its memory back.
+      freeModelMemory('window closed', { stopService: true });
+      for (const ses of [win.webContents.session, session.fromPartition('persist:reader')]) ses.clearCache().catch(() => {});
+    }
+  });
+  win.on('closed', () => { win = null; });
+}
+
+function showWindow() {
+  if (!win) createWindow();
+  else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+}
+
+function updateTray() {
+  if (!tray) return;
+  const s = editions?.snapshot();
+  let tip = 'Wikivault';
+  if (s?.phase === 'downloading' && s.progress?.total) tip = `Wikivault: downloading, ${Math.floor((100 * s.progress.downloaded) / s.progress.total)}%`;
+  else if (s?.phase === 'verifying') tip = 'Wikivault: verifying the new edition';
+  else if (s?.phase === 'moving') tip = 'Wikivault: moving the new edition into the library';
+  else if (s?.active?.date) tip = `Wikivault: ${s.active.date} edition`;
+  tray.setToolTip(tip);
+}
+
+function createTray() {
+  try {
+    tray = new Tray(nativeImage.createFromPath(path.join(ROOT, 'assets', 'tray.png')));
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Open Wikivault', click: showWindow },
+      { label: 'Check for a newer edition', click: () => editions?.check().then(() => { if (settings.autoUpdate && editions.updateAvailable()) editions.update(); }) },
+      { type: 'separator' },
+      { label: 'Quit', click: () => { quitting = true; app.quit(); } },
+    ]));
+    tray.on('click', showWindow);
+    updateTray();
+  } catch (err) { log(`tray unavailable: ${err.message}`); tray = null; }
+}
+
+function applyLoginItem() {
+  if (!app.isPackaged || process.platform !== 'win32') return;
+  // Versions before 0.5 registered under Electron's default name; drop that entry so only one exists.
+  try { app.setLoginItemSettings({ openAtLogin: false, name: 'electron.app.Wikivault' }); } catch { /* nothing to remove */ }
+  app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtLogin && settings.dataDir), args: ['--background'], name: LOGIN_ITEM_NAME });
+}
+
+// ---------------------------------------------------------------- setting up answers
+
+/**
+ * Everything needed for answers, in one go: install Foundry Local if it is missing (Windows),
+ * start it, download the model if it is not on this machine, and load it. Runs when the person
+ * agreed to it in the installer, on the first-run screen, or with the button in the Ask panel.
+ */
+let answerSetup = null;
+function setupAnswers() {
+  if (answerSetup) return answerSetup;
+  answerSetup = (async () => {
+    const status = (text) => { aiBusy = text; pushState(); };
+    try {
+      status('Checking for Foundry Local');
+      llm.invalidate();
+      try {
+        await llm.prepare({ allowDownload: true, onStatus: status });
+      } catch (err) {
+        if (err.code !== 'NOT_INSTALLED' || process.platform !== 'win32' || settings.ai.provider === 'custom') throw err;
+        status('Installing Microsoft Foundry Local');
+        await llm.installFoundry((line) => status(`Installing Microsoft Foundry Local: ${line.slice(0, 70)}`));
+        // Remembered so the uninstaller can offer to remove it again.
+        execFile('reg.exe', ['add', 'HKCU\\Software\\Wikivault', '/v', 'FoundryByWikivault', '/t', 'REG_SZ', '/d', '1', '/f'], { windowsHide: true }, () => {});
+        llm.invalidate();
+        await llm.prepare({ allowDownload: true, onStatus: status });
+      }
+      settings.ai.autoSetup = 'done';
+      log(`answers ready: ${llm.status().modelId} ${llm.status().device}`);
+      return llm.status();
+    } catch (err) {
+      settings.ai.autoSetup = 'failed';
+      log(`answer setup failed: ${err.message}`);
+      throw err;
+    } finally {
+      lastAiUse = Date.now();
+      aiBusy = null;
+      answerSetup = null;
+      saveSettings();
+      pushState();
+    }
+  })();
+  return answerSetup;
+}
+
+/** Switch answers to one exact build, loading it (and downloading it if need be). */
+async function useModel(id) {
+  const previous = llm.status().modelId;
+  Object.assign(settings.ai, { provider: 'foundry', foundryModel: id, foundryModelId: null, foundryModelFor: null });
+  saveSettings();
+  const status = await setupAnswers();
+  if (previous && previous !== status.modelId) await llm.unload(previous); // free its memory
+  return status;
+}
+
+/**
+ * Time the given builds one after another on this computer and switch to the fastest.
+ * Results are kept in the settings so the Library page can show them later.
+ */
+let speedAbort = null;
+async function runSpeedTests({ ids, allowDownload }) {
+  if (speedAbort || answerSetup) throw new Error('The model is busy. Try again when it has finished.');
+  speedAbort = new AbortController();
+  const { signal } = speedAbort;
+  const results = [];
+  const active = llm.status().modelId;
+  try {
+    for (const [i, id] of ids.entries()) {
+      const label = `Speed test ${i + 1} of ${ids.length}`;
+      const status = (text) => { aiBusy = `${label}: ${text}`; pushState(); };
+      status(id);
+      let r;
+      try {
+        r = await llm.speedTest({ id, allowDownload, contextChars: settings.ai.contextChars, onStatus: status, signal });
+        log(`speed test ${id}: ${r.tokensPerS} tokens/s, first word after ${r.firstS}s, load ${r.loadS ?? '(already loaded)'}s, ${r.contextChars} characters of article text`);
+      } catch (err) {
+        if (err.name === 'AbortError' || signal.aborted) throw err;
+        r = { id, error: err.message, at: new Date().toISOString() };
+        log(`speed test ${id} failed: ${err.message}`);
+      }
+      results.push(r);
+      settings.ai.speedTests = { ...(settings.ai.speedTests || {}), [id]: r };
+      saveSettings();
+    }
+    const best = fastest(results);
+    const switched = Boolean(best && best.id !== active);
+    speedAbort = null;
+    if (switched) await useModel(best.id);
+    await llm.releaseMemory({ keep: llm.status().modelId || best?.id, also: ourModelIds() });
+    // Builds fetched only for this comparison and not chosen are not worth their disk space.
+    const cleared = await removeDownloads(results.filter((r) => r.downloaded && r.id !== best?.id).map((r) => r.id));
+    return { results, best: best?.id || null, switched, removed: cleared.removed, freedMb: cleared.freedMb };
+  } finally {
+    speedAbort = null;
+    lastAiUse = Date.now();
+    aiBusy = null;
+    pushState();
+  }
+}
+
+// ---------------------------------------------------------------- disk space
+
+/**
+ * Delete the downloaded files of builds that are not in use, keeping their timings.
+ * Returns what was removed and what could not be.
+ */
+async function removeDownloads(ids) {
+  const inUse = String(llm.status().modelId || settings.ai.foundryModelId || '').toLowerCase();
+  const out = { removed: [], kept: [], freedMb: 0 };
+  for (const id of [...new Set(ids)]) {
+    if (id.toLowerCase() === inUse) continue;
+    const r = await llm.removeDownload(id).catch((err) => ({ removed: false, reason: err.message }));
+    if (r.removed) {
+      out.removed.push(id);
+      out.freedMb += r.sizeMb || 0;
+      const t = settings.ai.speedTests?.[id];
+      if (t) settings.ai.speedTests = { ...settings.ai.speedTests, [id]: { ...t, removed: true } };
+    } else out.kept.push({ id, reason: r.reason });
+  }
+  if (out.removed.length) saveSettings();
+  return out;
+}
+
+// The points a person agrees to before using the app (see build/license.txt). Raise the number
+// when the wording changes in a way people should see again.
+const TERMS_VERSION = 1;
+
+// ---------------------------------------------------------------- memory
+
+/** Every model build this app has ever loaded, so stale ones from an earlier run are released too. */
+function ourModelIds() {
+  return [...Object.keys(settings.ai.speedTests || {}), settings.ai.foundryModelId, ...((settings.ai.tuning?.tested || []).map((t) => t.id))].filter(Boolean);
+}
+
+/**
+ * Take the model out of memory (it loads again with the next question). When the window is
+ * closed or the app quits, Foundry Local's background service is stopped as well, unless some
+ * other program has a model loaded in it.
+ */
+let releasing = null;
+function freeModelMemory(reason, { stopService = false } = {}) {
+  if (releasing) return releasing;
+  if (aiBusy || asks.size || speedAbort || answerSetup || settings.ai.provider !== 'foundry') return Promise.resolve(null);
+  releasing = llm.releaseMemory({ stopService, also: ourModelIds() }).then((r) => {
+    if (r.unloaded.length || r.stopped) {
+      aiResting = true;
+      log(`memory released (${reason})`);
+      pushState();
+    }
+    return r;
+  }).catch((err) => { log(`memory release failed: ${err.message}`); return null; }).finally(() => { releasing = null; });
+  return releasing;
+}
+
+let staleCheck = true;
+function startIdleWatch() {
+  setInterval(() => {
+    const minutes = Number(settings.ai.idleMinutes);
+    if (llm.status().state === 'ready' && !releasing) aiResting = false; // loaded again by a question
+    // Something to release: a model loaded in this run, or (checked once) one left by an earlier run.
+    if (!minutes || aiResting || !(llm.touched.size || staleCheck)) return;
+    if (Date.now() - lastAiUse >= minutes * 60e3) {
+      staleCheck = false;
+      freeModelMemory(`idle for ${minutes < 1 ? 'under a' : minutes} min`);
+    }
+  }, Number(process.env.WIKIVAULT_IDLE_TICK_MS) || 20e3).unref();
+}
+
+// ---------------------------------------------------------------- tuning for this computer
+
+// What the tuning panel shows while a run is under way: which of the three steps, how far along
+// overall, how far along the current action (null when that cannot be known), and the action itself.
+let tuneProgress = null;
+const TUNE_STEP = {
+  1: { text: 'Step 1 of 3: comparing the hardware in this computer', from: 0, share: 0.3 },
+  2: { text: 'Step 2 of 3: finding the largest model that writes comfortably', from: 0.3, share: 0.5 },
+  3: { text: 'Step 3 of 3: setting the reading budget and answer length', from: 0.8, share: 0.2 },
+};
+function showTune(step, done, total, detail) {
+  const pct = /(\d+(?:\.\d+)?)\s*%/.exec(detail);
+  const within = pct ? Math.min(1, Number(pct[1]) / 100) : null;
+  const s = TUNE_STEP[step];
+  // A download is most of an item's time, so it moves the overall bar most of the way through that item.
+  const item = /^Downloading|: Downloading/.test(detail) ? (within ?? 0) * 0.8 : /Timing/.test(detail) ? 0.9 : /Loading/.test(detail) ? 0.85 : 0;
+  const overall = Math.min(1, s.from + s.share * Math.min(1, (done + item) / Math.max(total, 1)));
+  tuneProgress = { step, summary: s.text, overall: Math.max(tuneProgress?.overall || 0, overall), stepFraction: within, detail };
+  aiBusy = `Tuning: ${detail}`;
+  pushState();
+}
+
+const BUDGET_NAME = { 3000: 'Small', 6000: 'Medium', 10000: 'Large', 16000: 'Very large' };
+const LENGTH_NAME = { 250: 'Short', 400: 'Medium', 800: 'Long' };
+const gbText = (mb) => (mb ? `${(mb / 1024).toFixed(1)} GB` : 'size unknown');
+const timedOk = (r) => Boolean(r && !r.error && r.tokensPerS > 0);
+
+async function tunePlan() {
+  if (settings.ai.provider !== 'foundry') return { custom: true };
+  const ramMb = os.totalmem() / 1048576;
+  const families = tune.eligible(await llm.listFoundryModels(), { ramMb });
+  if (!families.length) throw new Error('Foundry Local has not listed any models yet. Set up answers first, then tune.');
+  const tests = settings.ai.speedTests || {};
+  const probe = tune.pickProbe(families, tests);
+  const probeMb = probe ? probe.builds.filter((b) => !b.cached && !timedOk(tests[b.id])).reduce((sum, b) => sum + (b.sizeMb || 0), 0) : 0;
+  const sizes = families.flatMap((f) => f.builds.map((b) => b.sizeMb)).filter(Boolean);
+  return { devices: tune.devicesOf(families), families: families.length, probe: probe?.family.alias || null, probeMb, smallestMb: Math.min(...sizes), largestMb: Math.max(...sizes), ramGb: Math.round(ramMb / 1024) };
+}
+
+/**
+ * Measure this computer and set answers up for it: which hardware is fastest, which model is the
+ * largest that still writes comfortably there, and how much article text and answer length suit
+ * that speed. Every choice comes from a timing taken here and can be changed afterwards.
+ */
+async function tuneRun() {
+  if (speedAbort || answerSetup) throw new Error('The model is busy. Try again when it has finished.');
+  speedAbort = new AbortController();
+  const { signal } = speedAbort;
+  tuneProgress = null;
+  const prefs = tune.profile(settings.ai.tunePreference);
+  const reasons = [`Preference: ${prefs.name}. Aims for at least ${prefs.targetTps} tokens a second, the first word within about ${prefs.firstWordS} s, and a full answer within about ${prefs.writeS} s.`];
+  const tested = [];
+  const attempted = new Set(); // every build this run loaded or tried to, so nothing it fetched is left behind
+  const record = (r) => { settings.ai.speedTests = { ...(settings.ai.speedTests || {}), [r.id]: r }; saveSettings(); };
+  const time = async (id, contextChars, label, [step, done, total]) => {
+    attempted.add(id);
+    showTune(step, done, total, label);
+    try {
+      const r = await llm.speedTest({ id, allowDownload: true, contextChars, onStatus: (t) => showTune(step, done, total, t), signal });
+      log(`tuning: ${id} at ${contextChars} characters: ${r.tokensPerS} tokens/s, first word after ${r.firstS}s`);
+      return r;
+    } catch (err) {
+      if (err.name === 'AbortError' || signal.aborted) throw err;
+      log(`tuning: ${id} could not be timed: ${err.message}`);
+      return { id, error: err.message, contextChars, at: new Date().toISOString() };
+    }
+  };
+  try {
+    let rec;
+    let chosen = null;
+    let device = null;
+    if (settings.ai.provider !== 'foundry') {
+      showTune(3, 0, 2, 'Timing your model server with a small reading budget');
+      const small = await llm.speedTestCustom({ contextChars: 3000, signal });
+      showTune(3, 1, 2, 'Timing it again with a large reading budget');
+      const large = await llm.speedTestCustom({ contextChars: 10000, signal }).catch(() => null);
+      rec = tune.recommendSettings(small, large, prefs);
+      chosen = { id: small.id, alias: small.id };
+      reasons.push(`Your model server writes ${small.tokensPerS} tokens a second with a small reading budget${large ? ` and ${large.tokensPerS} with a large one` : ''}.`);
+    } else {
+      const families = tune.eligible(await llm.listFoundryModels(), { ramMb: os.totalmem() / 1048576 });
+      if (!families.length) throw new Error('Foundry Local has not listed any models yet. Set up answers first, then tune.');
+      const tests = { ...(settings.ai.speedTests || {}) };
+      const usable = (r) => timedOk(r) && r.contextChars === 3000;
+
+      // 1. Which hardware is fastest, compared on one model that has a build for each.
+      device = tune.devicesOf(families)[0];
+      let known = null;
+      const probe = tune.pickProbe(families, tests);
+      if (probe) {
+        const results = [];
+        for (const [n, b] of probe.builds.entries()) {
+          let r = tests[b.id];
+          showTune(1, n, probe.builds.length, `Checking the ${b.device} with ${probe.family.alias}`);
+          if (!usable(r)) { r = await time(b.id, 3000, `Checking the ${b.device} with ${probe.family.alias}`, [1, n, probe.builds.length]); record(r); tests[b.id] = r; }
+          results.push({ ...r, device: b.device, sizeMb: b.sizeMb });
+        }
+        const best = fastest(results);
+        if (best) { device = best.device; known = { tokensPerS: best.tokensPerS, sizeMb: best.sizeMb }; }
+        reasons.push(`Hardware, compared on ${probe.family.alias}: ${results.map((r) => `${r.device} ${r.error ? 'could not be timed' : `${r.tokensPerS} tokens a second`}`).join(', ')}.${best ? ` The ${device} is fastest.` : ''}`);
+      } else {
+        reasons.push(`Foundry Local offers models for one kind of hardware on this computer (${device}), so there was nothing to compare.`);
+      }
+
+      // 2. The largest model that still writes comfortably on that hardware.
+      const rungs = tune.ladder(families, device);
+      // A timing already taken on this hardware predicts other sizes better than the small comparison model does.
+      const prior = rungs.map((r) => ({ r, t: tests[r.build.id] })).filter((x) => usable(x.t)).sort((a, b) => (b.r.build.sizeMb || 0) - (a.r.build.sizeMb || 0))[0];
+      if (prior) known = { tokensPerS: prior.t.tokensPerS, sizeMb: prior.r.build.sizeMb };
+      const measured = new Map();
+      const details = new Map();
+      const goal = { known, target: prefs.targetTps };
+      for (let i = tune.nextRung(rungs, measured, goal); i != null; i = tune.nextRung(rungs, measured, goal)) {
+        const b = rungs[i].build;
+        let r = tests[b.id];
+        showTune(2, measured.size, 3, `Trying ${rungs[i].alias} on the ${device}`);
+        // A build that would not run here recently is not downloaded again just to fail again.
+        const failedRecently = r?.error && Date.now() - Date.parse(r.at || 0) < 30 * 86400e3;
+        if (failedRecently) {
+          measured.set(i, 0);
+          tested.push({ id: b.id, alias: rungs[i].alias, sizeMb: b.sizeMb, tokensPerS: 0, firstS: null, error: r.error });
+          continue;
+        }
+        if (!usable(r)) { r = await time(b.id, 3000, `Trying ${rungs[i].alias} on the ${device}`, [2, measured.size, 3]); record(r); tests[b.id] = r; }
+        measured.set(i, timedOk(r) ? r.tokensPerS : 0);
+        details.set(i, r);
+        tested.push({ id: b.id, alias: rungs[i].alias, sizeMb: b.sizeMb, tokensPerS: timedOk(r) ? r.tokensPerS : 0, firstS: r.firstS ?? null, error: r.error || null });
+      }
+      const pick = tune.choose(rungs, measured, prefs.targetTps);
+      if (!pick) throw new Error(`None of the models could be timed. ${tested.at(-1)?.error || ''}`.trim());
+      tested.sort((a, b) => (a.sizeMb || 0) - (b.sizeMb || 0));
+      reasons.push(`Models tried on the ${device}: ${tested.map((t) => `${t.alias} (${gbText(t.sizeMb)}) ${t.error ? 'could not be timed' : `${t.tokensPerS} tokens a second`}`).join('; ')}.`);
+      reasons.push(pick.meetsTarget
+        ? `Chosen: ${pick.alias}. It is the largest that writes at ${prefs.targetTps} tokens a second or more here, and larger models give better answers.`
+        : `Chosen: ${pick.alias}, the fastest available. Nothing reached ${prefs.targetTps} tokens a second on this computer.`);
+      chosen = { id: pick.build.id, alias: pick.alias };
+      showTune(3, 0, 3, `Switching to ${pick.alias}`);
+      await useModel(pick.build.id);
+
+      // 3. How much article text and answer length suit that speed.
+      const large = await time(pick.build.id, 10000, `Timing ${pick.alias} with a large reading budget`, [3, 1, 3]);
+      showTune(3, 2, 3, 'Freeing memory and deleting downloads that were only needed for testing');
+      rec = tune.recommendSettings(details.get(pick.index), timedOk(large) ? large : null, prefs);
+      await llm.releaseMemory({ keep: llm.status().modelId || pick.build.id, also: [...ourModelIds(), ...tested.map((t) => t.id)] });
+      // Only the chosen model is worth its disk space. Every other download this app has made, in
+      // this run or before it, is deleted; the timings are kept. Models the app never used are not touched.
+      const downloaded = (await llm.listFoundryModels()).flatMap((f) => f.builds).filter((b) => b.cached).map((b) => b.id.toLowerCase());
+      const mine = [...new Set([...ourModelIds(), ...attempted])].filter((id) => id !== pick.build.id && downloaded.includes(id.toLowerCase()));
+      const cleared = await removeDownloads(mine);
+      if (cleared.removed.length) reasons.push(`Deleted every other model download (${gbText(cleared.freedMb)} freed): ${cleared.removed.join(', ')}. Their timings are kept.`);
+      if (cleared.kept.length) reasons.push(`Could not delete: ${cleared.kept.map((k) => `${k.id} (${k.reason})`).join('; ')}`);
+    }
+    settings.ai.contextChars = rec.contextChars;
+    settings.ai.maxAnswerTokens = rec.maxAnswerTokens;
+    reasons.push(`Reading budget: ${BUDGET_NAME[rec.contextChars]}. With that much article text the first word comes after about ${rec.firstS} s and writing runs at ${rec.tokensPerS} tokens a second.`);
+    reasons.push(`Answer length: ${LENGTH_NAME[rec.maxAnswerTokens]}, about ${rec.writeS} s to write in full.`);
+    settings.ai.tuning = { at: new Date().toISOString(), preference: Math.min(4, Math.max(0, Math.round(Number(settings.ai.tunePreference ?? 2)))), device, chosen: chosen.id, alias: chosen.alias, tested, contextChars: rec.contextChars, maxAnswerTokens: rec.maxAnswerTokens, reasons };
+    saveSettings();
+    log(`tuning done: ${chosen.id}, reading budget ${rec.contextChars}, answer length ${rec.maxAnswerTokens}`);
+    return settings.ai.tuning;
+  } finally {
+    speedAbort = null;
+    tuneProgress = null;
+    lastAiUse = Date.now();
+    aiBusy = null;
+    pushState();
+  }
+}
+
+/** The installer leaves a note in the registry when the person chose to have answers set up. */
+function readInstallerChoice() {
+  if (process.platform !== 'win32') return Promise.resolve();
+  return new Promise((resolve) => {
+    execFile('reg.exe', ['query', 'HKCU\\Software\\Wikivault', '/v', 'SetupAnswers'], { windowsHide: true }, (err, out) => {
+      if (!err && /SetupAnswers\s+REG_SZ\s+1\b/.test(String(out))) {
+        settings.ai.autoSetup = 'pending';
+        saveSettings();
+        execFile('reg.exe', ['add', 'HKCU\\Software\\Wikivault', '/v', 'SetupAnswers', '/t', 'REG_SZ', '/d', 'started', '/f'], { windowsHide: true }, () => resolve());
+      } else resolve();
+    });
+  });
+}
+
+// ---------------------------------------------------------------- moving the library, returning the partition
+
+const isBusy = () => ['checking', 'downloading', 'verifying', 'switching', 'moving'].includes(editions?.snapshot().phase);
+
+/** True when the library folder sits on the partition the app created. */
+function libraryOnPartition() {
+  const p = settings.partition;
+  if (!p || !settings.dataDir) return false;
+  return path.resolve(settings.dataDir).toLowerCase().startsWith(path.resolve(p.root).toLowerCase());
+}
+
+/**
+ * A partition made by a version that did not record it (0.4.x) is recognised by
+ * where the library lives and by the volume's name.
+ */
+async function detectPartition() {
+  if (settings.partition || !settings.dataDir || !partitionAvailable()) return;
+  try {
+    if (partitionSim) {
+      const sim = JSON.parse(fs.readFileSync(partitionSim, 'utf8'));
+      if (sim.lastCreate && !sim.merged && path.resolve(settings.dataDir).startsWith(path.resolve(sim.mountAt))) {
+        settings.partition = { driveLetter: 'W', sourceLetter: systemLetter(), sizeBytes: sim.lastCreate.sizeBytes, root: sim.mountAt };
+      }
+    } else {
+      const m = /^([A-Za-z]):\\Wikivault$/.exec(settings.dataDir);
+      const letter = m && m[1].toUpperCase();
+      if (!letter || letter === systemLetter()) return;
+      let seen = null;
+      try { seen = await partitionTool.inspect(systemLetter(), letter); } catch (err) { log(`partition detection: could not inspect ${letter}: (${err.message})`); }
+      if (seen ? (seen.exists && seen.label === 'Wikivault') : fs.existsSync(`${letter}:\\`)) {
+        // If Windows would not describe the drive without administrator rights, go by where the
+        // library lives. The merge script checks the drive's name, position and contents itself
+        // before it removes anything, so a wrong guess here cannot cost data.
+        let sizeBytes = seen?.otherSize;
+        if (!sizeBytes) {
+          try { const st = await fsp.statfs(`${letter}:\\`); sizeBytes = Number(st.blocks) * Number(st.bsize); } catch { sizeBytes = 0; }
+        }
+        settings.partition = { driveLetter: letter, sourceLetter: systemLetter(), sizeBytes, root: `${letter}:\\` };
+      }
+    }
+    if (settings.partition) { saveSettings(); log(`recognised the Wikivault partition ${settings.partition.driveLetter}:`); pushState(); }
+  } catch (err) { log(`partition detection: ${err.message}`); }
+}
+
+function setMaintenance(patch) {
+  maintenance = patch ? { ...(maintenance || {}), ...patch } : null;
+  pushState();
+}
+
+/**
+ * Move the library to another folder: copy, verify, switch the app over, and
+ * only then remove the old copy. If anything fails before the switch, the
+ * library stays where it was.
+ */
+async function moveLibrary(toDir, kind = 'move') {
+  if (!editions?.snapshot().active) throw new Error('There is no edition to move yet.');
+  if (isBusy()) throw new Error('An update is in progress. Pause or finish it, then try again.');
+  const oldDir = settings.dataDir;
+  const oldStaging = settings.stagingDir;
+  editions.stopSchedule();
+  try {
+    if (editions.snapshot().pending) await editions.cancel(); // a partial download is not worth carrying over
+    setMaintenance({ kind, step: 'Copying the library', done: 0, total: editions.snapshot().active.bytes, error: null });
+    const res = await copyLibrary({
+      manager: editions, toDir,
+      onProgress: (p) => setMaintenance({ step: p.stage === 'copy' ? 'Copying the library' : 'Checking the copy against the checksum', done: p.done, total: p.total }),
+    });
+
+    setMaintenance({ step: 'Switching to the new location', done: null });
+    settings.dataDir = toDir;
+    // Staged updates only make sense while the library lives on the small partition.
+    settings.stagingDir = libraryOnPartition() ? oldStaging : null;
+    saveSettings();
+    await initLibrary();
+    if (!engine?.running || editions.snapshot().active?.path !== res.activePath) {
+      settings.dataDir = oldDir;
+      settings.stagingDir = oldStaging;
+      saveSettings();
+      await initLibrary();
+      throw new Error('The copy was made and verified, but the reader could not open it from the new folder. The library is still in its original place.');
+    }
+
+    setMaintenance({ step: 'Removing the old copy', done: null });
+    await removeLibraryFiles(oldDir, { log });
+    if (oldStaging && !settings.stagingDir) {
+      for (const name of await fsp.readdir(oldStaging).catch(() => [])) {
+        if (/\.(zim|part)$/i.test(name)) await fsp.rm(path.join(oldStaging, name), { force: true }).catch(() => {});
+      }
+      await fsp.rmdir(oldStaging).catch(() => {});
+    }
+    log(`library moved from ${oldDir} to ${toDir}`);
+    return { dataDir: toDir };
+  } finally {
+    editions?.startSchedule();
+  }
+}
+
+/** Look at the partition and say whether it can be merged back right now. */
+async function partitionStatus() {
+  const p = settings.partition;
+  if (!p) return { exists: false };
+  const seen = await partitionTool.inspect(p.sourceLetter || systemLetter(), p.driveLetter);
+  return { ...seen, libraryOnPartition: libraryOnPartition() };
+}
+
+/**
+ * Stop using the dedicated partition: move the library off it if it is still
+ * there, then remove the partition and give its space back to the Windows drive.
+ */
+async function revertPartition({ toDir, allowBattery }) {
+  const p = settings.partition;
+  if (!p) throw new Error('Wikivault has no partition to remove.');
+  if (onBattery() && !allowBattery) throw new Error('The laptop is on battery power. Plug in the charger, or confirm that you want to continue on battery.');
+  try {
+    if (libraryOnPartition()) {
+      if (editions?.snapshot().active) await moveLibrary(toDir || defaultDataDir(), 'revert');
+      else {
+        // Nothing downloaded yet: just stop pointing at the partition.
+        setMaintenance({ kind: 'revert', step: 'Switching to a folder', done: null, error: null });
+        if (editions?.snapshot().pending) await editions.cancel();
+        const oldDir = settings.dataDir;
+        settings.dataDir = toDir || defaultDataDir();
+        settings.stagingDir = null;
+        await fsp.mkdir(settings.dataDir, { recursive: true });
+        saveSettings();
+        await initLibrary();
+        await removeLibraryFiles(oldDir, { log });
+      }
+    }
+    setMaintenance({ kind: 'revert', step: `Removing drive ${p.driveLetter}: and returning its space to ${p.sourceLetter}:`, done: null, error: null });
+    const r = await partitionTool.merge(p.sourceLetter || systemLetter(), p.driveLetter);
+    settings.partition = null;
+    settings.stagingDir = null;
+    saveSettings();
+    setMaintenance(null);
+    return { merged: true, extended: r.extended, warning: r.warning || null, sourceLetter: r.sourceLetter, sourceSizeAfter: r.sourceSizeAfter, removedLetter: r.removedLetter };
+  } catch (err) {
+    log(`revert partition: ${err.code || 'ERROR'} ${err.message}`);
+    setMaintenance({ kind: 'revert', step: null, done: null, error: err.message });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------- IPC
+
+function handle(channel, fn) {
+  ipcMain.handle(channel, async (_event, arg) => {
+    try { return { ok: true, value: await fn(arg || {}) }; } catch (err) {
+      log(`${channel}: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+  });
+}
+
+function registerIpc() {
+  let uiSeen = false;
+  handle('state:get', () => { if (!uiSeen) { uiSeen = true; log('window ready'); } return getState(); });
+
+  handle('setup:choose-dir', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Where should Wikipedia be stored?', properties: ['openDirectory', 'createDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const dir = path.join(r.filePaths[0], 'Wikivault');
+    return { dir, freeBytes: await freeBytes(r.filePaths[0]) };
+  });
+
+  handle('setup:begin', async ({ dataDir, stagingDir, autoUpdate, launchAtLogin, setupAnswers: wantAnswers }) => {
+    if (wantAnswers && settings.ai.autoSetup !== 'done') {
+      settings.ai.autoSetup = 'pending';
+      setupAnswers().catch(() => {}); // runs alongside the Wikipedia download; progress shows in Library and Ask
+    }
+    settings.dataDir = dataDir || defaultDataDir();
+    settings.stagingDir = stagingDir || null;
+    if (typeof autoUpdate === 'boolean') settings.autoUpdate = autoUpdate;
+    if (typeof launchAtLogin === 'boolean') { settings.launchAtLogin = launchAtLogin; settings.keepInTray = launchAtLogin; }
+    await fsp.mkdir(settings.dataDir, { recursive: true });
+    saveSettings();
+    applyLoginItem();
+    await initLibrary();
+    // The engine is needed to trial-open the download, so fetch it first and fail early if that is not possible.
+    await ensureEngineBinary();
+    editions.update();
+    return true;
+  });
+
+  handle('setup:use-file', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a .zim file', properties: ['openFile'], filters: [{ name: 'ZIM archives', extensions: ['zim'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    if (!settings.dataDir) { settings.dataDir = defaultDataDir(); saveSettings(); }
+    if (!editions) await initLibrary();
+    await editions.useLocalFile(r.filePaths[0]);
+    applyLoginItem();
+    return true;
+  });
+
+  handle('partition:info', async () => {
+    if (!partitionAvailable()) throw new Error('Creating a partition is only available on Windows.');
+    return partitionInfo();
+  });
+
+  // Returns { created: true, ... } or { created: false, code, error, maxBytes } so the UI can react to a too-large request.
+  handle('partition:create', async ({ sizeBytes, staged, allowBattery }) => {
+    if (!partitionAvailable()) throw new Error('Creating a partition is only available on Windows.');
+    const snap = editions?.snapshot();
+    if (snap?.active || ['downloading', 'verifying', 'switching', 'moving'].includes(snap?.phase)) {
+      throw new Error('A library is already set up. A partition can only be created before the first download.');
+    }
+    // On battery the person has to say so explicitly in the confirmation; it is their call, not a hard stop.
+    if (onBattery() && !allowBattery) throw new Error('The laptop is on battery power. Plug in the charger, or confirm that you want to continue on battery.');
+    const info = await partitionInfo();
+    const bytes = Math.floor(Number(sizeBytes) / GB) * GB;
+    const plan = staged ? info.plans.staged : info.plans.selfContained;
+    if (!plan.feasible) throw new Error(plan.reason);
+    if (!(bytes >= plan.minBytes && bytes <= plan.maxBytes)) {
+      throw new Error(`Choose a size between ${plan.minBytes / GB} and ${plan.maxBytes / GB} GB.`);
+    }
+    try {
+      const r = await partitionTool.create(info.driveLetter, bytes, 'Wikivault');
+      const dataDir = r.mountAt ? path.join(r.mountAt, 'Wikivault') : `${r.driveLetter}:\\Wikivault`;
+      settings.partition = { driveLetter: r.driveLetter, sourceLetter: info.driveLetter, sizeBytes: r.sizeBytes, root: r.mountAt || `${r.driveLetter}:\\` };
+      saveSettings();
+      return { created: true, driveLetter: r.driveLetter, sizeBytes: r.sizeBytes, dataDir, sourceLetter: info.driveLetter, stagingDir: staged ? info.stagingDir : null };
+    } catch (err) {
+      log(`partition: ${err.code || 'ERROR'} ${err.message}`);
+      return { created: false, code: err.code || 'ERROR', error: err.message, maxBytes: err.maxBytes ?? null, driveLetter: err.driveLetter || null };
+    }
+  });
+
+  handle('edition:check', async () => { await editions.check(); return editions.snapshot(); });
+  handle('edition:update', async () => { await ensureEngineBinary(); editions.update(); return true; });
+  handle('edition:pause', () => editions.pause());
+  handle('edition:cancel', () => editions.cancel());
+
+  handle('search:suggest', ({ term }) => (engine?.running ? engine.suggest(term, 8) : []));
+  handle('search:query', ({ q, start = 0 }) => (engine?.running ? smartSearch(engine, q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
+
+  handle('ask:start', ({ question, pinnedUrl, retry }) => {
+    if (!engine?.running) throw new Error('There is no edition on this laptop yet.');
+    // Asking the same question again once answers are set up: forget the passages-only attempt,
+    // so the question is not mistaken for a follow-up to itself.
+    if (retry && conversation.at(-1)?.question === question) conversation.pop();
+    const id = ++askSeq;
+    const ac = new AbortController();
+    asks.set(id, ac);
+    lastAiUse = Date.now();
+    const emit = (type, data = {}) => send('ask:event', { id, type, ...data });
+    (async () => {
+      let model = null;
+      let modelNote = null;
+      if (settings.ai.enabled) {
+        try {
+          emit('status', { text: 'Getting the local model ready' });
+          await llm.prepare({ signal: ac.signal, onStatus: (text) => emit('status', { text }) });
+          model = llm;
+        } catch (err) {
+          if (err.name === 'AbortError') throw err;
+          modelNote = err.message;
+        }
+        pushState();
+      }
+      const out = await answerQuestion({
+        engine, llm: model, question, pinnedUrl: pinnedUrl || null,
+        history: conversation.slice(),
+        settings: settings.ai, editionDate: editions?.snapshot().active?.date,
+        signal: ac.signal,
+        onStatus: (text) => emit('status', { text }),
+        onUnderstood: (text) => emit('understood', { text }),
+        onToken: (text) => emit('token', { text }),
+        onSources: (passages) => emit('sources', { passages }),
+      });
+      if (!out.empty) {
+        conversation.push({ question, standalone: out.standalone, answer: out.text, sources: turnSources(out.text, out.passages) });
+        conversation = conversation.slice(-MAX_TURNS);
+      }
+      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), modelNote, aiState: llm.status().state, device: llm.status().device });
+    })().catch((err) => {
+      if (err.name === 'AbortError') emit('stopped');
+      else { log(`ask failed: ${err.message}`); emit('error', { message: err.message, partial: err.partial || '' }); }
+    }).finally(() => { asks.delete(id); lastAiUse = Date.now(); });
+    return id;
+  });
+  handle('ask:cancel', ({ id }) => { asks.get(id)?.abort('stopped'); return true; });
+  handle('ask:reset', () => {
+    for (const ac of asks.values()) ac.abort('stopped');
+    conversation = [];
+    return true;
+  });
+
+  handle('ai:setup', setupAnswers);
+  handle('ai:prepare', async () => {
+    llm.invalidate();
+    aiBusy = 'Getting the local model ready';
+    pushState();
+    try {
+      await llm.prepare({ allowDownload: true, onStatus: (text) => { aiBusy = text; pushState(); } });
+    } finally { aiBusy = null; pushState(); }
+    return llm.status();
+  });
+  handle('ai:install-foundry', async () => {
+    aiBusy = 'Installing Foundry Local';
+    pushState();
+    try {
+      await llm.installFoundry((line) => { aiBusy = `Installing Foundry Local: ${line.slice(0, 70)}`; pushState(); });
+    } finally { aiBusy = null; pushState(); }
+    return true;
+  });
+  handle('ai:models', () => llm.listFoundryModels());
+  handle('ai:catalog', async () => {
+    const families = await llm.listFoundryModels();
+    const inUse = String(llm.status().modelId || '').toLowerCase();
+    // A build that is answering questions is on this computer, wherever Foundry Local keeps it.
+    const tests = settings.ai.speedTests || {};
+    // Where Foundry Local's cache cannot be read, one that has been timed here counts too: it had to be downloaded for that.
+    const blind = !llm.cacheReadable();
+    for (const f of families) for (const b of f.builds) if (b.id.toLowerCase() === inUse || (blind && tests[b.id] && !tests[b.id].error && !tests[b.id].removed)) b.cached = true;
+    return { families, tests };
+  });
+  handle('ai:speed-test', ({ ids, allowDownload }) => runSpeedTests({ ids: (ids || []).map(String).slice(0, 6), allowDownload: Boolean(allowDownload) }));
+  handle('ai:speed-cancel', () => { speedAbort?.abort(); return true; });
+  handle('ai:use-model', ({ id }) => useModel(String(id)));
+  handle('ai:remove-download', async ({ id }) => {
+    const out = await removeDownloads([String(id)]);
+    if (!out.removed.length) throw new Error(out.kept[0]?.reason || 'That build is in use, so its download was kept.');
+    return out;
+  });
+  handle('ai:tune-plan', tunePlan);
+  handle('ai:tune-run', tuneRun);
+
+  handle('settings:set', (patch) => {
+    const top = ['autoUpdate', 'checkIntervalHours', 'keepInTray', 'launchAtLogin', 'downloadConnections'];
+    const ai = ['enabled', 'provider', 'foundryModel', 'baseUrl', 'model', 'apiKey', 'contextChars', 'maxAnswerTokens', 'rewriteQueries', 'idleMinutes', 'tunePreference'];
+    for (const k of top) if (k in patch) settings[k] = patch[k];
+    if (patch.ai) {
+      for (const k of ai) if (k in patch.ai) settings.ai[k] = patch.ai[k];
+      settings.ai.contextChars = Math.min(24000, Math.max(1500, Number(settings.ai.contextChars) || 6000));
+      settings.ai.idleMinutes = Math.min(240, Math.max(0, Number(settings.ai.idleMinutes) || 0));
+      settings.ai.tunePreference = Math.min(4, Math.max(0, Math.round(Number(settings.ai.tunePreference ?? 2))));
+      settings.ai.maxAnswerTokens = Math.min(2000, Math.max(100, Number(settings.ai.maxAnswerTokens) || 400));
+      llm.invalidate();
+      llm._setState('unknown', '');
+    }
+    settings.downloadConnections = Math.min(16, Math.max(1, Math.round(Number(settings.downloadConnections) || 8)));
+    saveSettings();
+    applyLoginItem();
+    pushState();
+    return true;
+  });
+
+  handle('shell:open-external', ({ url }) => {
+    if (!/^https?:\/\//i.test(url)) throw new Error('Only web links can be opened.');
+    return shell.openExternal(url);
+  });
+  handle('disk:free', async ({ dir }) => {
+    let probe = path.resolve(String(dir || ''));
+    while (!fs.existsSync(probe) && path.dirname(probe) !== probe) probe = path.dirname(probe);
+    return freeBytes(probe);
+  });
+  handle('library:move', async ({ toDir }) => {
+    if (!toDir) throw new Error('Choose a folder first.');
+    if (maintenance && !maintenance.error) throw new Error('Another library operation is already running.');
+    try {
+      const r = await moveLibrary(toDir, 'move');
+      setMaintenance(null);
+      return r;
+    } catch (err) {
+      setMaintenance({ kind: 'move', step: null, done: null, error: err.message });
+      throw err;
+    }
+  });
+  handle('library:dismiss-maintenance', () => { if (maintenance?.error) setMaintenance(null); return true; });
+  handle('partition:status', partitionStatus);
+  handle('partition:revert', (opts) => {
+    if (maintenance && !maintenance.error) throw new Error('Another library operation is already running.');
+    return revertPartition(opts);
+  });
+
+  handle('app:acknowledge', () => { settings.acknowledged = TERMS_VERSION; settings.acknowledgedAt = new Date().toISOString(); saveSettings(); pushState(); return true; });
+  handle('shell:open-notices', ({ which }) => {
+    const name = which === 'licence' ? ['LICENSE.txt', 'LICENSE'] : ['THIRD-PARTY-NOTICES.txt'];
+    // Installed: next to the program. From source: in the project folder.
+    const places = [path.dirname(process.execPath), app.getAppPath()];
+    for (const dir of places) for (const n of name) { const file = path.join(dir, n); if (fs.existsSync(file)) return shell.openPath(file); }
+    throw new Error('The notices file was not found with this copy of the app.');
+  });
+  handle('shell:open-data-dir', () => shell.openPath(editions?.snapshot().active ? path.dirname(editions.snapshot().active.path) : settings.dataDir));
+}
+
+// ---------------------------------------------------------------- lifecycle
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    if (argv.includes('--quit')) { quitting = true; app.quit(); } else showWindow();
+  });
+
+  app.whenReady().then(async () => {
+    if (QUIT_REQUEST) { app.quit(); return; } // no copy was running; nothing to close
+    loadSettings();
+    log(`Wikivault ${app.getVersion()} starting on ${process.platform} ${process.arch}, Electron ${process.versions.electron}`);
+    lockAppSession();
+    registerIpc();
+    await reapOrphanEngine();
+    // Keep the window's idea of the power state current.
+    powerMonitor.on('on-ac', pushState);
+    powerMonitor.on('on-battery', pushState);
+    createTray();
+    createWindow();
+    startIdleWatch();
+    if (settings.dataDir) {
+      await initLibrary().catch((err) => log(`library init failed: ${err.stack || err.message}`));
+    }
+    applyLoginItem();
+    syncRegistry();
+    pushState();
+    detectPartition();
+    // Finish what the installer (or an earlier run) was asked to do.
+    await refreshWindowsPath();
+    await readInstallerChoice();
+    if (settings.ai.autoSetup === 'pending' && settings.ai.enabled) setupAnswers().catch(() => {});
+  });
+
+  app.on('window-all-closed', () => {
+    if (!(settings.keepInTray && tray && settings.dataDir)) { quitting = true; app.quit(); }
+  });
+  app.on('activate', showWindow);
+
+  let memoryReleased = false;
+  app.on('before-quit', (event) => {
+    if (!memoryReleased) {
+      // Unload the model and stop Foundry Local's service before going, but never hang on it.
+      memoryReleased = true;
+      event.preventDefault();
+      for (const ac of asks.values()) ac.abort('quit');
+      speedAbort?.abort();
+      const release = llm.releaseMemory({ stopService: true, also: ourModelIds() }).catch(() => {});
+      Promise.race([release, new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit());
+    }
+    quitting = true;
+    editions?.stopSchedule();
+    // Not a user pause: the download resumes by itself next time the app runs.
+    editions?.abort?.abort('quit');
+    for (const ac of asks.values()) ac.abort('quit');
+    if (engine) engine.stopping = true;
+    try { engine?.proc?.kill(); } catch { /* already gone */ }
+    try { fs.rmSync(enginePidFile(), { force: true }); } catch { /* fine */ }
+  });
+}

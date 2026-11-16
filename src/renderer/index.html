@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
+  <title>Wikivault</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="bar" id="bar">
+    <nav class="bar-nav" aria-label="History">
+      <button class="icon-btn" id="nav-back" title="Back (Alt+Left)" aria-label="Back" disabled>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>
+      </button>
+      <button class="icon-btn" id="nav-forward" title="Forward (Alt+Right)" aria-label="Forward" disabled>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5"/></svg>
+      </button>
+      <button class="icon-btn" id="nav-home" title="Main page" aria-label="Main page">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 9.5 10 4l6.5 5.5M5.5 8.5V16h9V8.5"/></svg>
+      </button>
+      <button class="icon-btn" id="nav-random" title="Open a random article" aria-label="Open a random article">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h3.2c2.6 0 3.9 8 6.6 8H17M3 14h3.2c1 0 1.8-1.200 2.500-2.700M17 6h-4.200c-1 0-1.800 1.100-2.500 2.600M14.500 3.500 17 6l-2.500 2.500M14.500 11.500 17 14l-2.500 2.500"/></svg>
+      </button>
+    </nav>
+
+    <div class="search" id="search" role="combobox" aria-expanded="false" aria-owns="suggestions" aria-haspopup="listbox">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 4 4"/></svg>
+      <input id="search-input" type="text" placeholder="Search this edition" autocomplete="off" spellcheck="false" aria-label="Search this edition" aria-controls="suggestions">
+      <kbd>Ctrl K</kbd>
+      <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
+    </div>
+
+    <div class="bar-right">
+      <button class="edition-stamp" id="edition-stamp" title="Edition and updates">
+        <span class="dot" id="edition-dot"></span><span id="edition-label">No edition yet</span>
+      </button>
+      <button class="bar-btn" id="toggle-ask" aria-pressed="false">Ask</button>
+      <button class="bar-btn" id="open-library">Library</button>
+    </div>
+  </header>
+
+  <div class="notice" id="external" hidden>
+    <span>This link leaves the offline copy and needs the internet: <strong id="external-host"></strong></span>
+    <button class="btn small" id="external-open">Open in browser</button>
+    <button class="btn small quiet" id="external-dismiss">Stay here</button>
+  </div>
+  <div class="notice warn" id="engine-error" hidden></div>
+
+  <div class="layout">
+    <main class="main" id="main">
+
+      <!-- First run -->
+      <section class="view pad" id="view-setup" hidden>
+        <div class="column">
+          <h1 class="display">Put Wikipedia on this laptop</h1>
+          <p class="lede">Wikivault downloads the full English Wikipedia with images, checks every byte against the published checksum, and keeps it searchable with no internet connection. <span id="setup-size">Plan for about 115 GB.</span></p>
+
+          <div id="setup-form">
+            <div class="field">
+              <span class="field-label">Store it in</span>
+              <div class="path-row">
+                <code id="setup-dir"></code>
+                <button class="btn small" id="setup-change-dir">Change folder</button>
+              </div>
+              <span class="field-help" id="setup-free"></span>
+            </div>
+
+            <div class="partition" id="partition" hidden>
+              <div id="partition-intro">
+                <button class="btn" id="partition-open">Give Wikipedia its own partition</button>
+                <span class="field-help">Sets aside part of the drive for the library, so everyday use of Windows cannot use up the room that Wikipedia and its updates need.</span>
+              </div>
+              <div class="partition-panel" id="partition-panel" hidden>
+                <h3 id="partition-title">A partition for Wikipedia</h3>
+                <p class="busy-text" id="partition-loading">Measuring the drive</p>
+                <div id="partition-body" hidden>
+                  <div class="drivebar" id="drivebar" role="img"><i class="seg used"></i><i class="seg keep"></i><i class="seg new"></i></div>
+                  <dl class="facts drive-facts" id="drive-facts"></dl>
+                  <label class="check"><input type="checkbox" id="partition-staged" checked><span>Download each update to the Windows drive first, then move it in. The partition only needs to hold one edition.</span></label>
+                  <div id="partition-controls">
+                    <div class="size-row">
+                      <label class="field-label" for="partition-range">Partition size</label>
+                      <input type="range" id="partition-range" step="1">
+                      <input type="number" id="partition-gb" step="1" aria-label="Partition size in GB">
+                      <span>GB</span>
+                      <button class="btn small" id="partition-recommended"></button>
+                    </div>
+                    <p class="field-help" id="partition-why"></p>
+                  </div>
+                  <ul class="notes" id="partition-notes"></ul>
+                  <p class="busy-text" id="partition-busy" hidden>Creating the partition. This can take a few minutes. Do not turn off the laptop.</p>
+                  <p class="error-text" id="partition-error" hidden></p>
+                  <div class="actions">
+                    <button class="btn primary" id="partition-create">Create partition</button>
+                    <button class="btn quiet" id="partition-cancel">Use a folder instead</button>
+                  </div>
+                </div>
+              </div>
+              <p class="done-text" id="partition-done" hidden></p>
+            </div>
+            <label class="check"><input type="checkbox" id="setup-auto" checked><span>Check for a newer edition every day, and replace the old one once the new one is verified</span></label>
+            <label class="check" id="setup-login-row"><input type="checkbox" id="setup-login" checked><span>Start with Windows and stay in the tray, so updates happen on their own</span></label>
+            <label class="check"><input type="checkbox" id="setup-answers" checked><span>Set up answers too: install Microsoft Foundry Local if it is missing and download the answer model (a few GB), so questions can be answered on this laptop</span></label>
+            <div class="actions">
+              <button class="btn primary" id="setup-start">Download Wikipedia</button>
+              <button class="btn quiet" id="setup-use-file">Use a .zim file I already have</button>
+            </div>
+          </div>
+
+          <div class="progress-block" id="setup-progress" hidden></div>
+          <p class="error-text" id="setup-error" hidden></p>
+        </div>
+      </section>
+
+      <!-- Search results -->
+      <section class="view pad" id="view-results" hidden>
+        <div class="column wide">
+          <p class="results-summary" id="results-summary"></p>
+          <ol class="results" id="results"></ol>
+          <button class="btn" id="results-more" hidden>Show more results</button>
+        </div>
+      </section>
+
+      <!-- Article reader -->
+      <section class="view" id="view-reader" hidden>
+        <div class="findbar" id="findbar" hidden>
+          <input id="find-input" type="text" placeholder="Find in this article" aria-label="Find in this article">
+          <span id="find-count"></span>
+          <button class="icon-btn dark" id="find-prev" aria-label="Previous match"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 5-5 5 5"/></svg></button>
+          <button class="icon-btn dark" id="find-next" aria-label="Next match"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></button>
+          <button class="icon-btn dark" id="find-close" aria-label="Close find"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <webview id="reader" partition="persist:reader" src="about:blank"></webview>
+        <div class="reader-msg" id="reader-msg" hidden></div>
+      </section>
+
+      <!-- Library: edition, updates, answers -->
+      <section class="view pad" id="view-library" hidden>
+        <div class="column">
+          <h1 class="display" id="lib-title">Library</h1>
+          <dl class="facts" id="lib-facts"></dl>
+          <div class="progress-block" id="maint" hidden>
+            <div class="progress-title" id="maint-title"></div>
+            <div class="meter" id="maint-meter"><i></i></div>
+            <div class="progress-detail"><span id="maint-left"></span><span>Wikipedia stays available while this runs</span></div>
+          </div>
+          <p class="error-text" id="maint-error" hidden></p>
+          <p class="done-text" id="maint-done" hidden></p>
+
+          <div id="lib-partition" hidden>
+            <h2>Partition</h2>
+            <p id="lib-partition-text"></p>
+            <div class="actions"><button class="btn" id="revert-open">Stop using the partition</button></div>
+          </div>
+
+          <h2>Updates</h2>
+          <p id="lib-update-status"></p>
+          <div class="progress-block" id="lib-progress" hidden></div>
+          <p class="error-text" id="lib-error" hidden></p>
+          <div class="actions" id="lib-update-actions"></div>
+          <label class="check"><input type="checkbox" id="set-auto"><span>Download newer editions automatically. The old one is removed only after the new one is verified.</span></label>
+          <label class="check" id="set-login-row"><input type="checkbox" id="set-login"><span>Start with Windows and stay in the tray</span></label>
+          <div class="field">
+            <label class="field-label" for="set-connections">Connections used for a download</label>
+            <select id="set-connections">
+              <option value="1">1, the slowest</option>
+              <option value="4">4</option>
+              <option value="8">8, recommended</option>
+              <option value="12">12</option>
+              <option value="16">16</option>
+            </select>
+            <span class="field-help">The download is split across the fastest Kiwix mirrors, at most four connections to each. A change applies the next time a download starts or resumes.</span>
+          </div>
+
+          <h2>Answers</h2>
+          <p id="ai-status"></p>
+          <label class="check"><input type="checkbox" id="ai-enabled"><span>Write answers with a model on this laptop. When off, Ask shows the best passages instead.</span></label>
+          <div id="ai-form">
+            <div class="tune">
+              <div class="tune-pref">
+                <label class="field-label" for="ai-tune-pref">What matters more</label>
+                <div class="tune-scale">
+                  <span>Faster answers</span>
+                  <input id="ai-tune-pref" type="range" min="0" max="4" step="1" value="2" list="ai-tune-ticks" aria-describedby="ai-tune-pref-text">
+                  <span>More thorough answers</span>
+                </div>
+                <datalist id="ai-tune-ticks"><option value="0"></option><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option></datalist>
+                <p class="field-help" id="ai-tune-pref-text"></p>
+              </div>
+              <div class="actions">
+                <button class="btn primary" id="ai-tune" type="button">Tune for this computer</button>
+                <button class="btn primary" id="ai-tune-go" type="button" hidden>Start tuning</button>
+                <button class="btn" id="ai-tune-cancel" type="button" hidden>Cancel</button>
+              </div>
+              <p class="field-help" id="ai-tune-note">Measures this computer and chooses the hardware, the model, the reading budget and the answer length to suit it. Each choice can be changed below afterwards.</p>
+              <div class="tune-progress" id="ai-tune-progress" hidden>
+                <p class="tune-summary" id="ai-tune-summary"></p>
+                <progress id="ai-tune-overall" max="1" value="0" aria-label="Overall progress"></progress>
+                <progress id="ai-tune-step" max="1" aria-label="Progress of the current step"></progress>
+                <p class="tune-detail" id="ai-tune-detail"></p>
+              </div>
+              <ul class="tune-result" id="ai-tune-result" hidden></ul>
+            </div>
+            <div class="field">
+              <label class="field-label" for="ai-provider">Model runs in</label>
+              <select id="ai-provider">
+                <option value="foundry">Foundry Local (NPU, GPU or CPU)</option>
+                <option value="custom">Another model server on this laptop</option>
+              </select>
+            </div>
+            <div id="ai-foundry">
+              <div class="field">
+                <label class="field-label" for="ai-family">Model</label>
+                <select id="ai-family"></select>
+                <span class="field-help">Larger models answer better and write more slowly. Each model comes in builds for different parts of this computer, and the quickest one differs from machine to machine, so time them here. About 10 tokens a second or more reads comfortably.</span>
+              </div>
+              <table class="builds" id="ai-builds">
+                <thead><tr><th>Build</th><th>Runs on</th><th>Download</th><th>Speed on this computer</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+              <div class="actions">
+                <button class="btn" id="ai-speed-test" type="button">Find the fastest build</button>
+                <button class="btn" id="ai-speed-cancel" type="button" hidden>Stop</button>
+              </div>
+              <p class="field-help" id="ai-speed-note"></p>
+              <details class="by-hand">
+                <summary>Enter a model name by hand</summary>
+                <div class="field">
+                  <label class="field-label" for="ai-foundry-model">Model name or exact build</label>
+                  <input id="ai-foundry-model" type="text" spellcheck="false">
+                </div>
+              </details>
+            </div>
+            <div id="ai-custom" hidden>
+              <div class="field">
+                <label class="field-label" for="ai-base-url">Server address</label>
+                <input id="ai-base-url" type="text" spellcheck="false" placeholder="http://localhost:11434/v1">
+                <span class="field-help">Any OpenAI-compatible server: Ollama, LM Studio, AMD Lemonade Server, llama.cpp.</span>
+              </div>
+              <div class="field">
+                <label class="field-label" for="ai-model">Model name</label>
+                <input id="ai-model" type="text" spellcheck="false" placeholder="Leave empty to use the first model the server lists">
+              </div>
+            </div>
+            <div class="field two">
+              <div>
+                <label class="field-label" for="ai-idle">Free the model's memory after</label>
+                <select id="ai-idle">
+                  <option value="1">1 minute without a question</option>
+                  <option value="3">3 minutes without a question</option>
+                  <option value="10">10 minutes without a question</option>
+                  <option value="30">30 minutes without a question</option>
+                  <option value="0">Never (keep it loaded)</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label" for="ai-context">Reading budget per question</label>
+                <select id="ai-context">
+                  <option value="3000">Small, fastest</option>
+                  <option value="6000">Medium</option>
+                  <option value="10000">Large, slower</option>
+                  <option value="16000">Very large, needs a long-context model</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label" for="ai-length">Answer length</label>
+                <select id="ai-length">
+                  <option value="250">Short</option>
+                  <option value="400">Medium</option>
+                  <option value="800">Long</option>
+                </select>
+              </div>
+            </div>
+            <div class="actions" id="ai-actions"></div>
+            <p class="busy-text" id="ai-busy" hidden></p>
+            <p class="error-text" id="ai-error" hidden></p>
+          </div>
+
+          <h2>About</h2>
+          <p class="small-print"><span id="about-version"></span> Wikivault is free software under the MIT licence, shared as it is with no warranty. Answers can be wrong and are not professional advice; check the cited articles.</p>
+          <p class="small-print">Article text and images come from Wikipedia and are licensed by their authors, mostly under CC BY-SA 4.0. Editions are packaged by the Kiwix project and read with its kiwix-serve engine (GPL-3.0), which Wikivault downloads separately. Wikivault is not affiliated with, endorsed by or sponsored by Wikipedia, the Wikimedia Foundation, Kiwix or Microsoft.</p>
+          <div class="actions">
+            <button class="btn" id="about-licence" type="button">Licence</button>
+            <button class="btn" id="about-notices" type="button">Third-party notices</button>
+          </div>
+          <p class="error-text" id="about-error" hidden></p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Ask panel -->
+    <aside class="ask" id="ask" hidden aria-label="Ask">
+      <div class="ask-head">
+        <div class="ask-head-row">
+          <h2>Ask this edition</h2>
+          <button class="btn small" id="ask-new" hidden>New conversation</button>
+        </div>
+        <p id="ask-sub">Answers are written on this laptop from articles in the offline copy.</p>
+      </div>
+      <div class="ask-thread" id="ask-thread">
+        <div class="ask-empty" id="ask-empty">
+          <p>Try a question the encyclopedia can answer, such as:</p>
+          <button class="example">Why is the sky blue?</button>
+          <button class="example">What caused the Chernobyl disaster?</button>
+          <button class="example">How does a differential work in a car?</button>
+        </div>
+      </div>
+      <form class="ask-form" id="ask-form">
+        <textarea id="ask-input" rows="2" placeholder="Ask a question" aria-label="Ask a question"></textarea>
+        <div class="ask-form-row">
+          <label class="check compact" id="ask-pin-row" hidden><input type="checkbox" id="ask-pin"><span>About the open article</span></label>
+          <button class="btn primary" id="ask-send" type="submit">Ask</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+
+  <dialog id="ack-dialog" aria-labelledby="ack-title">
+    <h2 id="ack-title">Before you use Wikivault</h2>
+    <ul class="notes ack-points">
+      <li><strong>Its answers can be wrong.</strong> They are written by a small AI model on this computer, from a copy of Wikipedia. The model can misread or invent things, and Wikipedia can be wrong or out of date. Check the cited articles.</li>
+      <li><strong>It is not professional advice.</strong> Nothing shown here is medical, legal, financial, engineering or safety advice. Do not rely on it where a mistake could cause injury, loss or damage.</li>
+      <li><strong>It changes this computer when you ask it to.</strong> It downloads a very large file and can create, resize and remove a disk partition. Back up anything you cannot afford to lose before using the partition features.</li>
+      <li><strong>It comes with no warranty.</strong> Wikivault is free software under the MIT licence, shared as it is. It is not affiliated with Wikipedia, the Wikimedia Foundation, Kiwix or Microsoft.</li>
+    </ul>
+    <div class="actions">
+      <button class="btn" id="ack-licence" type="button">Read the licence</button>
+      <button class="btn primary" id="ack-go" type="button">I understand and agree</button>
+    </div>
+  </dialog>
+
+  <dialog id="partition-confirm" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <ul id="confirm-list"></ul>
+    <p class="confirm-warning">Changing partitions normally goes without trouble, but a power cut or a disk fault partway through can damage a drive. Back up anything you cannot afford to lose before you continue.</p>
+    <label class="check" id="confirm-battery-row" hidden><input type="checkbox" id="confirm-battery"><span>The laptop is running on battery power. Continue anyway.</span></label>
+    <div class="actions">
+      <button class="btn" id="confirm-cancel">Cancel</button>
+      <button class="btn primary" id="confirm-go"></button>
+    </div>
+  </dialog>
+
+  <dialog id="move-dialog" aria-labelledby="move-title">
+    <h2 id="move-title">Move the library</h2>
+    <p id="move-text"></p>
+    <div class="field">
+      <span class="field-label">Move it to</span>
+      <div class="path-row"><code id="move-dest"></code><button class="btn small" id="move-choose">Choose folder</button></div>
+      <span class="field-help" id="move-free"></span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="move-cancel">Cancel</button>
+      <button class="btn primary" id="move-go">Move library</button>
+    </div>
+  </dialog>
+
+  <dialog id="revert-dialog" aria-labelledby="revert-title">
+    <h2 id="revert-title"></h2>
+    <ol id="revert-steps"></ol>
+    <div class="field" id="revert-dest-field">
+      <span class="field-label">Move the library to</span>
+      <div class="path-row"><code id="revert-dest"></code><button class="btn small" id="revert-choose">Choose folder</button></div>
+      <span class="field-help" id="revert-free"></span>
+    </div>
+    <ul class="notes" id="revert-notes"></ul>
+    <label class="check" id="revert-battery-row" hidden><input type="checkbox" id="revert-battery"><span>The laptop is running on battery power. Continue anyway.</span></label>
+    <div class="actions">
+      <button class="btn" id="revert-cancel">Cancel</button>
+      <button class="btn primary" id="revert-go"></button>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

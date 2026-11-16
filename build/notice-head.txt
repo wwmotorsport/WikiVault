@@ -1,0 +1,16 @@
+WIKIVAULT - PLEASE READ BEFORE INSTALLING
+
+Wikivault is free software shared as it is, with no warranty and no support obligation. By installing or using it you accept the licence below and these points:
+
+1. IT CHANGES YOUR COMPUTER WHEN YOU ASK IT TO. It downloads more than 100 GB, and it can create, resize and remove a disk partition and delete files it manages. Back up anything you cannot afford to lose before using the partition features. You use those features at your own risk.
+
+2. ITS ANSWERS CAN BE WRONG. Answers are written by a small AI model running on your computer, from a copy of Wikipedia. The model can misread or invent things, and Wikipedia itself can be wrong or out of date. Always check the cited articles.
+
+3. IT IS NOT PROFESSIONAL ADVICE. Nothing Wikivault shows is medical, legal, financial, engineering or safety advice. Do not rely on it for any decision where a mistake could cause injury, loss or damage. Ask a qualified person.
+
+4. IT USES OTHER PEOPLE'S SOFTWARE AND CONTENT. Wikivault is not affiliated with, endorsed by or sponsored by the Wikimedia Foundation, Wikipedia, Kiwix, Microsoft or IBM. Their names are used only to say what the app works with. The reader engine (Kiwix), the model runtime (Microsoft Foundry Local), the AI models and the Wikipedia edition are downloaded to your computer from their own publishers under their own terms, which you accept by using them. Third-party notices are installed with the app as THIRD-PARTY-NOTICES.txt.
+
+To the fullest extent the law allows, the authors are not liable for any damage, loss or injury arising from the software or from anything it displays.
+
+------------------------------------------------------------
+

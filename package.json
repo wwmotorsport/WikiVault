@@ -1,0 +1,71 @@
+{
+  "name": "wikivault",
+  "productName": "Wikivault",
+  "version": "0.10.1",
+  "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
+  "author": "wwmotorsport",
+  "license": "MIT",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "node scripts/make-notices.js && electron-builder --win nsis --x64",
+    "dist:dir": "electron-builder --win dir --x64",
+    "notices": "node scripts/make-notices.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "node-html-parser": "^7.0.1"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "local.wikivault.app",
+    "productName": "Wikivault",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.txt"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Wikivault-Setup-${version}.${ext}",
+      "include": "build/installer.nsh",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "license": "build/license.txt"
+    },
+    "publish": null,
+    "extraFiles": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.txt",
+        "to": "THIRD-PARTY-NOTICES.txt"
+      }
+    ]
+  }
+}
