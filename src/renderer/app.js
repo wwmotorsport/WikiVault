@@ -395,6 +395,65 @@ async function guard(fn, errorBox) {
 
 // ------------------------------------------------------------ setup view
 
+// The sizes Kiwix publishes, and whether each fits the chosen place.
+const FLAVOUR_TEXT = {
+  maxi: ['Everything, with images', 'Every article in full, with its pictures and diagrams. The most useful copy, and by far the largest.'],
+  nopic: ['Every article, no images', 'The full text of every article. Diagrams, maps and photographs are missing, which matters for how-to and medical topics.'],
+  mini: ['Introductions only', 'Just the opening section and fact box of each article. Good for looking things up, not for learning a subject.'],
+};
+let flavours = null;        // [{ flavour, bytes, known }]
+let flavourChoice = null;
+let flavourAsked = false;
+const KEEP_FREE = 15 * 1024 ** 3; // room Windows itself should keep
+
+/** A plain verdict on one size: does it fit, and will monthly updates fit too. */
+function fitVerdict(size, free, onPartition) {
+  if (free == null) return { cls: '', text: '', ok: true };
+  if (onPartition) return size * 1.05 <= free ? { cls: '', text: 'Fits the partition you created.', ok: true } : { cls: 'no', text: `Does not fit the partition: it needs ${bytes(size)} and the partition has ${bytes(free)}.`, ok: false };
+  const left = free - size;
+  if (left < KEEP_FREE) return { cls: 'no', text: left < 0 ? `Does not fit: it needs ${bytes(size)} and this drive has ${bytes(free)} free.` : `Too tight: it would leave only ${bytes(left)} free, and Windows needs room to work.`, ok: false };
+  if (free - 2 * size < KEEP_FREE) return { cls: 'tight', text: `Fits, leaving ${bytes(left)} free. Monthly updates need ${bytes(size)} more while the old copy is replaced, which this drive does not have to spare. A dedicated partition avoids that.`, ok: true };
+  return { cls: '', text: `Fits with room for monthly updates, leaving ${bytes(left)} free.`, ok: true };
+}
+
+function renderFlavours(free) {
+  const box = $('flavour-list');
+  if (!flavours) {
+    if (!flavourAsked) {
+      flavourAsked = true;
+      api.setupFlavours().then((list) => { flavours = list; renderSetup(); }).catch(() => { flavours = []; renderSetup(); });
+    }
+    return;
+  }
+  if (!flavours.length) { box.replaceChildren(); $('flavour-help').textContent = ''; return; }
+  const verdicts = flavours.map((f) => fitVerdict(f.bytes, free, Boolean(part.done)));
+  // Default: the largest that fits with room for updates; failing that, the largest that fits at all.
+  if (!flavourChoice || !flavours.some((f) => f.flavour === flavourChoice)) {
+    const roomy = flavours.findIndex((f, i) => verdicts[i].ok && !verdicts[i].cls);
+    const any = flavours.findIndex((f, i) => verdicts[i].ok);
+    flavourChoice = flavours[roomy >= 0 ? roomy : any >= 0 ? any : flavours.length - 1].flavour;
+    if (flavourChoice !== state.settings.flavour) api.setFlavour(flavourChoice).catch(() => {});
+  }
+  const key = JSON.stringify([flavours, free, flavourChoice, Boolean(part.done)]);
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    box.replaceChildren(...flavours.map((f, i) => {
+      const [name, about] = FLAVOUR_TEXT[f.flavour] || [f.flavour, ''];
+      const row = el('label', `flavour${verdicts[i].ok ? '' : ' unfit'}`);
+      const radio = document.createElement('input');
+      radio.type = 'radio'; radio.name = 'flavour'; radio.value = f.flavour; radio.checked = f.flavour === flavourChoice;
+      radio.addEventListener('change', () => { flavourChoice = f.flavour; api.setFlavour(f.flavour).then(() => { part.info = null; renderSetup(); }); });
+      row.append(radio, el('span', 'f-name', name), el('span', 'f-size', `${f.known ? '' : 'about '}${bytes(f.bytes)}`), el('span', 'f-about', about));
+      if (verdicts[i].text) row.append(el('span', `f-fit ${verdicts[i].cls}`, verdicts[i].text));
+      return row;
+    }));
+  }
+  const known = flavours.every((f) => f.known);
+  $('flavour-help').textContent = `${known ? 'Sizes are those of the newest editions on Kiwix.' : 'Kiwix could not be reached, so these sizes are estimates.'} Images matter most for how-to, medical and identification topics.`;
+  const chosen = flavours.find((f) => f.flavour === flavourChoice);
+  if (chosen) $('setup-size').textContent = `Plan for about ${bytes(chosen.bytes)}.`;
+}
+
 function renderSetup() {
   const e = state.edition;
   const dir = setupDir || state.settings.dataDir || state.suggestedDataDir;
@@ -404,6 +463,7 @@ function renderSetup() {
     ? `${bytes(free)} set aside for the library on its own partition.`
     : `${bytes(free)} free on this drive. The download needs the edition's full size free, and each update needs that much again until the old edition is removed.`;
   $('setup-login-row').hidden = state.platform !== 'win32';
+  renderFlavours(free);
   if (e?.pending?.size) $('setup-size').textContent = `This edition is ${bytes(e.pending.size)}.`;
   const busy = renderProgress($('setup-progress'), true);
   $('setup-form').hidden = busy;
@@ -428,6 +488,7 @@ $('setup-start').addEventListener('click', () => {
     autoUpdate: $('setup-auto').checked,
     launchAtLogin: state.platform === 'win32' ? $('setup-login').checked : false,
     setupAnswers: $('setup-answers').checked,
+    flavour: flavourChoice || undefined,
   }), $('setup-error')).finally(() => { $('setup-start').disabled = false; });
 });
 $('setup-use-file').addEventListener('click', () => guard(() => api.useFile(), $('setup-error')));

@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('api', {
   getState: () => call('state:get'),
   chooseDir: () => call('setup:choose-dir'),
   beginSetup: (opts) => call('setup:begin', opts),
+  setupFlavours: () => call('setup:flavours'),
+  setFlavour: (flavour) => call('setup:set-flavour', { flavour }),
   useFile: () => call('setup:use-file'),
   partitionInfo: () => call('partition:info'),
   createPartition: (sizeBytes, staged, allowBattery) => call('partition:create', { sizeBytes, staged, allowBattery }),

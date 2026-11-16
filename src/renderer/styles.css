@@ -352,3 +352,16 @@ details.by-hand summary { cursor: pointer; color: var(--muted, #5b6b7c); font-si
 #ack-dialog { max-width: 620px; }
 .ack-points li { margin-bottom: 10px; line-height: 1.5; }
 .about-text { font-size: 14px; line-height: 1.55; max-width: 70ch; }
+
+/* Choosing how much of Wikipedia to download */
+fieldset.flavours { border: 0; padding: 0; margin: 0 0 22px; min-width: 0; }
+fieldset.flavours legend { padding: 0; }
+.flavour { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: baseline; padding: 12px 14px; margin-top: 8px; border: 1px solid #d5dde5; border-radius: 6px; background: #fff; cursor: pointer; }
+.flavour:has(input:checked) { border-color: #14263b; box-shadow: inset 0 0 0 1px #14263b; }
+.flavour:has(input:focus-visible) { outline: 2px solid #14263b; outline-offset: 2px; }
+.flavour .f-name { font-weight: 600; }
+.flavour .f-size { font-variant-numeric: tabular-nums; color: #14263b; }
+.flavour .f-about, .flavour .f-fit { grid-column: 2 / -1; font-size: 14px; color: var(--muted, #5b6b7c); }
+.flavour .f-fit.tight { color: #8a5a00; }
+.flavour .f-fit.no { color: #a12a2a; }
+.flavour.unfit { background: #f6f7f8; }

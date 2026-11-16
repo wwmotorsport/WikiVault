@@ -27,10 +27,10 @@ function parseEditions(text, prefix) {
  * Newest published edition, e.g. wikipedia_en_all_maxi_2026-10.zim.
  * @returns {Promise<{file:string,url:string,date:string}>}
  */
-async function findLatestEdition({ baseUrl, language = 'en', flavour = 'maxi', signal } = {}) {
+async function findLatestEdition({ baseUrl, project = 'wikipedia', language = 'en', flavour = 'maxi', signal } = {}) {
   const base = trimBase(baseUrl);
-  const prefix = `wikipedia_${language}_all_${flavour}_`;
-  const dirUrl = `${base}/zim/wikipedia/`;
+  const prefix = `${project}_${language}_all_${flavour}_`;
+  const dirUrl = `${base}/zim/${project}/`;
   const errors = [];
 
   try {
@@ -45,7 +45,7 @@ async function findLatestEdition({ baseUrl, language = 'en', flavour = 'maxi', s
 
   // Fallback: the Kiwix library catalog (OPDS feed) links to the same files.
   try {
-    const feed = `https://library.kiwix.org/catalog/v2/entries?count=-1&lang=${language === 'en' ? 'eng' : language}&name=wikipedia_${language}_all`;
+    const feed = `https://library.kiwix.org/catalog/v2/entries?count=-1&lang=${language === 'en' ? 'eng' : language}&name=${project}_${language}_all`;
     const { text } = await fetchText(feed, { signal, timeoutMs: 45000 });
     const found = parseEditions(text, prefix);
     if (found.length) return { ...found[0], url: dirUrl + found[0].file };

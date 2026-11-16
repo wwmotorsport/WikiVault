@@ -4,6 +4,15 @@ How to set the app up and use it. For what it is and how to install it, see the 
 
 ## First run
 
+**How much of Wikipedia.** Kiwix publishes English Wikipedia in three sizes, and the setup screen lists them with the real size of the newest edition of each:
+
+- **Everything, with images.** Every article in full with its pictures and diagrams. The most useful and by far the largest.
+- **Every article, no images.** The full text, about a quarter of the size. Diagrams, maps and photographs are missing, which matters most for how-to, medical and identification topics.
+- **Introductions only.** The opening section and fact box of each article, about a twentieth of the size.
+
+Under each is a verdict for the place you chose: whether it fits, how much it leaves free, and whether there is also room for monthly updates (an update needs the edition's size again while the old copy is replaced, unless you use a dedicated partition). The largest size that fits with room to spare is selected for you. The choice is made at setup; changing it later means removing the library and setting up again.
+
+
 1. Pick where to store the library. The default is `%LOCALAPPDATA%\Wikivault\library`. Or give it its own partition (next section).
 2. Leave **Set up answers too** ticked if you want questions answered by the local model. It installs Foundry Local if the installer did not, and downloads the model alongside Wikipedia.
 3. Press **Download Wikipedia**. The app first fetches the Kiwix reader engine (`kiwix-tools`, a few tens of MB), then the edition.

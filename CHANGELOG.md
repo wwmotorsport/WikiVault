@@ -2,6 +2,10 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.11.0 (2026-11-16)
+
+- Setup offers three sizes of English Wikipedia: everything with images, every article without images, or introductions only. Each shows its real download size from Kiwix and a plain verdict on whether it fits the chosen drive or partition, and whether monthly updates will fit too. The largest that fits comfortably is preselected.
+
 ## 0.10.1 (2026-11-15)
 
 - First version published to the repository. The licence text shown by the installer now matches the repository's LICENSE file.

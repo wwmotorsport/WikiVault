@@ -175,6 +175,27 @@ async function editionSize() {
   return { bytes: FALLBACK_EDITION_BYTES, known: false };
 }
 
+/**
+ * The three sizes Kiwix publishes English Wikipedia in, with the real size of the newest edition of
+ * each. When Kiwix cannot be reached the sizes are estimates from Kiwix's own stated proportions.
+ */
+const FLAVOURS = [
+  { flavour: 'maxi', share: 1 },      // every article, with images
+  { flavour: 'nopic', share: 0.25 },  // every article, no images: "about 75% smaller"
+  { flavour: 'mini', share: 0.05 },   // introductions and infoboxes only: "about 95% smaller"
+];
+async function flavourSizes() {
+  const found = await Promise.all(FLAVOURS.map(async ({ flavour }) => {
+    try {
+      const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, language: settings.language, flavour });
+      const bytes = await catalog.fetchRemoteSize(latest.url);
+      return bytes ? { flavour, bytes, date: latest.date, known: true } : null;
+    } catch { return null; }
+  }));
+  if (found.some(Boolean)) return found.filter(Boolean); // only what Kiwix really offers right now
+  return FLAVOURS.map(({ flavour, share }) => ({ flavour, bytes: Math.round(FALLBACK_EDITION_BYTES * share), date: null, known: false }));
+}
+
 /** Live power state. Read fresh every time, so plugging in the charger takes effect at once. */
 function onBattery() {
   if (partitionSim) {
@@ -1015,7 +1036,8 @@ function registerIpc() {
     return { dir, freeBytes: await freeBytes(r.filePaths[0]) };
   });
 
-  handle('setup:begin', async ({ dataDir, stagingDir, autoUpdate, launchAtLogin, setupAnswers: wantAnswers }) => {
+  handle('setup:begin', async ({ dataDir, stagingDir, autoUpdate, launchAtLogin, setupAnswers: wantAnswers, flavour }) => {
+    if (FLAVOURS.some((f) => f.flavour === flavour) && flavour !== settings.flavour) { settings.flavour = flavour; editionSizeCache = null; }
     if (wantAnswers && settings.ai.autoSetup !== 'done') {
       settings.ai.autoSetup = 'pending';
       setupAnswers().catch(() => {}); // runs alongside the Wikipedia download; progress shows in Library and Ask
@@ -1200,6 +1222,12 @@ function registerIpc() {
   handle('shell:open-external', ({ url }) => {
     if (!/^https?:\/\//i.test(url)) throw new Error('Only web links can be opened.');
     return shell.openExternal(url);
+  });
+  handle('setup:flavours', flavourSizes);
+  handle('setup:set-flavour', ({ flavour }) => {
+    if (!FLAVOURS.some((f) => f.flavour === flavour)) throw new Error('Unknown edition size.');
+    if (settings.flavour !== flavour) { settings.flavour = flavour; editionSizeCache = null; saveSettings(); pushState(); }
+    return true;
   });
   handle('disk:free', async ({ dir }) => {
     let probe = path.resolve(String(dir || ''));

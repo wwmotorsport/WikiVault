@@ -172,6 +172,8 @@ async function startDownloadServer() {
     baseUrl: `http://127.0.0.1:${port}`,
     files, releases, opts, log, mirrors, served,
     addFixture(name) { files.set(name, fs.readFileSync(path.join(FIXTURES, name))); },
+    /** Publish a fixture under another file name, for example as a different flavour or project. */
+    addCopy(name, fixture) { files.set(name, fs.readFileSync(path.join(FIXTURES, fixture))); },
     close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
   };
 }
