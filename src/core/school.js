@@ -1,0 +1,276 @@
+'use strict';
+// School: a year of lessons laid out week by week from a curriculum registry (assets/school/*.json).
+//
+// The registry names the publisher's files and says how many lessons each unit has. Everything in
+// this file is plain data work with no Electron and no network:
+//   buildYear   spreads each subject's lessons over the school year
+//   find...     guess the page of a PDF where a lesson, an answer key or a test starts, from its text
+//   linksFor    the buttons a day's entry gets: which file, which page
+//   searchPages full-text search over the page texts
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+// ---------------------------------------------------------------- registry
+
+function fileName(url) {
+  const last = new URL(url).pathname.split('/').pop();
+  try { return decodeURIComponent(last); } catch { return last; }
+}
+/** A short, stable name for a file, from the publisher's own file name. */
+function fileId(url) {
+  return fileName(url).replace(/\.[a-z0-9]+$/i, '').normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+}
+
+function loadManifest(file) {
+  const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!m || !Array.isArray(m.subjects) || !m.grade) throw new Error('Not a curriculum registry.');
+  const seen = new Map();
+  for (const s of m.subjects) {
+    for (const holder of [...s.units, { files: s.extras || [] }]) {
+      for (const f of holder.files) {
+        f.id = fileId(f.url);
+        f.name = fileName(f.url);
+        if (seen.has(f.id) && seen.get(f.id) !== f.url) throw new Error(`Two files share the name ${f.id}.`);
+        seen.set(f.id, f.url);
+      }
+    }
+  }
+  return m;
+}
+
+/** Every distinct file in the registry, with the subject and units that use it. */
+function allFiles(manifest) {
+  const out = new Map();
+  for (const s of manifest.subjects) {
+    const take = (f, unit) => {
+      if (!out.has(f.id)) out.set(f.id, { id: f.id, url: f.url, name: f.name, label: f.label, role: f.role, subject: s.id, subjectName: s.name, units: [], where: unit ? `Unit ${unit.n}: ${unit.title}` : 'For the whole year' });
+      const e = out.get(f.id);
+      if (unit) { e.units.push(unit.id); if (e.units.length > 1) e.where = `Units ${e.units.map((id) => id.split('-u')[1]).join(', ')}`; }
+    };
+    for (const u of s.units) for (const f of u.files) take(f, u);
+    for (const f of s.extras || []) take(f, null);
+  }
+  return [...out.values()];
+}
+
+// ---------------------------------------------------------------- the year
+
+/** The teaching days of one unit, in order. */
+function unitSessions(subject, unit) {
+  const base = { subject: subject.id, subjectName: subject.name, minutes: subject.minutes, unitId: unit.id, unitN: unit.n, unitTitle: unit.title };
+  const out = [];
+  const extras = (when) => {
+    for (const e of unit.extra || []) {
+      if (Boolean(e.before) !== when) continue;
+      const tag = e.title.toLowerCase().replace(/[^a-z]+/g, '-');
+      for (let k = 1; k <= e.count; k++) out.push({ ...base, id: `${unit.id}:${tag}:${k}`, kind: e.kind, n: k, of: e.count, label: e.count > 1 ? `${e.title} (day ${k} of ${e.count})` : e.title });
+    }
+  };
+  extras(true);
+  const p = unit.plan;
+  if (p.days) for (let k = 1; k <= p.days; k++) out.push({ ...base, id: `${unit.id}:day:${k}`, kind: 'day', n: k, of: p.days, label: `Day ${k} of ${p.days}` });
+  else for (let k = 1; k <= p.lessons; k++) out.push({ ...base, id: `${unit.id}:lesson:${k}`, kind: 'lesson', n: k, of: p.lessons, word: p.word || 'Lesson', label: `${p.word || 'Lesson'} ${k}` });
+  extras(false);
+  return out;
+}
+
+/**
+ * Spread each subject's days evenly over the year. A subject with fewer days than the year has
+ * school days gets free days in between; one with more gets some double days.
+ * The calendar is this app's own arrangement: the publishers give an order, not dates.
+ */
+function buildYear(manifest, { skip = [] } = {}) {
+  const weeksN = manifest.weeks || 36;
+  const perWeek = manifest.daysPerWeek || 5;
+  const slots = weeksN * perWeek;
+  const weeks = Array.from({ length: weeksN }, (_, w) => ({ number: w + 1, semester: w < weeksN / 2 ? 1 : 2, days: Array.from({ length: perWeek }, () => []) }));
+  const totals = [];
+  for (const s of manifest.subjects) {
+    const sessions = s.units.filter((u) => !skip.includes(u.id)).flatMap((u) => unitSessions(s, u));
+    sessions.forEach((x, i) => {
+      const slot = Math.min(slots - 1, Math.floor((i * slots) / Math.max(sessions.length, 1)));
+      weeks[Math.floor(slot / perWeek)].days[slot % perWeek].push(x);
+    });
+    totals.push({ subject: s.id, name: s.name, sessions: sessions.length, minutes: s.minutes });
+  }
+  for (const w of weeks) w.summary = weekSummary(manifest, w.days.flat());
+  return { weeks, slots, totals };
+}
+
+/** "Unit 2, Fractions as Quotients: Lessons 3 to 7" for each subject in a week. */
+function weekSummary(manifest, sessions) {
+  const out = [];
+  for (const s of manifest.subjects) {
+    const mine = sessions.filter((x) => x.subject === s.id);
+    if (!mine.length) continue;
+    const units = [];
+    for (const x of mine) {
+      let u = units.find((e) => e.unitId === x.unitId);
+      if (!u) { u = { unitId: x.unitId, n: x.unitN, title: x.unitTitle, focus: s.units.find((e) => e.id === x.unitId)?.focus || '', parts: [] }; units.push(u); }
+      const last = u.parts[u.parts.length - 1];
+      if ((x.kind === 'lesson' || x.kind === 'day') && last && last.kind === x.kind && last.to === x.n - 1) last.to = x.n;
+      else if (x.kind === 'lesson' || x.kind === 'day') u.parts.push({ kind: x.kind, word: x.kind === 'day' ? 'Day' : x.word, from: x.n, to: x.n });
+      else if (!u.parts.some((p) => p.text === x.label.replace(/ \(day \d+ of \d+\)$/, ''))) u.parts.push({ kind: x.kind, text: x.label.replace(/ \(day \d+ of \d+\)$/, '') });
+    }
+    for (const u of units) u.covers = u.parts.map((p) => p.text || (p.from === p.to ? `${p.word} ${p.from}` : `${p.word}s ${p.from} to ${p.to}`)).join(', ');
+    out.push({ subject: s.id, name: s.name, units: units.map(({ unitId, n, title, focus, covers }) => ({ unitId, n, title, focus, covers })) });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- finding pages
+// These work from the text of each page (top of the page first). They are guesses: a wrong one
+// opens the right book a few pages off, and a miss opens the book at its first page.
+
+const HEAD = 260; // how much of the top of a page counts as its heading
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const numbered = (word, n) => new RegExp(`\\b${esc(word)}\\s+${n}(?!\\d)`, 'i');
+/** A page that names four or more different lessons is a contents page or a pacing chart, not a lesson. */
+function isChart(text, word) {
+  const found = new Set();
+  for (const m of text.matchAll(new RegExp(`\\b${esc(word)}s?\\s+(\\d{1,2})(?!\\d)`, 'gi'))) { found.add(m[1]); if (found.size >= 4) return true; }
+  return false;
+}
+
+/**
+ * The page (counting from 0) where lesson or chapter `n` starts. In a book that holds several units,
+ * `part` picks the unit: its lessons start again from 1.
+ */
+function findLesson(pages, word, n, part = 1) {
+  // Three ways a page can name the lesson, strongest first: a line near the top that starts with
+  // "Lesson 3" or ends with it (a running head); anywhere in the top of the page; anywhere at all.
+  const lineStart = new RegExp(`^${esc(word)}\\s+${n}(?!\\d)`, 'i');
+  const lineEnd = new RegExp(`\\b${esc(word)}\\s+${n}$`, 'i');
+  const tests = {
+    line: (t, k) => { const a = k === n ? lineStart : new RegExp(`^${esc(word)}\\s+${k}(?!\\d)`, 'i'); const z = k === n ? lineEnd : new RegExp(`\\b${esc(word)}\\s+${k}$`, 'i'); return t.split('\n', 8).some((l) => a.test(l.trim()) || z.test(l.trim())); },
+    head: (t, k) => numbered(word, k).test(t.slice(0, HEAD)),
+    whole: (t, k) => numbered(word, k).test(t),
+  };
+  const at = (i, k, how) => !isChart(pages[i], word) && tests[how](pages[i], k);
+  let from = 0;
+  let to = pages.length;
+  if (part > 1) {
+    // Where each part begins: a page headed "Lesson 1" after a stretch of pages that are not.
+    let starts = [];
+    for (const how of ['line', 'head']) {
+      starts = [];
+      let last = -100;
+      for (let i = 0; i < pages.length; i++) {
+        if (!at(i, 1, how)) continue;
+        if (i - last > 12) starts.push(i);
+        last = i;
+      }
+      if (starts.length >= part) break;
+    }
+    if (starts.length < part) return null;
+    from = starts[part - 1];
+    to = starts[part] ?? pages.length;
+  }
+  for (const how of ['line', 'head', 'whole']) {
+    for (let i = from; i < to; i++) if (at(i, n, how)) return i;
+  }
+  return null;
+}
+
+/** In a language arts activity book the pages for lesson 4 are numbered 4.1, 4.2 and so on. */
+function findActivity(pages, n) {
+  const re = new RegExp(`(^|[^\\d.])${n}\\.1(?![\\d.])`);
+  for (let i = 0; i < pages.length; i++) if (re.test(pages[i].slice(0, HEAD))) return i;
+  for (let i = 0; i < pages.length; i++) if (re.test(pages[i])) return i;
+  return null;
+}
+
+/** The first page, from `from` on, whose heading has one of the phrases. Earlier phrases are preferred. */
+function findHeading(pages, phrases, { from = 0, word = 'Lesson' } = {}) {
+  for (const phrase of phrases) {
+    const re = new RegExp(`\\b${esc(phrase)}`, 'i');
+    for (let i = Math.max(0, from); i < pages.length; i++) {
+      if (re.test(pages[i].slice(0, HEAD)) && !isChart(pages[i], word) && !/\.{5,}|(\s\.){5,}/.test(pages[i].slice(0, 600))) return i;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a day's entry links to. `pagesOf(fileId)` returns the page texts of a file, or null when it
+ * has not been downloaded and read yet. Page numbers in the result count from 1; null means "open
+ * at the start".
+ */
+function linksFor(session, unit, subject, pagesOf) {
+  const out = [];
+  const file = (role) => unit.files.find((f) => f.role === role);
+  const add = (label, f, find) => {
+    if (!f) return;
+    const pages = pagesOf(f.id);
+    let page = null;
+    if (pages && find) { try { page = find(pages); } catch { page = null; } }
+    out.push({ label, fileId: f.id, ready: Boolean(pages), page: page == null ? null : page + 1 });
+  };
+  const teacher = file('teacher');
+  const student = file('student');
+  const reader = file('reader');
+  const word = session.word || unit.plan.word || 'Lesson';
+  const back = (pages) => Math.floor(pages.length * 0.45);
+  const answers = (pages) => findHeading(pages, ['answer key', 'answers'], { from: back(pages), word });
+
+  if (session.kind === 'lesson') {
+    add('Lesson plan', teacher, (p) => findLesson(p, word, session.n, unit.part || 1));
+    if (subject.id === 'ela') add('Activity pages', student, (p) => findActivity(p, session.n));
+    else add('Student pages', student, (p) => findLesson(p, word, session.n, unit.part || 1));
+    add(word === 'Chapter' ? 'Reading' : 'Reader', reader, word === 'Chapter' ? (p) => findLesson(p, word, session.n, unit.part || 1) : null);
+    add('Answer key', teacher, answers);
+  } else if (session.kind === 'day') {
+    add('Pacing guide', file('extra') || teacher, (p) => findHeading(p, ['pacing guide', 'sample pacing'], { word }));
+    add('Teacher guide', teacher, null);
+    add('Student pages', student, null);
+    add('Reader', reader, null);
+    add('Answer key', teacher, answers);
+  } else if (session.kind === 'assessment') {
+    const phrases = /beginning-of-year/i.test(session.label) ? ['beginning-of-year assessment'] : /end-of-year/i.test(session.label) ? ['end-of-year assessment']
+      : ['end-of-unit assessment', 'unit assessment', 'assessments', 'assessment'];
+    add('The test', teacher, (p) => findHeading(p, phrases, { from: /beginning/i.test(session.label) ? 0 : Math.floor(p.length * 0.3), word }));
+    add('Answer key', teacher, answers);
+  } else {
+    add('Review and test', teacher, (p) => findHeading(p, ['pausing point', 'unit assessment', 'assessment'], { from: Math.floor(p.length * 0.3), word }));
+    add('Activity pages', student, null);
+    add('Answer key', teacher, answers);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- search
+
+/**
+ * Pages that contain every word of the query. `books` is a list of { id, pages }.
+ * Returns the best `limit` as { fileId, page (from 1), score, snippet }.
+ */
+function searchPages(books, query, { limit = 40 } = {}) {
+  const words = [...new Set(String(query || '').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])].slice(0, 8);
+  if (!words.length) return [];
+  const res = words.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(w)}`, 'giu'));
+  const hits = [];
+  for (const book of books) {
+    book.pages.forEach((text, i) => {
+      if (!text) return;
+      let score = 0;
+      let first = -1;
+      for (const re of res) {
+        re.lastIndex = 0;
+        const m = text.match(re);
+        if (!m) return;
+        score += Math.min(m.length, 6);
+        const at = text.search(re);
+        if (first < 0 || at < first) first = at;
+        if (at < HEAD) score += 4; // in the heading of the page
+      }
+      if (!score) return;
+      const start = Math.max(0, first - 70);
+      const snippet = `${start ? '…' : ''}${text.slice(start, start + 220).replace(/\s+/g, ' ').trim()}${start + 220 < text.length ? '…' : ''}`;
+      hits.push({ fileId: book.id, page: i + 1, score, snippet });
+    });
+  }
+  return hits.sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
+}
+
+module.exports = { loadManifest, allFiles, fileId, fileName, unitSessions, buildYear, weekSummary, findLesson, findActivity, findHeading, isChart, linksFor, searchPages, MANIFEST_DIR: path.join(__dirname, '..', '..', 'assets', 'school') };

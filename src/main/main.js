@@ -3,7 +3,7 @@
 // edition updater and the local model, and exposes them to the UI over IPC.
 // The UI itself never touches the network.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, session, powerSaveBlocker, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, session, powerSaveBlocker, powerMonitor, utilityProcess } = require('electron');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
@@ -28,6 +28,9 @@ const { GolfGame, makeHole } = require('../core/golf');
 const { GolfStore, CHARACTERS, COLOURS } = require('../core/golf-store');
 const { sisterLink, pathCandidates } = require('../core/links');
 const { tourPlan } = require('../core/tour');
+const http = require('node:http');
+const schoolCore = require('../core/school');
+const { SchoolLibrary } = require('../core/school-library');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -355,6 +358,7 @@ async function partitionInfo() {
     otherBytes += have;
     otherAllowance += 2 * 1.15 * Math.max(have, extraLatest[id]?.bytes || lib.approxBytes);
   }
+  if (schoolBytes() > 0) { otherBytes += schoolBytes(); otherAllowance += schoolBytes(); }
   const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin, otherBytes, otherAllowance };
   const plans = { staged: sizePlan({ ...base, editions: 1 }), selfContained: sizePlan({ ...base, editions: 2 }) };
   return { driveLetter, analysis, edition, plans, stagingDir: defaultStagingDir() };
@@ -393,6 +397,7 @@ async function getState() {
     },
     activeLibrary: curLibId(),
     golf: golfState(),
+    school: school ? { ...school.status(), dir: school.dir } : null,
     golfClub: golfClub(),
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
@@ -526,6 +531,7 @@ async function initLibrary() {
   await Promise.all(Object.keys(LIBRARIES)
     .filter((id) => fs.existsSync(path.join(extraDir(id), 'state.json')))
     .map((id) => ensureExtra(id).catch((err) => log(`${id}: ${err.message}`))));
+  await initSchool().catch((err) => log(`school: ${err.stack || err.message}`));
 }
 
 /** Stop every extra library's engine and updater, leaving its files alone. */
@@ -619,6 +625,90 @@ async function removeExtra(id) {
   return true;
 }
 
+// ---------------------------------------------------------------- school
+// A year of lessons from free curriculum files (see assets/school). The files live in the library
+// folder, are shown by a small file server on 127.0.0.1, and are read into a text index by a
+// separate process.
+
+let school = null;         // SchoolLibrary for the grade in use
+let schoolServer = null;   // { origin }
+let schoolOpens = 0;
+let indexer = null;
+let indexSeq = 0;
+const indexWaiting = new Map();
+const SCHOOL_GRADE = 'grade5';
+// Chromium's own PDF viewer, and the styles and scripts it takes from the browser itself. Neither leaves this computer.
+const PDF_VIEWER = /^(chrome-extension:\/\/mhjfbmdgcfjbbpaeojofohoefgiehjai\/|chrome:\/\/resources\/)/;
+
+/** Read a PDF's pages in the indexer process, started on first use and stopped when the work is done. */
+function extractInChild(file) {
+  if (!indexer) {
+    indexer = utilityProcess.fork(path.join(__dirname, 'school-indexer.js'), [], { serviceName: 'Wikivault school index' });
+    indexer.on('message', (m) => {
+      const w = indexWaiting.get(m.id);
+      if (!w) return;
+      indexWaiting.delete(m.id);
+      if (m.error) w.reject(new Error(m.error)); else w.resolve(m.pages);
+    });
+    indexer.on('exit', () => {
+      indexer = null;
+      for (const w of indexWaiting.values()) w.reject(new Error('The process that reads the files stopped.'));
+      indexWaiting.clear();
+    });
+  }
+  return new Promise((resolve, reject) => { const id = ++indexSeq; indexWaiting.set(id, { resolve, reject }); indexer.postMessage({ id, file }); });
+}
+function stopIndexer() { try { indexer?.kill(); } catch { /* already gone */ } indexer = null; }
+
+function startSchoolServer() {
+  if (schoolServer) return Promise.resolve(schoolServer);
+  const server = http.createServer((req, res) => {
+    const m = /^\/f\/([a-z0-9-]+)\.pdf$/.exec(new URL(req.url, 'http://x').pathname);
+    const f = m && school?.fileById(m[1]);
+    const file = f && school.have.has(f.id) ? school.pathOf(f) : null;
+    let size = 0;
+    try { size = file ? fs.statSync(file).size : 0; } catch { size = 0; }
+    if (!size || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not here'); return; }
+    const head = { 'content-type': 'application/pdf', 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    let start = 0;
+    let end = size - 1;
+    if (range && (range[1] || range[2])) {
+      if (range[1]) { start = Number(range[1]); if (range[2]) end = Math.min(end, Number(range[2])); } else start = Math.max(0, size - Number(range[2]));
+      if (start > end || start >= size) { res.writeHead(416, { 'content-range': `bytes */${size}` }).end(); return; }
+      res.writeHead(206, { ...head, 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': end - start + 1 });
+    } else res.writeHead(200, { ...head, 'content-length': size });
+    if (req.method === 'HEAD') { res.end(); return; }
+    fs.createReadStream(file, { start, end }).on('error', () => res.destroy()).pipe(res);
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => { schoolServer = { origin: `http://127.0.0.1:${server.address().port}`, server }; resolve(schoolServer); });
+  });
+}
+
+async function initSchool() {
+  if (school) { school.cancel(); school.removeAllListeners(); }
+  stopIndexer();
+  const manifest = schoolCore.loadManifest(path.join(schoolCore.MANIFEST_DIR, `${SCHOOL_GRADE}.json`));
+  // Tests fetch from a stand-in server instead of the publisher.
+  const base = process.env.WIKIVAULT_SCHOOL_BASE;
+  school = new SchoolLibrary({
+    dir: path.join(settings.dataDir, 'school'), manifest, extract: extractInChild, log,
+    rewrite: (u) => (base ? u.replace(/^https:\/\/www\.coreknowledge\.org/, base) : u),
+  });
+  let wasBusy = false;
+  school.on('change', (st) => {
+    if (wasBusy && !st.job) stopIndexer();
+    wasBusy = Boolean(st.job);
+    pushState();
+  });
+  await school.init();
+  // Files that arrived without being read (the app was closed mid-way) are read now.
+  school.indexMissing().catch((err) => log(`school index: ${err.message}`));
+}
+const schoolBytes = () => (school ? school.status().bytes : 0);
+
 /** Free space on the drive a folder is (or will be) on, whether or not the folder exists yet. */
 async function freeAt(dir) {
   let probe = path.resolve(String(dir || ''));
@@ -631,6 +721,7 @@ async function freeAt(dir) {
 const isEngineUrl = (url) => {
   try {
     const { origin } = new URL(url);
+    if (schoolServer && origin === schoolServer.origin) return true;
     return [engine, ...[...extras.values()].map((x) => x.engine)].some((e) => e?.running && e.origin === origin);
   } catch { return false; }
 };
@@ -643,7 +734,7 @@ function lockReaderSession() {
   const reader = session.fromPartition('persist:reader');
   reader.webRequest.onBeforeRequest((details, done) => {
     const u = details.url;
-    const ok = isEngineUrl(u) || /^(data|blob|about|devtools|chrome-devtools):/i.test(u);
+    const ok = isEngineUrl(u) || PDF_VIEWER.test(u) || /^(data|blob|about|devtools|chrome-devtools):/i.test(u);
     done({ cancel: !ok });
   });
   reader.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
@@ -678,6 +769,7 @@ app.on('web-contents-created', (_e, contents) => {
     prefs.contextIsolation = true;
     prefs.sandbox = true;
     prefs.spellcheck = false;
+    prefs.plugins = true; // the built-in PDF viewer, for the School files
     if (params.src && params.src !== 'about:blank' && !isEngineUrl(params.src)) event.preventDefault();
   });
 
@@ -1202,7 +1294,10 @@ async function moveLibrary(toDir, kind = 'move') {
   if (busyExtra) throw new Error(`${LIBRARIES[busyExtra[0]].name} is being downloaded. Let it finish or cancel it under More libraries, then try again.`);
   // Wikibooks and Wikiversity go wherever Wikipedia goes.
   const carried = [...extras].filter(([, x]) => x.manager.snapshot().active).map(([id, x]) => ({ id, x, name: LIBRARIES[id].name, bytes: x.manager.snapshot().active.bytes }));
-  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0);
+  if (school?.status().job) throw new Error('The school files are being downloaded or read. Let that finish or cancel it under School, then try again.');
+  const oldSchool = path.join(oldDir, 'school');
+  const hasSchool = fs.existsSync(oldSchool);
+  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0) + schoolBytes();
   const room = await freeAt(toDir);
   const already = fs.existsSync(path.join(toDir, 'zim')) ? (await fsp.readdir(path.join(toDir, 'zim')).catch(() => [])).some((n) => n.endsWith('.copying')) : false;
   if (room != null && !already && room < allBytes + 2 * 2 ** 30) {
@@ -1229,6 +1324,14 @@ async function moveLibrary(toDir, kind = 'move') {
         throw new Error(`${c.name}: ${err.message}`);
       }
     }
+    if (hasSchool) {
+      // The school files and their index are plain files: copied whole, removed from the old place after the switch.
+      setMaintenance({ kind, step: 'Copying the school files', done: null, total: null, error: null });
+      try { await fsp.cp(oldSchool, path.join(toDir, 'school'), { recursive: true, force: true }); } catch (err) {
+        await fsp.rm(path.join(toDir, 'school'), { recursive: true, force: true }).catch(() => {});
+        throw new Error(`School files: ${err.message}`);
+      }
+    }
     setMaintenance({ kind, step: 'Copying Wikipedia', done: 0, total: editions.snapshot().active.bytes, error: null });
     const res = await copyLibrary({
       manager: editions, toDir,
@@ -1251,6 +1354,7 @@ async function moveLibrary(toDir, kind = 'move') {
     }
 
     setMaintenance({ step: 'Removing the old copy', done: null });
+    if (hasSchool) await fsp.rm(oldSchool, { recursive: true, force: true }).catch((err) => log(`old school folder: ${err.message}`));
     for (const id of Object.keys(LIBRARIES)) await removeLibraryFiles(path.join(oldDir, 'more', id), { log });
     await fsp.rmdir(path.join(oldDir, 'more')).catch(() => {});
     await removeLibraryFiles(oldDir, { log });
@@ -1416,6 +1520,39 @@ function registerIpc() {
     pushState();
     return { homeUrl: cur().homeUrl() };
   });
+  const inSchool = (fn) => (arg) => { if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
+  handle('school:overview', inSchool(() => school.overview()));
+  handle('school:week', inSchool(({ number }) => school.week(Number(number) || school.currentWeek())));
+  handle('school:download', inSchool(async () => {
+    if (!editions?.snapshot().active) throw new Error('Set up Wikipedia first; the school files are kept in the same library.');
+    const free = await freeAt(settings.dataDir);
+    if (free != null && free < 4 * 2 ** 30) throw new Error(`The school files for one grade need a few gigabytes and the library drive has ${(free / 2 ** 30).toFixed(1)} GB free.`);
+    school.downloadAll().then((r) => log(`school: download ${r.stopped ? 'stopped' : 'finished'}, ${r.failed.length} failed`)).catch((err) => log(`school: ${err.message}`));
+    return true;
+  }));
+  handle('school:cancel', inSchool(() => { school.cancel(); return true; }));
+  handle('school:search', inSchool(({ q }) => school.search(String(q || ''))));
+  handle('school:done', inSchool(async ({ ids, done }) => { await school.setDone(ids, Boolean(done)); return true; }));
+  handle('school:skip', inSchool(async ({ unitId, skip }) => { await school.setSkip(String(unitId), Boolean(skip)); return true; }));
+  handle('school:have', inSchool(async ({ id, have }) => { await school.setHave(String(id), Boolean(have)); return true; }));
+  handle('school:open', inSchool(async ({ fileId, page }) => {
+    const f = school.fileById(String(fileId));
+    if (!f || !school.have.has(f.id)) throw new Error('That file has not been downloaded yet.');
+    const { origin } = await startSchoolServer();
+    const n = Math.max(1, Number(page) || 1);
+    schoolOpens += 1; // a new address each time: opening the same book at another page must load afresh for the viewer to go there
+    return { url: `${origin}/f/${f.id}.pdf?open=${schoolOpens}#page=${n}`, label: f.added ? f.label : `${f.subjectName}, ${f.where}: ${f.label}`, page: n };
+  }));
+  handle('school:add-books', inSchool(async () => {
+    let paths = process.env.WIKIVAULT_TEST_ADD_BOOK ? [process.env.WIKIVAULT_TEST_ADD_BOOK] : null;
+    if (!paths) {
+      const r = await dialog.showOpenDialog(win, { title: 'Add PDF books to School', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+      if (r.canceled) return 0;
+      paths = r.filePaths;
+    }
+    return school.addBooks(paths);
+  }));
+  handle('school:remove-book', inSchool(async ({ id }) => { await school.removeBook(String(id)); return true; }));
   handle('golf:start', ({ playerIds, holes, length, handicaps }) => {
     if (!cur()?.running) throw new Error('There is no library to play in yet.');
     const roster = clubStore().list();
@@ -1686,6 +1823,8 @@ if (!app.requestSingleInstanceLock()) {
       event.preventDefault();
       for (const ac of asks.values()) ac.abort('quit');
       speedAbort?.abort();
+      school?.cancel();
+      stopIndexer();
       const release = llm.releaseMemory({ stopService: true, also: ourModelIds() }).catch(() => {});
       Promise.race([release, new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit());
     }

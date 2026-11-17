@@ -2,6 +2,21 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.16.0 (2026-11-16)
+
+- School, a new section (the open-book button in the top bar): Grade 5 as a full year of lessons, laid out in 36 weeks of five days and two semesters. It uses the Core Knowledge Foundation's free curriculum for four subjects: Language Arts (CKLA), Mathematics (CKMath, built on Illustrative Mathematics' IM K-5 Math), History and Geography (CKHG) and Science (CKSci). The plan and what each unit teaches are part of the app and can be read before anything is downloaded.
+- One button downloads the 105 PDF files from coreknowledge.org into the library: teacher guides (lesson plans, tests and answer keys), student books and activity pages, and readers. The files are kept exactly as published.
+- Every page of every file is read once and its text kept in a plain index. That index is what makes the books searchable, and what the app uses to find, for each day, the page of the lesson plan, the student pages, the reading, the answer key and the test. A link opens the book inside the app at that page; when no page was found it opens at the start.
+- The week: what each subject covers, then each day's lessons with their links and a tick box. The year: every unit with its weeks, its days done, its files, and a box to skip it (the rest of that subject then spreads over the year). Ticks and skipped units are kept in the library.
+- Books and supplies: the few things the lessons need that are not free (three trade books, one publisher workbook, science materials), what is optional, and what each is for. Nothing is bought or ordered by the app.
+- Books I have added: PDFs you own can be copied into the library. They are searched with the rest and move with it.
+- The school files live in the library folder under `school\`. They move with Wikipedia in every kind of move, count toward the size of a dedicated partition, and are deleted by the uninstaller when you choose to remove your data.
+- The tour has a stop for School.
+- The reader can now show PDF files from the app's own local address. Requests to anywhere else are still cancelled.
+- PDF.js 3.11.174 (Mozilla, Apache 2.0) is included to read the text of the PDFs. It does not draw them; the app's own built-in viewer does.
+
+Not tested, because the build environment cannot reach coreknowledge.org: the real downloads and their total size, and how well the pages found for each lesson match on the real books. Both were tested against stand-in files written to resemble the publisher's layout. Visual Arts and Music, which the same publisher offers for Grade 5, are not included yet.
+
 ## Repository, 2026-11-16 (no change to the app)
 
 - The installer is easier to find: a download link at the top of the README and in `DOWNLOAD-INSTALLER.md`, with step-by-step instructions from finding the file to the first article, in the README and in the user guide.

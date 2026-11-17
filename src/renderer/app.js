@@ -65,10 +65,11 @@ function showView(next) {
   if (view === next) return;
   if (view && view !== 'setup') prevView = view;
   view = next;
-  for (const v of ['setup', 'results', 'reader', 'library', 'golf']) $(`view-${v}`).hidden = v !== next;
+  for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school']) $(`view-${v}`).hidden = v !== next;
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
   if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
   if (next === 'golf' || state?.golf) renderGolf();
+  if (state) renderSchool();
   updateNav();
 }
 
@@ -77,7 +78,7 @@ function updateNav() {
   let fwd = false;
   if (view === 'reader' && readerReady) {
     try { back = reader.canGoBack(); fwd = reader.canGoForward(); } catch { /* not attached yet */ }
-  } else if ((view === 'results' || view === 'library') && prevView) back = true;
+  } else if ((view === 'results' || view === 'library' || view === 'school') && prevView) back = true;
   else if (view === 'golf' && !state?.golf && prevView && prevView !== 'golf') back = true;
   $('nav-back').disabled = !back;
   $('nav-forward').disabled = !fwd;
@@ -101,12 +102,18 @@ function openUrl(url, { golf = false } = {}) {
   // During a turn of wiki golf the only way to move is a link inside the article.
   if (golfPlaying() && !golf) return;
   $('reader-msg').hidden = true;
+  schShowing = schoolUrl(url);
   showView('reader');
   if (reader.getAttribute('src') === url && readerReady) { try { reader.loadURL(url); } catch { reader.src = url; } } else reader.src = url;
 }
 
 reader.addEventListener('dom-ready', () => { readerReady = true; updateNav(); });
-reader.addEventListener('did-navigate', (e) => { currentUrl = e.url; updateNav(); golfVisit(e.url); });
+reader.addEventListener('did-navigate', (e) => {
+  currentUrl = e.url;
+  // The PDF viewer reports addresses of its own while a book is open; only a real page elsewhere ends that.
+  if (!schoolUrl(e.url) && !/^chrome(-extension)?:/.test(e.url)) schShowing = false;
+  updateNav(); golfVisit(e.url); renderSchool();
+});
 reader.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) { currentUrl = e.url; updateNav(); } });
 reader.addEventListener('page-title-updated', (e) => { if (view === 'reader') document.title = `${e.title} - Wikivault`; });
 reader.addEventListener('did-fail-load', (e) => {
@@ -1382,6 +1389,261 @@ $('lib-select').addEventListener('change', (e) => guard(async () => {
   openUrl(r.homeUrl);
 }, null));
 
+// ------------------------------------------------------------ school
+// A year of lessons from free curriculum files, laid out week by week. The plan, the files and the
+// search index are kept by the main process (src/core/school*.js); this part shows them.
+const SCHOOL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+let schTab = 'week';
+let schWeekNo = null;     // the week on screen; null follows "where we are"
+let schWeek = null;
+let schYear = null;
+let schHits = null;       // { q, hits } while search results are showing
+let schKey = '';
+let schLoading = false;
+let schShowing = false;   // the reader pane is showing one of the school books
+const schoolUrl = (url) => Boolean(url) && /^http:\/\/127\.0\.0\.1:\d+\/f\/[a-z0-9-]+\.pdf/.test(url);
+const subjectVar = (id) => `var(--sub-${['ela', 'math', 'hist', 'sci'].includes(id) ? id : 'added'})`;
+
+async function schoolOpen(fileId, page) {
+  const r = await api.schoolOpen(fileId, page || 1);
+  $('schoolbar-label').textContent = `${r.label}${page ? `, page ${r.page}` : ''}`;
+  openUrl(r.url);
+}
+function schoolLink(label, link) {
+  const b = el('button', 'btn', link.page ? `${label}, p. ${link.page}` : label);
+  b.type = 'button';
+  b.disabled = !link.here;
+  b.title = !link.here ? 'Download the files first' : link.page ? 'Opens at the page this app found for it. If it is a page or two off, turn the page.' : 'Opens at the first page';
+  b.addEventListener('click', () => guard(() => schoolOpen(link.fileId, link.page), $('sch-error')));
+  return b;
+}
+function schoolFileButton(f) {
+  const b = el('button', 'btn', f.here ? `${f.label} (${bytes(f.bytes)})` : `${f.label} (not downloaded)`);
+  b.type = 'button';
+  b.disabled = !f.here;
+  b.addEventListener('click', () => guard(() => schoolOpen(f.id, 1), $('sch-error')));
+  return b;
+}
+
+function paintSchoolFiles() {
+  const s = state.school;
+  const box = $('sch-files');
+  const j = s.job;
+  const key = JSON.stringify([s.have, s.files, s.bytes, s.indexed, s.added, j && [j.kind, j.done, j.total, j.current], s.error, Boolean(state.edition?.active)]);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const kids = [];
+  const button = (label, fn, primary) => { const b = el('button', `btn${primary ? ' primary' : ''}`, label); b.type = 'button'; b.id = `sch-${label.toLowerCase().split(' ')[0]}`; b.addEventListener('click', () => { $('sch-error').hidden = true; guard(fn, $('sch-error')); }); return b; };
+  if (j) {
+    kids.push(el('p', '', j.kind === 'download' ? `Downloading file ${Math.min(j.done + 1, j.total)} of ${j.total}${j.bytes ? ` (${bytes(j.bytes)} so far)` : ''}: ${j.current}` : `Reading the files so they can be searched and opened at the right page: ${j.done} of ${j.total}`));
+    kids.push(button('Cancel', () => api.schoolCancel()));
+    const bar = document.createElement('progress'); bar.max = Math.max(j.total, 1); bar.value = j.done; kids.push(bar);
+  } else if (!s.have) {
+    kids.push(el('p', '', `Nothing is downloaded yet. Grade ${s.grade} is ${s.files} PDF files from the ${s.publisher}: teacher guides, student books, readers and tests. Expect a few gigabytes; the real size is shown once they are here.`));
+    const b = button(`Download the Grade ${s.grade} files`, () => api.schoolDownload(), true);
+    b.id = 'sch-download';
+    b.disabled = !state.edition?.active;
+    kids.push(b);
+  } else if (s.have < s.files) {
+    kids.push(el('p', '', `${s.have} of ${s.files} files are here (${bytes(s.bytes)}).${s.error ? ` ${s.error}` : ''}`));
+    const b = button('Download the rest', () => api.schoolDownload(), true); b.id = 'sch-download'; kids.push(b);
+  } else {
+    kids.push(el('p', '', `All ${s.files} files are here (${bytes(s.bytes)})${s.indexed >= s.files ? ' and can be searched' : `; ${s.indexed} have been read for search`}.`));
+  }
+  box.replaceChildren(...kids);
+}
+
+function paintSchoolWeek() {
+  const w = schWeek;
+  const s = state.school;
+  const kids = [];
+  const nav = el('div', 'sch-weeknav');
+  const step = (label, to, id) => { const b = el('button', 'btn', label); b.type = 'button'; b.id = id; b.disabled = to < 1 || to > w.of; b.addEventListener('click', () => { schWeekNo = to; schoolLoad(true); }); return b; };
+  nav.append(step('Earlier week', w.number - 1, 'sch-prev'), el('h2', '', `Week ${w.number} of ${w.of}`), step('Later week', w.number + 1, 'sch-next'), el('span', 'sch-meta', w.semester === 1 ? 'First semester' : 'Second semester'));
+  if (w.number !== s.currentWeek) { const here = el('button', 'btn quiet', `Go to week ${s.currentWeek}, where you are`); here.type = 'button'; here.addEventListener('click', () => { schWeekNo = null; schoolLoad(true); }); nav.append(here); }
+  nav.append(el('span', 'sch-count', `${s.sessionsDone} of ${s.sessions} days of lessons done`));
+  kids.push(nav);
+
+  const covers = el('div', 'sch-covers');
+  covers.append(el('h3', '', 'What this week covers'));
+  const dl = el('dl');
+  for (const sub of w.summary) {
+    const dd = el('dd');
+    for (const u of sub.units) {
+      const line = el('p');
+      line.append(el('b', '', `Unit ${u.n}, ${u.title}: `), `${u.covers}.`);
+      const look = el('button', 'btn quiet', 'Read about it in the library');
+      look.type = 'button';
+      look.addEventListener('click', () => { $('search-input').value = u.title; doSearch(u.title); });
+      dd.append(line, el('p', 'focus', u.focus), look);
+    }
+    const dt = el('dt', '', sub.name); dt.style.color = subjectVar(sub.subject);
+    dl.append(dt, dd);
+  }
+  covers.append(dl);
+  kids.push(covers);
+
+  w.days.forEach((sessions, i) => {
+    const day = el('section', 'sch-day');
+    day.append(el('h3', '', SCHOOL_DAYS[i] || `Day ${i + 1}`));
+    if (!sessions.length) day.append(el('p', 'sch-free', 'Nothing new today. Use it to catch up or review.'));
+    for (const x of sessions) {
+      const row = el('div', `sch-row${x.done ? ' done' : ''}`);
+      row.style.setProperty('--sub', subjectVar(x.subject));
+      row.dataset.session = x.id;
+      const box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = x.done; box.dataset.focus = x.id;
+      box.setAttribute('aria-label', `Done: ${x.subjectName}, Unit ${x.unitN}, ${x.label}`);
+      box.addEventListener('change', () => guard(() => api.schoolDone([x.id], box.checked), $('sch-error')));
+      const subject = el('div', 'sch-subject', x.subjectName);
+      subject.append(el('small', '', `about ${x.minutes} minutes`));
+      const what = el('p', 'sch-what');
+      what.append(el('b', '', x.label), `. Unit ${x.unitN}: ${x.unitTitle}`);
+      const links = el('div', 'sch-links');
+      links.append(...x.links.map((l) => schoolLink(l.label, l)));
+      row.append(box, subject, what, links);
+      if (x.caution && x.n === 1) row.append(el('p', 'sch-caution', x.caution));
+      day.append(row);
+    }
+    kids.push(day);
+  });
+  const all = w.days.flat();
+  if (all.length) {
+    const allDone = all.every((x) => x.done);
+    const b = el('button', 'btn', allDone ? 'Untick the whole week' : 'Tick the whole week as done');
+    b.type = 'button'; b.id = 'sch-week-done';
+    b.addEventListener('click', () => guard(() => api.schoolDone(all.map((x) => x.id), !allDone), $('sch-error')));
+    kids.push(b);
+  }
+  $('sch-body').replaceChildren(...kids);
+}
+
+function paintSchoolYear() {
+  const y = schYear;
+  const kids = [el('p', 'small-print', 'The order of the units and lessons is the publisher\'s. The weeks are this app\'s own arrangement: each subject\'s days are spread evenly over 36 weeks of five days. Skip a unit and the rest close up.')];
+  for (const sub of y.subjects) {
+    const block = el('section', 'sch-subject-block');
+    block.style.setProperty('--sub', subjectVar(sub.id));
+    const total = y.totals.find((t) => t.subject === sub.id);
+    block.append(el('h2', '', sub.name), el('p', 'sch-meta', `${sub.series}. About ${sub.minutes} minutes a day, ${total ? total.sessions : 0} days in the year. ${sub.licence}`));
+    const table = el('table', 'sch-units');
+    const head = el('tr');
+    head.append(el('th', '', 'Unit'), el('th', '', 'What it teaches, and its files'), el('th', '', 'Weeks'), el('th', '', 'Done'), el('th', '', 'Skip'));
+    const thead = el('thead'); thead.append(head);
+    const tb = el('tbody');
+    for (const u of sub.units) {
+      const tr = el('tr', u.skipped ? 'skipped' : '');
+      tr.dataset.unit = u.id;
+      const main = el('td');
+      main.append(el('div', 'unit-title', u.title), el('p', 'focus', u.focus));
+      if (u.note) main.append(el('p', 'note', u.note));
+      if (u.caution) main.append(el('p', 'sch-caution', u.caution));
+      const files = el('div', 'sch-unit-files');
+      files.append(...u.files.map(schoolFileButton));
+      main.append(files);
+      const skip = document.createElement('input');
+      skip.type = 'checkbox'; skip.checked = u.skipped; skip.dataset.focus = `skip-${u.id}`;
+      skip.setAttribute('aria-label', `Skip ${sub.name} unit ${u.n}, ${u.title}`);
+      skip.addEventListener('change', () => guard(() => api.schoolSkip(u.id, skip.checked), $('sch-error')));
+      const skipCell = el('td'); skipCell.append(skip);
+      tr.append(el('td', 'num', String(u.n)), main, el('td', 'num', u.weeks ? (u.weeks[0] === u.weeks[1] ? String(u.weeks[0]) : `${u.weeks[0]} to ${u.weeks[1]}`) : 'skipped'), el('td', 'num', `${u.done} of ${u.days}`), skipCell);
+      tb.append(tr);
+    }
+    table.append(thead, tb);
+    block.append(table);
+    if (sub.extras.length) {
+      const extra = el('div', 'sch-unit-files');
+      extra.append(...sub.extras.map(schoolFileButton));
+      block.append(el('p', 'sch-meta', 'For the whole year:'), extra);
+    }
+    kids.push(block);
+  }
+  $('sch-body').replaceChildren(...kids);
+}
+
+function paintSchoolBooks() {
+  const y = schYear;
+  const kids = [el('p', 'small-print', 'The lessons are free, but a few of them are built on books that are not, and science needs materials. Tick what you have. Nothing here is bought or ordered by the app.')];
+  for (const b of y.shopping) {
+    const row = el('div', 'sch-buy');
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.checked = b.have; box.dataset.focus = `have-${b.id}`;
+    box.setAttribute('aria-label', `I have ${b.title}`);
+    box.addEventListener('change', () => guard(() => api.schoolHave(b.id, box.checked), $('sch-error')));
+    const text = el('div');
+    const title = el('p');
+    title.append(el('b', '', b.title), el('span', `sch-tag${b.need === 'required' ? ' need' : ''}`, b.need === 'required' ? 'Needed' : 'Optional'));
+    text.append(title, el('p', 'who', `${b.by ? `${b.by}. ` : ''}For ${b.for}.`), el('p', '', b.note));
+    row.append(box, text);
+    kids.push(row);
+  }
+  kids.push(el('h2', 'sch-h2', 'Books I have added'), el('p', 'small-print', 'PDFs you own, such as a course you bought as a download, can be kept here. They are copied into the library, can be searched with the rest, and move with it. Only add files you have the right to keep; books from stores that lock their e-books cannot be added.'));
+  for (const f of y.added) {
+    const row = el('div', 'sch-unit-files');
+    const remove = el('button', 'btn quiet', 'Remove'); remove.type = 'button';
+    remove.addEventListener('click', () => guard(() => api.schoolRemoveBook(f.id), $('sch-error')));
+    row.append(schoolFileButton(f), remove);
+    kids.push(row);
+  }
+  const add = el('button', 'btn', 'Add PDF books'); add.type = 'button'; add.id = 'sch-add';
+  add.addEventListener('click', () => { $('sch-error').hidden = true; guard(() => api.schoolAddBooks(), $('sch-error')); });
+  kids.push(add);
+  $('sch-body').replaceChildren(...kids);
+}
+
+function paintSchoolHits() {
+  const { q, hits } = schHits;
+  const kids = [];
+  const back = el('button', 'btn quiet', 'Back to the plan'); back.type = 'button';
+  back.addEventListener('click', () => { schHits = null; $('sch-q').value = ''; schoolLoad(true); });
+  const s = state.school;
+  kids.push(el('p', '', hits.length ? `${hits.length === 40 ? 'The best 40 pages' : `${hits.length} ${hits.length === 1 ? 'page' : 'pages'}`} with "${q}" in the school books.` : s.indexed ? `No page of the school books has all of: ${q}.` : 'The school books have not been downloaded and read yet, so there is nothing to search.'), back);
+  for (const h of hits) {
+    const b = el('button', 'sch-hit'); b.type = 'button';
+    b.append(el('b', '', `${h.subjectName}, ${h.where}: ${h.label}, page ${h.page}`), el('span', '', h.snippet));
+    b.addEventListener('click', () => guard(() => schoolOpen(h.fileId, h.page), $('sch-error')));
+    kids.push(b);
+  }
+  $('sch-body').replaceChildren(...kids);
+}
+
+async function schoolLoad(force) {
+  if (schLoading) return;
+  schLoading = true;
+  try {
+    const focus = document.activeElement?.dataset?.focus;
+    if (schHits) paintSchoolHits();
+    else if (schTab === 'week') { schWeek = await api.schoolWeek(schWeekNo || state.school.currentWeek); paintSchoolWeek(); } else { schYear = await api.schoolOverview(); if (schTab === 'year') paintSchoolYear(); else paintSchoolBooks(); }
+    for (const t of document.querySelectorAll('.sch-tab')) t.setAttribute('aria-selected', String(!schHits && t.dataset.tab === schTab));
+    if (focus) document.querySelector(`#sch-body [data-focus="${CSS.escape(focus)}"]`)?.focus();
+    if (force) $('view-school').scrollTop = 0;
+  } catch (err) { $('sch-error').textContent = err.message; $('sch-error').hidden = false; } finally { schLoading = false; }
+}
+
+function renderSchool() {
+  const s = state?.school;
+  $('nav-school').disabled = !s || golfPlaying();
+  $('nav-school').setAttribute('aria-pressed', String(view === 'school'));
+  $('schoolbar').hidden = !(view === 'reader' && schShowing);
+  if (!s || view !== 'school') return;
+  $('sch-title').textContent = `School: ${s.title}`;
+  $('sch-credit').textContent = s.credit;
+  paintSchoolFiles();
+  // The plan is fetched again when something that changes it has changed, not on every download tick.
+  const key = [s.job ? 'busy' : `${s.have}|${s.indexed}`, s.sessionsDone, s.sessions, s.added, schTab].join('|');
+  if (key !== schKey) { schKey = key; schoolLoad(false); }
+}
+for (const t of document.querySelectorAll('.sch-tab')) t.addEventListener('click', () => { schTab = t.dataset.tab; schHits = null; schKey = ''; renderSchool(); });
+$('nav-school').addEventListener('click', () => { if (!golfPlaying()) { schKey = ''; showView('school'); } });
+$('schoolbar-back').addEventListener('click', () => showView('school'));
+$('sch-search').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('sch-q').value.trim();
+  if (!q) return;
+  $('sch-error').hidden = true;
+  guard(async () => { schHits = { q, hits: await api.schoolSearch(q) }; await schoolLoad(true); }, $('sch-error'));
+});
+
 // ------------------------------------------------------------ guided tour
 // Numbered pins on the buttons along the top, and a card that says what each one does. It opens by
 // itself at every start until "Don't show again", and once more the first time a new version runs.
@@ -1389,6 +1651,7 @@ const TOUR_STOPS = [
   [['nav-back', 'nav-forward'], 'Back and forward', 'Step through the pages you have read.'],
   [['nav-home'], 'Home', 'The front page of the library that is open.'],
   [['nav-golf'], 'Wiki golf', 'A game for one to six players: get from one article to another using only the links in between.'],
+  [['nav-school'], 'School', 'A year of lessons laid out week by week, with the teacher guides, student books and tests to go with them.'],
   [['nav-random'], 'Random article', 'Opens an article picked at random.'],
   [['lib-select'], 'Library list', 'Switch between Wikipedia and the other libraries you have downloaded.'],
   [['search'], 'Search', 'Titles appear as you type. Press Enter to search the full text of every article. Ctrl+K jumps here.'],
@@ -1397,6 +1660,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.16.0': [
+    'School: Grade 5 as a full year of lessons, week by week, from the Core Knowledge Foundation\'s free curriculum.',
+    'Teacher guides, student books, readers and tests open inside the app, and all of them can be searched.',
+    'A list of the few books and materials the lessons need that are not free, and a place to add PDFs you own.',
+  ],
   '0.15.0': [
     'Wiki golf has a clubhouse: saved players with their own characters, records, wins and losses, and handicaps.',
     'This tour. It can be opened again from Library, About.',
@@ -2022,7 +2290,7 @@ function renderGolf() {
   const g = state?.golf || null;
   const playing = golfPlaying();
   document.body.classList.toggle('golf-playing', playing);
-  for (const id of ['search', 'nav-home', 'nav-random', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
+  for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
   $('nav-golf').setAttribute('aria-pressed', String(Boolean(g) || view === 'golf'));
 
   const seen = g ? `${g.holeNumber}:${g.player}:${g.phase}` : null;
@@ -2284,6 +2552,7 @@ function render() {
   renderAgreement();
   renderLibraries();
   renderGolf();
+  renderSchool();
   maybeTour();
   const e = state.edition;
   const active = e?.active;

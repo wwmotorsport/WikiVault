@@ -159,6 +159,54 @@ These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving
 
 **Links between projects.** Pages often link to a sister project, such as a Wikiversity lesson pointing at a Wikipedia article. When that project is downloaded and has the page, the link opens in the offline copy and the open library switches with it. When it is not downloaded, or does not have that page, the notice that normally offers to open the website says which.
 
+## School: Grade 5
+
+The open-book button in the top bar opens a full year of Grade 5, arranged as 36 weeks of five days in two semesters. The lessons are the Core Knowledge Foundation's free curriculum, used as published:
+
+| Subject | Series | About a day | What is in the files |
+|---|---|---|---|
+| Language Arts | Core Knowledge Language Arts (CKLA) | 90 minutes | Teacher guides with every lesson, readers, activity books, tests and answer keys |
+| Mathematics | Core Knowledge Mathematics (CKMath), built on Illustrative Mathematics' IM K-5 Math | 60 minutes | Teacher guides with lesson plans and answers, student workbooks, unit tests |
+| History and Geography | Core Knowledge History and Geography (CKHG) | 45 minutes | Student readers, teacher guides with questions, tests and answer keys |
+| Science | Core Knowledge Science (CKSci) | 45 minutes | Student readers, teacher guides with investigations, tests and answer keys |
+
+Visual Arts and Music are not included yet.
+
+**Before downloading.** The plan is part of the app. The week, the year and the list of what to buy can all be read straight away; only the links into the books wait for the files.
+
+**Downloading.** *Download the Grade 5 files* fetches 105 PDF files from coreknowledge.org into `<library>\school\`. It needs Wikipedia to be set up first and at least 4 GB free. It can be cancelled and continued later; files already fetched are kept. Afterwards the app reads every page of every file once, in the background, so the books can be searched and opened at the right page. The line above the tabs shows how far it is and, at the end, the real size.
+
+**The week.** *What this week covers* names the unit and lessons of each subject. Under it, each day lists its lessons. Every lesson has links:
+
+- **Lesson plan**: the teacher guide, at that lesson.
+- **Student pages** or **Activity pages**: what the student works in.
+- **Reading** or **Reader**: the chapter read that day.
+- **Answer key**, **The test**, **Pacing guide**: where the unit has them.
+
+A link that says "p. 12" opens the book inside the app at the page the app found for it. The page comes from reading the book's text, not from a table the publisher supplies, so it can be a page or two off, and sometimes it is not found; then the link opens the book at its first page. The bar above the book says which book and page it is, and **Back to the plan** returns to the week. The viewer's own buttons print or save the file.
+
+Tick a lesson when it is done. The count at the top right is days of lessons done out of the year, and *Go to week N, where you are* jumps to the first week with something unticked.
+
+**The year.** Every unit of every subject: what it teaches, the weeks it falls in, the days done, and its files. Ticking **Skip** on a unit takes it out of the plan; that subject's remaining units then spread evenly over the 36 weeks. One science unit covers human growth and reproduction and is marked, so you can read it first and decide.
+
+**Search the school books.** The box at the top searches the text of every page of every book, including ones you added. A result opens the book at that page. This search is separate from the search box in the top bar and from Ask, which work on the encyclopedia.
+
+**Books and supplies.** The lessons are free, but a few are built on things that are not:
+
+- *They Call Me Güero* by David Bowles, the book the first language arts unit reads.
+- *Adventures of Don Quixote*, the Dover edition adapted by Argentina Palacios.
+- *The Science of Breakable Things* by Tae Keller, for the novel study that ends the year.
+- The *Poet's Journal* for the poetry unit, a workbook sold by Amplify to schools. If you cannot get it, skip that unit on the year page.
+- Materials for the science investigations. Each science teacher guide lists what its unit needs.
+
+Printing is optional: everything can be read on screen, but the activity pages are meant to be written on. The app buys and orders nothing; the boxes there are only your own checklist.
+
+**Books I have added.** PDFs you own, such as a course bought as a download, can be copied into the library with *Add PDF books*. They are searched with the rest and move with the library. Books bought from stores that lock them to a reader app cannot be added, because they are not plain PDF files.
+
+**Where it is kept, and how big it is.** `<library>\school\g5\` holds the PDFs, `school\index\` the text of their pages, and `school\progress-g5.json` your ticks. All of it moves with Wikipedia whenever the library is moved, counts toward the size of a dedicated partition, and is removed by the uninstaller if you ask it to remove your data. The PDFs are stored as the publisher made them. They are not compressed further: a PDF is already compressed inside, so packing it again saves very little.
+
+**Licences.** The Core Knowledge materials are under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 licence; the mathematics is based on IM K-5 Math by Illustrative Mathematics, under Creative Commons Attribution 4.0. They are free to use and copy for teaching and may not be sold. Wikivault is not affiliated with or endorsed by either.
+
 ## Wiki golf
 
 A game for one to six players on one computer, played entirely in the offline copy and drawn in an 8-bit style. Press the flag button in the top bar to open the clubhouse.
@@ -219,7 +267,7 @@ Use *Settings > Apps > Installed apps > Wikivault > Uninstall*, or `Uninstall Wi
 
 - asks a running copy to close, which also stops the reader engine;
 - removes the program files, shortcuts and the start-with-Windows entry;
-- asks whether to also remove the library and settings. If you say yes it deletes the app's own files only: editions, partial downloads and the state file in the library folder, the staging folder's files, and `%APPDATA%\Wikivault` (settings, log, reader engine, caches). Anything else you put in the library folder is left alone;
+- asks whether to also remove the library and settings. If you say yes it deletes the app's own files only: editions, partial downloads and the state file in the library folder, the school books with their index and your progress, the staging folder's files, and `%APPDATA%\Wikivault` (settings, log, reader engine, caches). Anything else you put in the library folder is left alone;
 - if a Wikivault partition exists, tells you before it starts and lets you cancel to remove the partition from inside the app first. The uninstaller never touches partitions.
 
 - if Wikivault was what installed Foundry Local, asks whether to remove that too (default: keep, since other programs may use it). If Foundry Local was already on the PC it is left alone without asking; remove it yourself with `winget uninstall Microsoft.FoundryLocal`.
@@ -363,6 +411,7 @@ When no article contains every word, the search is retried without filler words 
 | Edition state | `<library>\state.json` |
 | Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
+| School books, their text index and your progress | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |
 | Wiki golf players and records | `%APPDATA%\Wikivault\golf.json` |
 
 ## If something goes wrong

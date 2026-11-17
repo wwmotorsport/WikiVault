@@ -21,6 +21,9 @@
       <button class="icon-btn" id="nav-golf" title="Wiki golf: a game for one to six players" aria-label="Wiki golf" aria-pressed="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 17V3l8 3.200L7 9.400M3.500 17h7"/></svg>
       </button>
+      <button class="icon-btn" id="nav-school" title="School: a year of lessons, week by week" aria-label="School" aria-pressed="false">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 5.500C8 4 5.500 3.800 3 4.200v10.600c2.500-.400 5-.200 7 1.300 2-1.500 4.500-1.700 7-1.300V4.200c-2.500-.400-5-.200-7 1.300ZM10 5.500V16"/></svg>
+      </button>
       <button class="icon-btn" id="nav-random" title="Open a random article" aria-label="Open a random article">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h3.2c2.6 0 3.9 8 6.6 8H17M3 14h3.2c1 0 1.8-1.200 2.500-2.700M17 6h-4.200c-1 0-1.800 1.100-2.500 2.600M14.500 3.500 17 6l-2.500 2.500M14.500 11.500 17 14l-2.500 2.500"/></svg>
       </button>
@@ -49,6 +52,12 @@
     <button class="btn small quiet" id="external-dismiss">Stay here</button>
   </div>
   <div class="notice warn" id="engine-error" hidden></div>
+
+  <div class="schoolbar" id="schoolbar" hidden>
+    <span class="schoolbar-tag">School</span>
+    <span class="schoolbar-label" id="schoolbar-label"></span>
+    <button class="btn small" id="schoolbar-back" type="button">Back to the plan</button>
+  </div>
 
   <div class="golfbar" id="golfbar" hidden>
     <span class="golfbar-hole" id="golfbar-hole"></span>
@@ -155,6 +164,29 @@
       </section>
 
       <!-- Library: edition, updates, answers -->
+      <section class="view pad" id="view-school" hidden>
+        <div class="school">
+          <header class="sch-head">
+            <div>
+              <h1 class="display" id="sch-title">School</h1>
+              <p class="small-print" id="sch-credit"></p>
+            </div>
+            <form class="sch-search" id="sch-search" role="search">
+              <input id="sch-q" type="text" placeholder="Search the school books" aria-label="Search the school books" autocomplete="off" spellcheck="false">
+              <button class="btn" type="submit">Search</button>
+            </form>
+          </header>
+          <div class="sch-files" id="sch-files" aria-live="polite"></div>
+          <p class="error-text" id="sch-error" hidden></p>
+          <div class="sch-tabs" role="tablist" aria-label="School">
+            <button class="sch-tab" role="tab" id="sch-tab-week" data-tab="week" aria-selected="true">The week</button>
+            <button class="sch-tab" role="tab" id="sch-tab-year" data-tab="year" aria-selected="false">The year</button>
+            <button class="sch-tab" role="tab" id="sch-tab-books" data-tab="books" aria-selected="false">Books and supplies</button>
+          </div>
+          <div id="sch-body"></div>
+        </div>
+      </section>
+
       <section class="view" id="view-golf" hidden>
         <div class="g8" id="golf-screen">
           <div class="g8-stage">

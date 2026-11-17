@@ -1,0 +1,1491 @@
+{
+ "version": 1,
+ "grade": 5,
+ "title": "Grade 5",
+ "weeks": 36,
+ "daysPerWeek": 5,
+ "publisher": "Core Knowledge Foundation",
+ "home": "https://www.coreknowledge.org/download-free-curriculum/",
+ "credit": "Curriculum materials by the Core Knowledge Foundation, downloaded from coreknowledge.org and used under their Creative Commons licences. Mathematics is based on IM K-12 Math by Illustrative Mathematics (CC BY 4.0). Wikivault is not affiliated with or endorsed by them.",
+ "subjects": [
+  {
+   "id": "ela",
+   "name": "Language Arts",
+   "series": "Core Knowledge Language Arts (CKLA)",
+   "minutes": 90,
+   "licence": "CC BY-NC-SA 4.0.",
+   "roles": {
+    "teacher": "Daily lesson plans, the unit assessments, and the answer key to the Activity Book.",
+    "student": "Activity pages, including the take-home pages (homework).",
+    "reader": "The text the unit is built on."
+   },
+   "units": [
+    {
+     "id": "ela-u1",
+     "n": 1,
+     "title": "They Call Me Güero",
+     "focus": "Contemporary fiction told in poems; the writing process and an extended writing project. Starts with the beginning-of-year assessment.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-1-they-call-me-guero-g5/",
+     "plan": {
+      "lessons": 15,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Beginning-of-year assessment",
+       "count": 2,
+       "before": true
+      },
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/07/CKLA_G5_U1_They-Call-Me-Guero_Teacher-Guide_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/05/CKLA_G5_U1_They-Call-Me-Güero-_Activity-Book_2R.pdf"
+      }
+     ],
+     "buy": [
+      "guero"
+     ]
+    },
+    {
+     "id": "ela-u2",
+     "n": 2,
+     "title": "Early American Civilizations",
+     "focus": "Informational reading on the Maya, Aztec and Inca; an explanatory report comparing the three; grammar, morphology and spelling.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-2-early-american-civilizations/",
+     "plan": {
+      "lessons": 15,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5_U2_Early-American-Civilizations_TG.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5U2_Early-American-Civilizations_AB.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Maya, Aztec, and Inca",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5U2_Early-American-Civilizations_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5U2_Early-American-Civilizations_DC.pdf"
+      }
+     ]
+    },
+    {
+     "id": "ela-u3",
+     "n": 3,
+     "title": "Adventures of Don Quixote",
+     "focus": "A classic novel in adapted form; fact and opinion; the structure of a persuasive essay.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-3-adventures-of-dondon-quixote/",
+     "plan": {
+      "lessons": 15,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/03/CKLA_G5U3_Don-Quixote_TG_W1.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U3_Don-Quixote_AB.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U3_Don-Quixote_DC.pdf"
+      }
+     ],
+     "buy": [
+      "quixote"
+     ]
+    },
+    {
+     "id": "ela-u4",
+     "n": 4,
+     "title": "The Renaissance",
+     "focus": "The art and literature of the Renaissance and its patrons, artists and scholars; an informational writing project.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-4-the-renaissance/",
+     "plan": {
+      "lessons": 19,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U4_The-Renaissance_TG.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U4_The-Renaissance_AB.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Patrons, Artists, and Scholars",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U4_The-Renaissance_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U4_The-Renaissance_DC.pdf"
+      }
+     ]
+    },
+    {
+     "id": "ela-u5",
+     "n": 5,
+     "title": "A Midsummer Night's Dream",
+     "focus": "Shakespeare's play in an edition for young readers; character, setting, plot, conflict and dialogue.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-5-a-midsummer-nights-dream/",
+     "plan": {
+      "lessons": 15,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2021/01/CKLA_G5U5_A-Midsummer-Nights-Dream_TG_W1.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA-G5U5-A-Midsummer-Nights-Dream-AB.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Core Classics reader: A Midsummer Night's Dream",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/04/CC_AMidsummerNightsDream_Reader_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "ela-u6",
+     "n": 6,
+     "title": "The Reformation",
+     "focus": "The printing press and the Reformation; letter and diary writing; preparing a slide presentation.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-6-the-reformation/",
+     "plan": {
+      "lessons": 10,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U6_The-Reformation_TG_W1.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U6_The-Reformation_AB.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Shifts in Power",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U6_The-Reformation_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U6_The-Reformation_DC.pdf"
+      }
+     ]
+    },
+    {
+     "id": "ela-u7",
+     "n": 7,
+     "title": "Poetry",
+     "focus": "Poems from several centuries and traditions; meter, rhyme and free verse; writing original poems.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-7-poetry/",
+     "plan": {
+      "lessons": 12,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U7_Poetry_TG.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U7_Poetry_DC.pdf"
+      }
+     ],
+     "buy": [
+      "poets-journal"
+     ],
+     "note": "The student book for this unit, the Poet's Journal, is sold only by Amplify. If you cannot get it, skip the unit."
+    },
+    {
+     "id": "ela-u8",
+     "n": 8,
+     "title": "Native Americans",
+     "focus": "Native American nations, their regions and cultures, and how United States policy in the 1800s changed their lives. Ends with the end-of-year assessment.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-8-native-americans/",
+     "plan": {
+      "lessons": 15,
+      "word": "Lesson"
+     },
+     "extra": [
+      {
+       "kind": "review",
+       "title": "Pausing point and unit assessment",
+       "count": 2
+      },
+      {
+       "kind": "assessment",
+       "title": "End-of-year assessment",
+       "count": 3
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U8_Native-Americans_TG_W1.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U8_Native-Americans_AB.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: A Changing Landscape",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U8_Native-Americans_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Digital Components (posters and charts)",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2022/12/CKLA_G5U8_Native-Americans_DC.pdf"
+      }
+     ]
+    },
+    {
+     "id": "ela-u9",
+     "n": 9,
+     "title": "The Science of Breakable Things",
+     "focus": "A novel study: a contemporary middle-grade novel read in assignments, with discussion, vocabulary and writing.",
+     "page": "https://www.coreknowledge.org/free-resource/ckla-unit-9-the-science-of-breakable-things/",
+     "plan": {
+      "days": 15
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Novel Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U9_Science-of-Breakable-Things_NG.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Activity Book",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/08/CKLA_G5U9_Science-of-Breakable-Things_AB.pdf"
+      }
+     ],
+     "buy": [
+      "breakable"
+     ],
+     "note": "The guide is organised by reading assignments, not daily lessons. Fifteen days are set aside here; follow the Novel Guide."
+    }
+   ],
+   "extras": [
+    {
+     "role": "teacher",
+     "label": "Introduction to Grade 5 language arts",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5_IntroductionPacket_web.pdf"
+    },
+    {
+     "role": "teacher",
+     "label": "Beginning-of-year assessment",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5_Assessment_web_2.pdf"
+    },
+    {
+     "role": "teacher",
+     "label": "Yearlong teacher resources",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G5_TeacherResources_web.pdf"
+    },
+    {
+     "role": "teacher",
+     "label": "Decoding and encoding remediation supplement (Grades 4-5)",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_DecodingEncodingSupp_Web_Oct_2016.pdf"
+    },
+    {
+     "role": "student",
+     "label": "Fluency supplement (Grades 4-5)",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKLA_G4G5_FluencySupp_Web.pdf"
+    }
+   ]
+  },
+  {
+   "id": "math",
+   "name": "Mathematics",
+   "series": "Core Knowledge Mathematics (CKMath)",
+   "minutes": 60,
+   "licence": "CC BY 4.0. Based on IM K-12 Math by Illustrative Mathematics.",
+   "roles": {
+    "teacher": "Lesson plans, the unit assessments with answer keys, and family letters.",
+    "student": "The lesson activities and the practice problems (use these as homework)."
+   },
+   "units": [
+    {
+     "id": "math-u1",
+     "n": 1,
+     "title": "Finding Volume",
+     "focus": "Volume as the number of unit cubes that fill a solid; volume of rectangular prisms by layers and by multiplying side lengths.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-1-finding-volume/",
+     "plan": {
+      "lessons": 12,
+      "word": "Lesson"
+     },
+     "note": "1 of the 12 lessons is marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U1_FindingVolume_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U1_FindingVolume_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u2",
+     "n": 2,
+     "title": "Fractions as Quotients and Fraction Multiplication",
+     "focus": "A fraction as the answer to a division; multiplying a whole number by a fraction; area with fractional side lengths.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-2-fractions-as-quotients-and-fraction-multiplication/",
+     "plan": {
+      "lessons": 17,
+      "word": "Lesson"
+     },
+     "note": "2 of the 17 lessons are marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U2_FractionsAsQuotientsAndFractionMultiplication_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U2_FractionsAsQuotientsAndFractionMultiplication_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u3",
+     "n": 3,
+     "title": "Multiplying and Dividing Fractions",
+     "focus": "Multiplying two fractions; dividing a whole number by a unit fraction and a unit fraction by a whole number.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-3-multiplying-and-dividing-fractions/",
+     "plan": {
+      "lessons": 20,
+      "word": "Lesson"
+     },
+     "note": "3 of the 20 lessons are marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U3_MultiplyingAndDividingFractions_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U3_MultiplyingAndDividingFractions_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u4",
+     "n": 4,
+     "title": "Wrapping Up Multiplication and Division with Multi-Digit Numbers",
+     "focus": "The standard algorithm for multi-digit multiplication; division with two-digit divisors using partial quotients.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-4-wrapping-up-multiplication-and-division-with-multi-digit-numbers/",
+     "plan": {
+      "lessons": 21,
+      "word": "Lesson"
+     },
+     "note": "2 of the 21 lessons are marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U4_WrappingUpMultiplicationAndDivisionWithMultiDigitNumbers_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U4_WrappingUpMultiplicationAndDivisionWithMultiDigitNumbers_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u5",
+     "n": 5,
+     "title": "Place Value Patterns and Decimal Operations",
+     "focus": "Reading, writing, comparing and rounding decimals to thousandths; adding, subtracting, multiplying and dividing decimals to hundredths.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-5-place-value-patterns-and-decimal-operations/",
+     "plan": {
+      "lessons": 26,
+      "word": "Lesson"
+     },
+     "note": "2 of the 26 lessons are marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U5_PlaceValuePatternsAndDecimalOperations_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U5_PlaceValuePatternsAndDecimalOperations_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u6",
+     "n": 6,
+     "title": "More Decimal and Fraction Operations",
+     "focus": "Powers of 10 and unit conversion; adding and subtracting fractions with unlike denominators; line plots; size of products.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-6-more-decimal-and-fraction-operations/",
+     "plan": {
+      "lessons": 21,
+      "word": "Lesson"
+     },
+     "note": "2 of the 21 lessons are marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U6_MoreDecimalAndFractionOperations_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U6_MoreDecimalAndFractionOperations_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u7",
+     "n": 7,
+     "title": "Shapes on the Coordinate Plane",
+     "focus": "Plotting points on the coordinate grid; classifying triangles and quadrilaterals; numerical patterns and their graphs.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-7-shapes-on-the-coordinate-plane/",
+     "plan": {
+      "lessons": 13,
+      "word": "Lesson"
+     },
+     "note": "Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U7_ShapesOnTheCoordinatePlane_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U7_ShapesOnTheCoordinatePlane_SR_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "math-u8",
+     "n": 8,
+     "title": "Putting It All Together",
+     "focus": "Review of the year: multiplication and division fluency, volume problems, and operations with decimals and fractions.",
+     "page": "https://www.coreknowledge.org/free-resource/ckmath-unit-8-grade-5-putting-it-all-together/",
+     "plan": {
+      "lessons": 18,
+      "word": "Lesson"
+     },
+     "note": "1 of the 18 lessons is marked optional in the Teacher Guide. Each unit opens with a readiness check; give it with Lesson 1.",
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "End-of-unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U8_PuttingItAllTogether_TG_W2.pdf"
+      },
+      {
+       "role": "student",
+       "label": "Student Workbook",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKMath_G5U8_PuttingItAllTogether_SR_W2.pdf"
+      }
+     ]
+    }
+   ],
+   "extras": [
+    {
+     "role": "student",
+     "label": "Connecting Math to Our World: The Power of Math (reader, 23 short chapters)",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2025/07/CKMath_Lit_G5_ThePowerOfMath_SR_W1.pdf"
+    },
+    {
+     "role": "teacher",
+     "label": "Connecting Math to Our World: teacher support",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2025/07/CKMath_Lit_G5_ThePowerOfMath_TS_W1.pdf"
+    }
+   ]
+  },
+  {
+   "id": "hist",
+   "name": "History and Geography",
+   "series": "Core Knowledge History and Geography (CKHG)",
+   "minutes": 45,
+   "licence": "CC BY-NC-SA 4.0.",
+   "roles": {
+    "teacher": "A lesson plan for each chapter, activity pages, the unit assessment and the answer key.",
+    "reader": "The chapters the student reads."
+   },
+   "units": [
+    {
+     "id": "hist-u1",
+     "n": 1,
+     "title": "World Lakes",
+     "focus": "Map skills and geographical terms; the great lakes of Asia, Africa, South America and North America.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-01-world-lakes/",
+     "plan": {
+      "lessons": 4,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/01/CKHG_G5_U1_WorldLakes_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U1_WorldLakes_SR.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u2",
+     "n": 2,
+     "title": "Maya, Aztec, and Inca Civilizations",
+     "focus": "Three civilizations of the Americas, their cities and knowledge, and the Spanish conquest.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-02-maya-aztec-inca-civilizations/",
+     "plan": {
+      "lessons": 7,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U2_MayaAztecInca_Teacher-Guide.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U2_MayaAztecInca_Student-Reader.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U2_MayaAztecInca_Timeline.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u3",
+     "n": 3,
+     "title": "The Age of Exploration",
+     "focus": "European voyages of exploration, the search for the Northwest Passage, and the beginnings of the slave trade.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-03-age-exploration/",
+     "plan": {
+      "lessons": 10,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U3_AgeExploration_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U3_AgeExploration_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/03/CKHG_G5_U3_AgeExploration_TL.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u4",
+     "n": 4,
+     "title": "The Renaissance",
+     "focus": "Italian city-states, patrons and artists, Leonardo and Michelangelo, and the spread of the Renaissance north.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-04-renaissance/",
+     "plan": {
+      "lessons": 9,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TG_ONLINE.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TL_ONLINE.pdf"
+      }
+     ],
+     "part": 1,
+     "note": "This unit is part 1 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u5",
+     "n": 5,
+     "title": "The Reformation",
+     "focus": "Luther and the Ninety-Five Theses, the spread of Protestantism, and the Catholic response.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-05-reformation/",
+     "plan": {
+      "lessons": 5,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TG_ONLINE.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TL_ONLINE.pdf"
+      }
+     ],
+     "part": 2,
+     "note": "This unit is part 2 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u6",
+     "n": 6,
+     "title": "England in the Golden Age",
+     "focus": "Elizabeth I, the Spanish Armada, Puritans and Parliament, and the Bloodless Revolution.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-06-england-golden-age/",
+     "plan": {
+      "lessons": 6,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TG_ONLINE.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: From the Renaissance to England's Golden Age",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B1_RenaissanceAge_TL_ONLINE.pdf"
+      }
+     ],
+     "part": 3,
+     "note": "This unit is part 3 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u7",
+     "n": 7,
+     "title": "Early Russia",
+     "focus": "The geography of Russia and its growth under the czars, from Ivan the Great to Catherine the Great.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-07-early-russia/",
+     "plan": {
+      "lessons": 6,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: Czars and Shoguns",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Czars and Shoguns",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_TL.pdf"
+      }
+     ],
+     "part": 1,
+     "note": "This unit is part 1 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u8",
+     "n": 8,
+     "title": "Feudal Japan",
+     "focus": "Japan's geography, shoguns and samurai, and the country's long isolation.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-08-feudal-japan/",
+     "plan": {
+      "lessons": 5,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: Czars and Shoguns",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Czars and Shoguns",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_B2_RussiaJapan_TL.pdf"
+      }
+     ],
+     "part": 2,
+     "note": "This unit is part 2 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u9",
+     "n": 9,
+     "title": "The Geography of the United States",
+     "focus": "The regions of the United States: climate, resources and ways of life.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-09-geography-united-states/",
+     "plan": {
+      "lessons": 10,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/07/CKHG_G5_U9_GeographyUS_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/07/CKHG_G5_U9_GeographyUS_SR.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u10",
+     "n": 10,
+     "title": "Westward Expansion Before the Civil War",
+     "focus": "Early explorers of the West, canals and railroads, Native American resistance and removal, and Manifest Destiny.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-10-westward-expansion-civil-war/",
+     "plan": {
+      "lessons": 10,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U10_WestwardExpBefore_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U10_WestwardExpBefore_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U10_WestwardExpBefore_TL.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u11",
+     "n": 11,
+     "title": "The Civil War",
+     "focus": "Slavery and states' rights, secession, the major battles and leaders, emancipation, and Reconstruction.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-11-civil-war/",
+     "plan": {
+      "lessons": 24,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U11_Civil_War_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U11_Civil_War_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/08/CKHG_G5_U11_CW_TL.pdf"
+      }
+     ]
+    },
+    {
+     "id": "hist-u12",
+     "n": 12,
+     "title": "Westward Expansion After the Civil War",
+     "focus": "Gold and silver rushes, the Homestead Act, the railroads, and conflict with the peoples already living in the West.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-12-westward-expansion-civil-war/",
+     "plan": {
+      "lessons": 7,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: Native Americans and Westward Expansion",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Native Americans and Westward Expansion",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_TL.pdf"
+      }
+     ],
+     "part": 1,
+     "note": "This unit is part 1 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u13",
+     "n": 13,
+     "title": "Native Americans: Cultures and Conflicts",
+     "focus": "Ways of life of Native American peoples of the West and how westward expansion and government policy disrupted them.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-13-native-americans-cultures-conflicts/",
+     "plan": {
+      "lessons": 8,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide: Native Americans and Westward Expansion",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader: Native Americans and Westward Expansion",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Timeline cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2017/09/CKHG_G5_B3_NatAmerWestwardAfter_TL.pdf"
+      }
+     ],
+     "part": 2,
+     "note": "This unit is part 2 of a book shared with other units. "
+    },
+    {
+     "id": "hist-u14",
+     "n": 14,
+     "title": "Understanding Economics",
+     "focus": "The basic economic questions every society answers, and the choices individuals make about spending and saving.",
+     "page": "https://www.coreknowledge.org/free-resource/ckhg-unit-14-understanding-economics/",
+     "plan": {
+      "lessons": 5,
+      "word": "Chapter"
+     },
+     "extra": [
+      {
+       "kind": "assessment",
+       "title": "Unit assessment",
+       "count": 1
+      }
+     ],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/01/CKHG_G5U14_TG_Web.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/01/CKHG_G5U14_SR_Web.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Question cards",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/01/CKHG_G5U14_QC_Web.pdf"
+      }
+     ],
+     "note": "The publisher allows ten days for these five lessons; take two days over each if you have them."
+    }
+   ],
+   "extras": [
+    {
+     "role": "student",
+     "label": "Primary Source Activity Book (student edition)",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2024/10/CKHG_G5_PrimarySourceActivityBook_SE_W1.pdf"
+    },
+    {
+     "role": "teacher",
+     "label": "Primary Source Activity Book (teacher edition)",
+     "url": "https://www.coreknowledge.org/wp-content/uploads/2024/10/CKHG_G5_PrimarySourceActivityBook_TE_W1.pdf"
+    }
+   ]
+  },
+  {
+   "id": "sci",
+   "name": "Science",
+   "series": "Core Knowledge Science (CKSci)",
+   "minutes": 45,
+   "licence": "CC BY-NC-SA 4.0.",
+   "roles": {
+    "teacher": "Lesson plans, activity pages, assessments and the answer key.",
+    "reader": "The chapters the student reads.",
+    "extra": "The publisher's day-by-day pacing guide and the list of materials to gather."
+   },
+   "units": [
+    {
+     "id": "sci-u1",
+     "n": 1,
+     "title": "Investigating Matter",
+     "focus": "Properties of matter, particles too small to see, mixtures and chemical change, and the engineering design process.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-1-investigating-matter/",
+     "plan": {
+      "days": 20,
+      "lessons": 12
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5U1_Matter_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5U1_Matter_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/07/CKSci_G5U1_Investigating-Matter_Online_Resources_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u2",
+     "n": 2,
+     "title": "Energy and Matter in Ecosystems",
+     "focus": "How energy and matter move from the sun through producers, consumers and decomposers and back again.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-2-energy-and-matter-in-ecosystems/",
+     "plan": {
+      "days": 21,
+      "lessons": 15
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5U2_Ecosystems_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5U2_Ecosystems_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2020/01/CKSci_G5_U2_Ecosystems_OnlineResources_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u3",
+     "n": 3,
+     "title": "Modeling Earth's Systems",
+     "focus": "The atmosphere, hydrosphere, geosphere and biosphere, and how they act on one another.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-3-modeling-earths-systems/",
+     "plan": {
+      "days": 18,
+      "lessons": 12
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5EarthSystems_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5EarthSystems_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/08/G5Sci-U3_EarthSystems_Online-Resources_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u4",
+     "n": 4,
+     "title": "Protecting Earth's Resources",
+     "focus": "Natural resources, pollution and water treatment, building to a project the student presents.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-4-protecting-earths-resources/",
+     "plan": {
+      "days": 17,
+      "lessons": 15
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5ProtectingEarthsResources_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5ProtectingEarthsResources_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/G5Sci-U4_ProtectingResources_OnlineResources_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u5",
+     "n": 5,
+     "title": "Astronomy: Space Systems",
+     "focus": "Earth, the Moon and the Sun, the solar system, the Milky Way, and our place in the universe.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-5-astronomy-space-systems/",
+     "plan": {
+      "days": 18,
+      "lessons": 14
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5Astronomy_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/CKSci_G5Astronomy_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2019/09/G5Sci-U5_Astronomy_OnlineResources_W1.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u6",
+     "n": 6,
+     "title": "Human Hormones and Reproduction",
+     "focus": "Glands and hormones, the changes of puberty, and human reproduction.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-6-human-hormones-and-reproduction/",
+     "plan": {
+      "lessons": 7,
+      "word": "Lesson"
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2021/05/CKSci_G5U6_Human-Hormones-and-Reproduction_TG.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2021/05/CKSci_G5U6_Human-Hormones-and-Reproduction_SR.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2021/06/CKSci_G5U6_ORG_W1.pdf"
+      }
+     ],
+     "caution": "Covers puberty and human reproduction. Read it yourself first and decide whether and when to teach it; it can be skipped."
+    },
+    {
+     "id": "sci-u7",
+     "n": 7,
+     "title": "Designing Computer Programs",
+     "focus": "How digital messages travel, collecting data, decision trees, and writing simple programs; staying safe online.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-7-designing-computer-programs/",
+     "plan": {
+      "lessons": 10,
+      "word": "Lesson"
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKSciSC_G5U7_DesigningComputerPrograms_TG_W1.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKSciSC_G5U7_DesigningComputerPrograms_SR_W1.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2023/09/CKSciSC_G5U7_DesigningComputerPrograms_ORG_W2.pdf"
+      }
+     ]
+    },
+    {
+     "id": "sci-u8",
+     "n": 8,
+     "title": "Using Science Knowledge",
+     "focus": "Science literacy: evidence, data, cause and correlation, systems and teamwork, tied to the year's other units.",
+     "page": "https://www.coreknowledge.org/free-resource/cksci-unit-8-using-science-knowledge/",
+     "plan": {
+      "lessons": 20,
+      "word": "Lesson"
+     },
+     "extra": [],
+     "files": [
+      {
+       "role": "teacher",
+       "label": "Teacher Guide",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/08/CKSci_G5U8_UsingScienceKnowledge_TG_W1.pdf"
+      },
+      {
+       "role": "reader",
+       "label": "Student Reader",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/08/CKSci_G5U8_UsingScienceKnowledge_SR_W1.pdf"
+      },
+      {
+       "role": "extra",
+       "label": "Pacing guide and materials list",
+       "url": "https://www.coreknowledge.org/wp-content/uploads/2024/08/CKSci_G5U8_UsingScienceKnowledge_ORG_W1.pdf"
+      }
+     ],
+     "note": "The publisher suggests these twenty short readings can also be spread through the year instead of taught as one unit."
+    }
+   ],
+   "extras": []
+  }
+ ],
+ "shopping": [
+  {
+   "id": "guero",
+   "need": "required",
+   "title": "They Call Me Güero: A Border Kid's Poems",
+   "by": "David Bowles",
+   "for": "Language Arts, Unit 1",
+   "note": "The whole unit is built on this book. A paper copy is best: e-books from the big stores are locked and cannot be kept in this library."
+  },
+  {
+   "id": "quixote",
+   "need": "required",
+   "title": "Adventures of Don Quixote",
+   "by": "adapted by Argentina Palacios (Dover)",
+   "for": "Language Arts, Unit 3",
+   "note": "The unit uses this particular adaptation, so another edition will not line up with the lessons."
+  },
+  {
+   "id": "poets-journal",
+   "need": "required",
+   "title": "Poet's Journal, Grade 5",
+   "by": "Amplify",
+   "for": "Language Arts, Unit 7",
+   "note": "Sold by Amplify to schools; it may not be available to an individual. If not, skip Unit 7."
+  },
+  {
+   "id": "breakable",
+   "need": "required",
+   "title": "The Science of Breakable Things",
+   "by": "Tae Keller (Yearling), ISBN 978-1-5247-1566-3",
+   "for": "Language Arts, Unit 9",
+   "note": "One of the characters has depression; you may want to read it first."
+  },
+  {
+   "id": "sci-kit",
+   "need": "required",
+   "title": "Science materials",
+   "by": "household and hardware-store items",
+   "for": "Science, every unit",
+   "note": "Each unit's 'Pacing guide and materials list' file names what to gather. Read it a week or two before the unit starts."
+  },
+  {
+   "id": "printing",
+   "need": "optional",
+   "title": "Printing, or printed books",
+   "by": "",
+   "for": "All subjects",
+   "note": "Workbooks and activity books are meant to be written in. Print them at home, or buy printed copies from the Core Knowledge bookstore."
+  },
+  {
+   "id": "math-mammoth",
+   "need": "optional",
+   "title": "Math Mammoth Grade 5, complete curriculum (PDF download)",
+   "by": "Maria Miller",
+   "for": "Mathematics",
+   "note": "A second mathematics course written to the student, with answer keys, chapter tests and cumulative reviews. Useful if the main course needs more teaching time than you have. Buy it, then add the PDFs under 'Books I have added'."
+  }
+ ]
+}
