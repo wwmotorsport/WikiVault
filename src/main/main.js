@@ -1523,6 +1523,7 @@ function registerIpc() {
   const inSchool = (fn) => (arg) => { if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
   handle('school:overview', inSchool(() => school.overview()));
   handle('school:week', inSchool(({ number }) => school.week(Number(number) || school.currentWeek())));
+  handle('school:lesson', inSchool(({ id }) => { const l = school.lesson(String(id)); if (!l) throw new Error('That lesson is not in the plan. A unit may have been skipped.'); return l; }));
   handle('school:download', inSchool(async () => {
     if (!editions?.snapshot().active) throw new Error('Set up Wikipedia first; the school files are kept in the same library.');
     const free = await freeAt(settings.dataDir);
@@ -1535,13 +1536,14 @@ function registerIpc() {
   handle('school:done', inSchool(async ({ ids, done }) => { await school.setDone(ids, Boolean(done)); return true; }));
   handle('school:skip', inSchool(async ({ unitId, skip }) => { await school.setSkip(String(unitId), Boolean(skip)); return true; }));
   handle('school:have', inSchool(async ({ id, have }) => { await school.setHave(String(id), Boolean(have)); return true; }));
-  handle('school:open', inSchool(async ({ fileId, page }) => {
+  handle('school:open', inSchool(async ({ fileId, page, lesson }) => {
     const f = school.fileById(String(fileId));
     if (!f || !school.have.has(f.id)) throw new Error('That file has not been downloaded yet.');
     const { origin } = await startSchoolServer();
     const n = Math.max(1, Number(page) || 1);
     schoolOpens += 1; // a new address each time: opening the same book at another page must load afresh for the viewer to go there
-    return { url: `${origin}/f/${f.id}.pdf?open=${schoolOpens}#page=${n}`, label: f.added ? f.label : `${f.subjectName}, ${f.where}: ${f.label}`, page: n };
+    // Beside the steps of a guided lesson the book has less room: no thumbnails, and the page fitted to the width.
+    return { url: `${origin}/f/${f.id}.pdf?open=${schoolOpens}#page=${n}${lesson ? '&navpanes=0&view=FitH' : ''}`, label: f.added ? f.label : `${f.subjectName}, ${f.where}: ${f.label}`, page: n };
   }));
   handle('school:add-books', inSchool(async () => {
     let paths = process.env.WIKIVAULT_TEST_ADD_BOOK ? [process.env.WIKIVAULT_TEST_ADD_BOOK] : null;

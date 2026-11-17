@@ -2,6 +2,18 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.17.0 (2026-11-17)
+
+- Guided lessons. Every day of the School plan has a **Start lesson** button. It opens the lesson as steps beside the book: get ready, each part of the lesson in order with its time, then check the work and finish. Next and Back move through the steps, and the book turns to the page of each one. Any step can be picked from the list. A step with a time has a timer. Buttons switch the book between the teacher guide, the student pages, the reader and the answer key. Finishing ticks the lesson in the plan and offers the next lesson of that day.
+- The steps are read from the teacher guides themselves. Language arts lessons give their parts (reading, writing, grammar and so on) and the timed activities inside them; mathematics lessons give the warm-up, the activities, the lesson synthesis and the cool-down; history chapters give the core lesson, the check for understanding and the optional activities; science lessons give their numbered steps, split by day when a lesson takes more than one.
+- A science unit planned by days now follows its guide: a lesson the guide gives two days takes two days of the plan, and the days after the last lesson are the unit's review and assessment.
+- Lessons show their names in the week ("Lesson 2: Measure Volume"), and a lesson's big question is shown where the guide states one.
+- Page finding was rebuilt on the real files. Lesson pages come from the guides' own lesson headings and running heads. In a book that holds several units, a unit's test and answer key are its own. Readers open at the chapter a lesson names.
+- Several of the mathematics guides use fonts whose letters do not all come out as text. Their lesson parts are recognised by shape and order, and their lesson titles are taken from pages that do read. Where a step's own title cannot be read it is shown as "Activity 2" without one.
+- A file whose name has an accented letter is asked for in both spellings of that letter before it is counted as failed. (One activity book, for the first language arts unit, did not arrive in the first real download.)
+
+Checked against the text of the 104 Grade 5 files of a real download: all 485 lessons and chapters of 38 of the 39 units are found, with 2,541 steps between them (2,193 with a time), and 504 of the 569 days of the plan get steps read from their guide. The rest are tests, review days and the one unit (the end-of-year novel study) whose guide is not divided into lessons; those get three general steps. Not checked: whether each step's page is right to the eye, since only the text of the pages was read, not the pages as printed.
+
 ## 0.16.0 (2026-11-16)
 
 - School, a new section (the open-book button in the top bar): Grade 5 as a full year of lessons, laid out in 36 weeks of five days and two semesters. It uses the Core Knowledge Foundation's free curriculum for four subjects: Language Arts (CKLA), Mathematics (CKMath, built on Illustrative Mathematics' IM K-5 Math), History and Geography (CKHG) and Science (CKSci). The plan and what each unit teaches are part of the app and can be read before anything is downloaded.

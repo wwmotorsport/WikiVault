@@ -10,6 +10,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { outline } = require('./school-outline');
 
 // ---------------------------------------------------------------- registry
 
@@ -182,14 +183,94 @@ function findActivity(pages, n) {
 }
 
 /** The first page, from `from` on, whose heading has one of the phrases. Earlier phrases are preferred. */
-function findHeading(pages, phrases, { from = 0, word = 'Lesson' } = {}) {
+function findHeading(pages, phrases, { from = 0, to = Infinity, word = 'Lesson' } = {}) {
   for (const phrase of phrases) {
     const re = new RegExp(`\\b${esc(phrase)}`, 'i');
-    for (let i = Math.max(0, from); i < pages.length; i++) {
-      if (re.test(pages[i].slice(0, HEAD)) && !isChart(pages[i], word) && !/\.{5,}|(\s\.){5,}/.test(pages[i].slice(0, 600))) return i;
+    const flat = phrase.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    for (let i = Math.max(0, from); i < Math.min(to, pages.length); i++) {
+      // Small capitals come out as "P ACING G UIDE": compare with the spaces taken out as well.
+      if ((re.test(pages[i].slice(0, HEAD)) || pages[i].slice(0, HEAD).toLowerCase().replace(/[^a-z0-9]+/g, '').includes(flat)) && !isChart(pages[i], word) && !/\.{5,}|(\s\.){5,}/.test(pages[i].slice(0, 600))) return i;
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------- guided lessons
+
+const outlines = new WeakMap();
+/** The outline of a teacher guide, worked out once for each set of pages. */
+function outlineOf(pages, style) {
+  if (!outlines.has(pages)) { let o = []; try { o = outline(pages, style); } catch { o = []; } outlines.set(pages, o); }
+  return outlines.get(pages);
+}
+
+/**
+ * The lesson of the teacher guide that a day of the plan teaches, from the guide's own outline.
+ * A science unit planned by days is walked lesson by lesson: a lesson the guide gives two days
+ * takes two days of the plan. Returns null when the guide has not been read or has no such lesson.
+ */
+function lessonOf(session, unit, subject, pagesOf) {
+  const teacher = unit.files.find((f) => f.role === 'teacher');
+  const pages = teacher && pagesOf(teacher.id);
+  if (!pages) return null;
+  const part = outlineOf(pages, subject.id)[(unit.part || 1) - 1];
+  if (!part) return null;
+  if (session.kind === 'lesson') { const l = part.lessons.get(session.n); return l ? { lesson: l, fileId: teacher.id, day: null } : null; }
+  if (session.kind !== 'day') return null;
+  let k = session.n;
+  for (const l of [...part.lessons.values()].sort((a, b) => a.n - b.n)) {
+    if (k <= l.days) return { lesson: l, fileId: teacher.id, day: l.days > 1 ? k : null };
+    k -= l.days;
+  }
+  return null;
+}
+
+/**
+ * A day of the plan as steps to click through. Every step names a book and a page; `links` are the
+ * other books the lesson uses. The first step is always "get ready" and the last "check and finish",
+ * so a lesson whose inside could not be read still has a beginning, a middle and an end.
+ */
+function guideFor(session, unit, subject, pagesOf) {
+  const links = linksFor(session, unit, subject, pagesOf);
+  const found = lessonOf(session, unit, subject, pagesOf);
+  const word = session.word || unit.plan.word || 'Lesson';
+  const out = { title: session.label, name: '', question: '', minutes: subject.minutes, read: Boolean(found), steps: [], links };
+  const main = links[0] || null;
+  const step = (title, extra = {}) => out.steps.push({ title, group: null, minutes: null, note: '', fileId: main ? main.fileId : null, page: main ? main.page : null, ...extra });
+  const answers = links.find((l) => l.label === 'Answer key');
+  if (found) {
+    const { lesson, fileId, day } = found;
+    out.name = lesson.title;
+    out.question = lesson.question;
+    if (session.kind === 'day') out.title = `${word} ${lesson.n}${day ? `, day ${day} of ${lesson.days}` : ''}`;
+    const mine = lesson.steps.filter((x) => !day || !x.day || x.day === day);
+    step('Get ready', { note: day && day > 1 ? 'Look back at where the last session stopped, and set out what today needs.' : 'Read what the lesson is for, and gather what it needs.', fileId, page: lesson.page + 1 });
+    if (mine.length) for (const x of mine) step(x.title, { group: x.group, minutes: x.minutes, optional: Boolean(x.optional), fileId, page: x.page + 1 });
+    else step('Teach the lesson', { note: 'This guide does not time the parts of its lessons. Work through the lesson from here.', fileId, page: lesson.page + 1 });
+  } else if (session.kind === 'assessment' || session.kind === 'review') {
+    step(session.kind === 'review' ? 'Review, then give the test' : 'Give the test', { note: 'The pages to hand out follow from here.' });
+  } else if (session.kind === 'day' && links[0] && links[0].label === 'Unit assessment') {
+    out.title = 'Review and unit assessment';
+    step('Review the unit', { note: 'The lessons of this unit are finished. Use this day to go back over what was hard, then give the unit assessment.', page: null });
+    step('Give the unit assessment', { note: 'The pages to hand out start here.' });
+  } else {
+    step('Get ready', { note: 'Read the plan for this day in the teacher guide.' });
+    step('Teach the lesson', { note: 'Work through the lesson from the teacher guide, with the student books beside it.' });
+  }
+  step('Check the work and finish', { kind: 'finish', note: answers ? 'Go over the answers together, then mark the lesson done.' : 'Look over the work together, then mark the lesson done.', fileId: answers ? answers.fileId : main ? main.fileId : null, page: answers ? answers.page : main ? main.page : null });
+  return out;
+}
+
+/** A reader's chapter: "Chapter 3" at the head of the page, or "Chapter" and "3" on lines of their own. */
+function findChapter(pages, n, part = 1) {
+  if (part === 1) {
+    for (let i = 0; i < pages.length; i++) {
+      const ls = pages[i].split('\n', 12).map((l) => l.trim()).filter(Boolean).slice(0, 6);
+      const at = ls.indexOf('Chapter');
+      if (at >= 0 && ls[at + 1] === String(n)) return i;
+    }
+  }
+  return findLesson(pages, 'Chapter', n, part);
 }
 
 /**
@@ -211,28 +292,39 @@ function linksFor(session, unit, subject, pagesOf) {
   const student = file('student');
   const reader = file('reader');
   const word = session.word || unit.plan.word || 'Lesson';
-  const back = (pages) => Math.floor(pages.length * 0.45);
-  const answers = (pages) => findHeading(pages, ['answer key', 'answers'], { from: back(pages), word });
+  const mine = lessonOf(session, unit, subject, pagesOf);
+  // The tests and answers of a unit follow its last lesson. In a book of several units, stop at the next unit.
+  const tp = teacher && pagesOf(teacher.id);
+  const parts = tp ? outlineOf(tp, subject.id) : [];
+  const myPart = parts[(unit.part || 1) - 1];
+  const backFrom = myPart && myPart.lessons.size ? Math.max(...[...myPart.lessons.values()].map((l) => l.page)) : null;
+  const backTo = unit.part && parts[unit.part] ? parts[unit.part].from : Infinity; // only a book the registry says is shared
+  const back = (pages) => (pages === tp && backFrom != null ? backFrom : Math.floor(pages.length * 0.45));
+  const answers = (pages) => findHeading(pages, ['answer key', 'answers'], { from: back(pages), to: pages === tp ? backTo : Infinity, word });
+  const test = (pages, phrases, from) => findHeading(pages, phrases, { from: pages === tp && backFrom != null ? backFrom : from, to: pages === tp ? backTo : Infinity, word });
 
+  const lessonPage = (p) => (mine ? mine.lesson.page : findLesson(p, word, session.n, unit.part || 1));
   if (session.kind === 'lesson') {
-    add('Lesson plan', teacher, (p) => findLesson(p, word, session.n, unit.part || 1));
+    add('Lesson plan', teacher, lessonPage);
     if (subject.id === 'ela') add('Activity pages', student, (p) => findActivity(p, session.n));
     else add('Student pages', student, (p) => findLesson(p, word, session.n, unit.part || 1));
-    add(word === 'Chapter' ? 'Reading' : 'Reader', reader, word === 'Chapter' ? (p) => findLesson(p, word, session.n, unit.part || 1) : null);
+    add(word === 'Chapter' ? 'Reading' : 'Reader', reader, word === 'Chapter' ? (p) => findChapter(p, session.n, unit.part || 1) : mine && mine.lesson.chapter ? (p) => findChapter(p, mine.lesson.chapter) : null);
     add('Answer key', teacher, answers);
   } else if (session.kind === 'day') {
-    add('Pacing guide', file('extra') || teacher, (p) => findHeading(p, ['pacing guide', 'sample pacing'], { word }));
-    add('Teacher guide', teacher, null);
+    if (mine) add('Lesson plan', teacher, lessonPage);
+    // Once the guide has been read, a day past its last lesson is the unit's review and assessment.
+    if (!mine && myPart && myPart.lessons.size) add('Unit assessment', teacher, (p) => test(p, ['unit assessment'], Math.floor(p.length * 0.3)));
+    else if (!mine) add('Teacher guide', teacher, null);
     add('Student pages', student, null);
-    add('Reader', reader, null);
+    add('Reader', reader, mine && mine.lesson.chapter ? (p) => findChapter(p, mine.lesson.chapter) : null);
     add('Answer key', teacher, answers);
   } else if (session.kind === 'assessment') {
     const phrases = /beginning-of-year/i.test(session.label) ? ['beginning-of-year assessment'] : /end-of-year/i.test(session.label) ? ['end-of-year assessment']
       : ['end-of-unit assessment', 'unit assessment', 'assessments', 'assessment'];
-    add('The test', teacher, (p) => findHeading(p, phrases, { from: /beginning/i.test(session.label) ? 0 : Math.floor(p.length * 0.3), word }));
+    add('The test', teacher, (p) => (/beginning|end-of-year/i.test(session.label) ? findHeading(p, phrases, { from: 0, word }) : test(p, phrases, Math.floor(p.length * 0.3))));
     add('Answer key', teacher, answers);
   } else {
-    add('Review and test', teacher, (p) => findHeading(p, ['pausing point', 'unit assessment', 'assessment'], { from: Math.floor(p.length * 0.3), word }));
+    add('Review and test', teacher, (p) => test(p, ['pausing point', 'unit assessment', 'assessment'], Math.floor(p.length * 0.3)));
     add('Activity pages', student, null);
     add('Answer key', teacher, answers);
   }
@@ -273,4 +365,4 @@ function searchPages(books, query, { limit = 40 } = {}) {
   return hits.sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
 }
 
-module.exports = { loadManifest, allFiles, fileId, fileName, unitSessions, buildYear, weekSummary, findLesson, findActivity, findHeading, isChart, linksFor, searchPages, MANIFEST_DIR: path.join(__dirname, '..', '..', 'assets', 'school') };
+module.exports = { findChapter, guideFor, lessonOf, loadManifest, allFiles, fileId, fileName, unitSessions, buildYear, weekSummary, findLesson, findActivity, findHeading, isChart, linksFor, searchPages, MANIFEST_DIR: path.join(__dirname, '..', '..', 'assets', 'school') };

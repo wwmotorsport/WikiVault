@@ -116,10 +116,18 @@ class SchoolLibrary extends EventEmitter {
         this._tick();
         try {
           let seen = 0;
-          await this.download({
-            url: this.rewrite(new URL(f.url).href), dest: part, signal: controller.signal, maxStalledAttempts: 4,
+          const get = (url) => this.download({
+            url: this.rewrite(new URL(url).href), dest: part, signal: controller.signal, maxStalledAttempts: 4,
             onProgress: (p) => { this.job.bytes += Math.max(0, p.downloaded - seen); seen = p.downloaded; },
           });
+          // A name with an accent can be stored two ways ("ü", or "u" and a mark). Try the other spelling before giving up.
+          const other = f.url.normalize('NFD') !== f.url ? f.url.normalize('NFD') : f.url.normalize('NFC');
+          try { await get(f.url); } catch (err) {
+            if (controller.signal.aborted || other === f.url) throw err;
+            await fsp.rm(part, { force: true }).catch(() => {});
+            this.job.bytes -= seen; seen = 0;
+            await get(other);
+          }
           const fd = await fsp.open(part, 'r');
           const head = Buffer.alloc(5);
           await fd.read(head, 0, 5, 0);
@@ -202,13 +210,38 @@ class SchoolLibrary extends EventEmitter {
       days: w.days.map((sessions) => sessions.map((x) => {
         const subject = subjectOf(x.subject);
         const unit = subject.units.find((u) => u.id === x.unitId);
-        return { ...x, done: Boolean(this.progress.done[x.id]), caution: unit.caution || null,
+        const found = school.lessonOf(x, unit, subject, (id) => this.pagesOf(id));
+        return { ...x, done: Boolean(this.progress.done[x.id]), caution: unit.caution || null, name: found ? found.lesson.title : '',
           links: school.linksFor(x, unit, subject, (id) => this.pagesOf(id)).map((l) => ({ ...l, here: this.have.has(l.fileId) })) };
       })),
     };
   }
 
   /** The whole year by subject and unit, for the overview and the skip switches. */
+/** One day of the plan as steps to click through, and the lesson that follows it that day. */
+  lesson(sessionId) {
+    for (const w of this.year.weeks) {
+      for (let d = 0; d < w.days.length; d++) {
+        const at = w.days[d].findIndex((x) => x.id === sessionId);
+        if (at < 0) continue;
+        const x = w.days[d][at];
+        const subject = this.manifest.subjects.find((s) => s.id === x.subject);
+        const unit = subject.units.find((u) => u.id === x.unitId);
+        const g = school.guideFor(x, unit, subject, (id) => this.pagesOf(id));
+        const here = (l) => ({ ...l, here: Boolean(l.fileId) && this.have.has(l.fileId) });
+        const next = w.days[d][at + 1] || null;
+        return {
+          id: x.id, subject: x.subject, subjectName: x.subjectName, unitN: x.unitN, unitTitle: x.unitTitle, label: x.label,
+          week: w.number, day: d + 1, done: Boolean(this.progress.done[x.id]), caution: unit.caution || null,
+          title: g.title, name: g.name, question: g.question, minutes: g.minutes, read: g.read,
+          steps: g.steps.map(here), links: g.links.map(here),
+          next: next ? { id: next.id, subjectName: next.subjectName, label: next.label } : null,
+        };
+      }
+    }
+    return null;
+  }
+
   overview() {
     const firstWeek = new Map();
     for (const w of this.year.weeks) for (const x of w.days.flat()) if (!firstWeek.has(x.unitId)) firstWeek.set(x.unitId, w.number);

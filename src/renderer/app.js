@@ -1404,8 +1404,8 @@ let schShowing = false;   // the reader pane is showing one of the school books
 const schoolUrl = (url) => Boolean(url) && /^http:\/\/127\.0\.0\.1:\d+\/f\/[a-z0-9-]+\.pdf/.test(url);
 const subjectVar = (id) => `var(--sub-${['ela', 'math', 'hist', 'sci'].includes(id) ? id : 'added'})`;
 
-async function schoolOpen(fileId, page) {
-  const r = await api.schoolOpen(fileId, page || 1);
+async function schoolOpen(fileId, page, lesson = false) {
+  const r = await api.schoolOpen(fileId, page || 1, lesson);
   $('schoolbar-label').textContent = `${r.label}${page ? `, page ${r.page}` : ''}`;
   openUrl(r.url);
 }
@@ -1414,7 +1414,7 @@ function schoolLink(label, link) {
   b.type = 'button';
   b.disabled = !link.here;
   b.title = !link.here ? 'Download the files first' : link.page ? 'Opens at the page this app found for it. If it is a page or two off, turn the page.' : 'Opens at the first page';
-  b.addEventListener('click', () => guard(() => schoolOpen(link.fileId, link.page), $('sch-error')));
+  b.addEventListener('click', () => guard(() => { lessonLeave(); return schoolOpen(link.fileId, link.page); }, $('sch-error')));
   return b;
 }
 function schoolFileButton(f) {
@@ -1498,9 +1498,15 @@ function paintSchoolWeek() {
       const subject = el('div', 'sch-subject', x.subjectName);
       subject.append(el('small', '', `about ${x.minutes} minutes`));
       const what = el('p', 'sch-what');
-      what.append(el('b', '', x.label), `. Unit ${x.unitN}: ${x.unitTitle}`);
+      what.append(el('b', '', x.name ? `${x.label}: ${x.name}` : x.label), `. Unit ${x.unitN}: ${x.unitTitle}`);
       const links = el('div', 'sch-links');
-      links.append(...x.links.map((l) => schoolLink(l.label, l)));
+      const start = el('button', 'btn primary', x.done ? 'Go through it again' : 'Start lesson');
+      start.type = 'button';
+      start.dataset.start = x.id;
+      start.disabled = !(x.links[0] && x.links[0].here);
+      start.title = start.disabled ? 'Download the files first' : 'Step through this lesson with the books open beside the steps';
+      start.addEventListener('click', () => guard(() => lessonStart(x.id), $('sch-error')));
+      links.append(start, ...x.links.map((l) => schoolLink(l.label, l)));
       row.append(box, subject, what, links);
       if (x.caution && x.n === 1) row.append(el('p', 'sch-caution', x.caution));
       day.append(row);
@@ -1625,6 +1631,7 @@ function renderSchool() {
   $('nav-school').disabled = !s || golfPlaying();
   $('nav-school').setAttribute('aria-pressed', String(view === 'school'));
   $('schoolbar').hidden = !(view === 'reader' && schShowing);
+  paintLesson();
   if (!s || view !== 'school') return;
   $('sch-title').textContent = `School: ${s.title}`;
   $('sch-credit').textContent = s.credit;
@@ -1635,7 +1642,7 @@ function renderSchool() {
 }
 for (const t of document.querySelectorAll('.sch-tab')) t.addEventListener('click', () => { schTab = t.dataset.tab; schHits = null; schKey = ''; renderSchool(); });
 $('nav-school').addEventListener('click', () => { if (!golfPlaying()) { schKey = ''; showView('school'); } });
-$('schoolbar-back').addEventListener('click', () => showView('school'));
+$('schoolbar-back').addEventListener('click', () => { lessonLeave(); showView('school'); });
 $('sch-search').addEventListener('submit', (e) => {
   e.preventDefault();
   const q = $('sch-q').value.trim();
@@ -1643,6 +1650,164 @@ $('sch-search').addEventListener('submit', (e) => {
   $('sch-error').hidden = true;
   guard(async () => { schHits = { q, hits: await api.schoolSearch(q) }; await schoolLoad(true); }, $('sch-error'));
 });
+
+// ------------------------------------------------------------ guided lessons
+// A day of the plan as steps to click through. The steps sit beside the book, which turns to the
+// page of each step. The steps come from the teacher guide's own headings (see school-outline.js).
+
+let lessonPlay = null;          // { data, at, finished, timer: { left, tick } | null }
+const lessonAt = new Map();     // where each lesson was left, for this run of the app
+let lessonShown = '';           // the book and page the reader was last sent to by a lesson
+
+function lessonLeave() {
+  if (lessonPlay && lessonPlay.timer) clearInterval(lessonPlay.timer.tick);
+  lessonPlay = null;
+  lessonShown = '';
+  paintLesson();
+}
+async function lessonStart(id) {
+  const data = await api.schoolLesson(id);
+  lessonLeave();
+  lessonPlay = { data, at: Math.min(lessonAt.get(id) || 0, data.steps.length - 1), finished: false, timer: null };
+  await lessonShow();
+}
+/** Send the reader to a book and page, unless it is already there. */
+async function lessonOpen(fileId, page) {
+  const key = `${fileId}#${page || 1}`;
+  if (lessonShown !== key || view !== 'reader' || !schShowing) { await schoolOpen(fileId, page, true); lessonShown = key; }
+}
+async function lessonShow() {
+  const p = lessonPlay;
+  if (!p) return;
+  if (p.timer) { clearInterval(p.timer.tick); p.timer = null; }
+  lessonAt.set(p.data.id, p.at);
+  const step = p.data.steps[p.at];
+  const book = step.here ? step : p.data.links.find((l) => l.here);
+  if (book) await lessonOpen(book.fileId, book.page);
+  paintLesson();
+  const next = document.getElementById('lesson-next');
+  if (next) next.focus();
+}
+function lessonTimer(minutes) {
+  const p = lessonPlay;
+  if (!p) return;
+  if (p.timer) { clearInterval(p.timer.tick); p.timer = null; paintLesson(); return; }
+  p.timer = { left: minutes * 60, tick: setInterval(() => {
+    if (lessonPlay !== p || !p.timer) return;
+    p.timer.left -= 1;
+    const out = document.getElementById('lesson-clock');
+    if (p.timer.left <= 0) { clearInterval(p.timer.tick); p.timer.left = 0; }
+    if (out) { out.textContent = lessonClock(p.timer.left); out.classList.toggle('up', p.timer.left === 0); }
+  }, 1000) };
+  paintLesson();
+}
+const lessonClock = (s) => (s <= 0 ? 'Time is up' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} left`);
+
+function paintLesson() {
+  const pane = $('lessonpane');
+  const on = Boolean(lessonPlay) && view === 'reader' && schShowing;
+  pane.hidden = !on;
+  $('view-reader').classList.toggle('with-lesson', on);
+  if (!on) { pane.replaceChildren(); return; }
+  const p = lessonPlay;
+  const d = p.data;
+  pane.style.setProperty('--sub', subjectVar(d.subject));
+  const head = el('header', 'lesson-head');
+  head.append(el('p', 'lesson-where', `${d.subjectName}, Unit ${d.unitN}: ${d.unitTitle}`));
+  head.append(el('h2', '', d.name ? `${d.title}: ${d.name}` : d.title));
+  if (d.question) head.append(el('p', 'lesson-q', d.question));
+  head.append(el('p', 'lesson-time', `Week ${d.week}, ${SCHOOL_DAYS[d.day - 1] || `day ${d.day}`}. About ${d.minutes} minutes.`));
+  if (d.caution) head.append(el('p', 'sch-caution', d.caution));
+
+  if (p.finished) {
+    const done = el('div', 'lesson-now');
+    done.append(el('h3', '', 'Lesson done'), el('p', 'lesson-note', 'It is ticked off in the plan.'));
+    const nav = el('div', 'lesson-nav');
+    if (d.next) {
+      const go = el('button', 'btn primary', `Next: ${d.next.subjectName}, ${d.next.label}`);
+      go.type = 'button'; go.id = 'lesson-next';
+      go.addEventListener('click', () => guard(() => lessonStart(d.next.id), $('lesson-error')));
+      nav.append(go);
+    }
+    const back = el('button', d.next ? 'btn' : 'btn primary', 'Back to the plan');
+    back.type = 'button'; if (!d.next) back.id = 'lesson-next';
+    back.addEventListener('click', () => { lessonLeave(); showView('school'); });
+    nav.append(back);
+    done.append(nav, Object.assign(el('p', 'error', ''), { id: 'lesson-error', hidden: true }));
+    pane.replaceChildren(head, done);
+    return;
+  }
+
+  const step = d.steps[p.at];
+  const last = p.at === d.steps.length - 1;
+  const now = el('div', 'lesson-now');
+  now.append(el('p', 'lesson-count', `Step ${p.at + 1} of ${d.steps.length}${step.group ? `, ${step.group}` : ''}`));
+  now.append(el('h3', '', step.title));
+  if (step.note) now.append(el('p', 'lesson-note', step.note));
+  else if (step.page) now.append(el('p', 'lesson-note', `The teacher guide is open at this part, page ${step.page}. Read it through, then do it together.`));
+  if (!d.read && p.at === 0) now.append(el('p', 'lesson-note', 'The parts of this lesson could not be read from the guide, so the steps here are general ones.'));
+  if (step.minutes) {
+    const row = el('div', 'lesson-timer');
+    const b = el('button', 'btn small', p.timer ? 'Stop the timer' : `Start a ${step.minutes}-minute timer`);
+    b.type = 'button';
+    b.addEventListener('click', () => lessonTimer(step.minutes));
+    row.append(b);
+    if (p.timer) { const c = el('span', `lesson-clock${p.timer.left === 0 ? ' up' : ''}`, lessonClock(p.timer.left)); c.id = 'lesson-clock'; c.setAttribute('role', 'timer'); row.append(c); }
+    now.append(row);
+  }
+  const books = el('div', 'lesson-books');
+  books.append(el('p', 'lesson-label', 'Books for this lesson'));
+  const seen = new Set();
+  const bookButton = (label, fileId, page, here) => {
+    const key = `${fileId}#${page || 1}`;
+    if (!fileId || seen.has(key)) return;
+    seen.add(key);
+    const b = el('button', `btn small${lessonShown === key ? ' on' : ''}`, page ? `${label}, p. ${page}` : label);
+    b.type = 'button';
+    b.disabled = !here;
+    b.setAttribute('aria-pressed', String(lessonShown === key));
+    b.addEventListener('click', () => guard(async () => { await lessonOpen(fileId, page); paintLesson(); }, $('lesson-error')));
+    books.append(b);
+  };
+  bookButton(step.kind === 'finish' ? 'Answer key' : 'This step in the teacher guide', step.fileId, step.page, step.here);
+  for (const l of d.links) bookButton(l.label, l.fileId, l.page, l.here);
+  now.append(books);
+
+  const nav = el('div', 'lesson-nav');
+  const back = el('button', 'btn', 'Back');
+  back.type = 'button'; back.disabled = p.at === 0;
+  back.addEventListener('click', () => guard(() => { p.at -= 1; return lessonShow(); }, $('lesson-error')));
+  const next = el('button', 'btn primary', last ? 'Finish the lesson' : 'Next step');
+  next.type = 'button'; next.id = 'lesson-next';
+  next.addEventListener('click', () => guard(async () => {
+    if (!last) { p.at += 1; return lessonShow(); }
+    await api.schoolDone([d.id], true);
+    lessonAt.delete(d.id);
+    if (p.timer) { clearInterval(p.timer.tick); p.timer = null; }
+    p.finished = true;
+    paintLesson();
+    const go = document.getElementById('lesson-next');
+    if (go) go.focus();
+  }, $('lesson-error')));
+  nav.append(back, next);
+  now.append(nav, Object.assign(el('p', 'error', ''), { id: 'lesson-error', hidden: true }));
+
+  const list = el('ol', 'lesson-steps');
+  d.steps.forEach((x, i) => {
+    const li = el('li', i === p.at ? 'now' : i < p.at ? 'past' : '');
+    const b = el('button', '', '');
+    b.type = 'button';
+    if (i === p.at) b.setAttribute('aria-current', 'step');
+    b.append(el('span', 'lesson-step-title', x.title));
+    if (x.minutes) b.append(el('span', 'lesson-step-min', `${x.minutes} min`));
+    b.addEventListener('click', () => guard(() => { p.at = i; return lessonShow(); }, $('lesson-error')));
+    li.append(b);
+    list.append(li);
+  });
+  const all = el('div', 'lesson-all');
+  all.append(el('p', 'lesson-label', 'The whole lesson'), list);
+  pane.replaceChildren(head, now, all);
+}
 
 // ------------------------------------------------------------ guided tour
 // Numbered pins on the buttons along the top, and a card that says what each one does. It opens by
@@ -1660,6 +1825,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.17.0': [
+    'School: Start lesson. Every day of the plan can now be stepped through, one part of the lesson at a time, with the book open beside the steps at the right page.',
+    'The steps, their times and their pages are read from the real teacher guides, and each lesson shows its name in the week.',
+    'Lesson, test and answer-key pages are found far more reliably, including in the books that hold several units.',
+  ],
   '0.16.0': [
     'School: Grade 5 as a full year of lessons, week by week, from the Core Knowledge Foundation\'s free curriculum.',
     'Teacher guides, student books, readers and tests open inside the app, and all of them can be searched.',

@@ -174,9 +174,19 @@ Visual Arts and Music are not included yet.
 
 **Before downloading.** The plan is part of the app. The week, the year and the list of what to buy can all be read straight away; only the links into the books wait for the files.
 
-**Downloading.** *Download the Grade 5 files* fetches 105 PDF files from coreknowledge.org into `<library>\school\`. It needs Wikipedia to be set up first and at least 4 GB free. It can be cancelled and continued later; files already fetched are kept. Afterwards the app reads every page of every file once, in the background, so the books can be searched and opened at the right page. The line above the tabs shows how far it is and, at the end, the real size.
+**Downloading.** *Download the Grade 5 files* fetches 105 PDF files (about 710 MB) from coreknowledge.org into `<library>\school\`. If the line above the tabs says a file could not be downloaded, press Download again; it fetches only what is missing. It needs Wikipedia to be set up first and at least 4 GB free. It can be cancelled and continued later; files already fetched are kept. Afterwards the app reads every page of every file once, in the background, so the books can be searched and opened at the right page. The line above the tabs shows how far it is and, at the end, the real size.
 
-**The week.** *What this week covers* names the unit and lessons of each subject. Under it, each day lists its lessons. Every lesson has links:
+**Guided lessons.** Every lesson in the week has a **Start lesson** button. It opens the lesson as a list of steps on the left with the book on the right:
+
+1. *Get ready*: the first page of the lesson in the teacher guide, which says what the lesson is for and what it needs.
+2. The parts of the lesson, in the order and with the times the guide gives them. In mathematics that is a warm-up, one to three activities, a lesson synthesis and a cool-down. In language arts it is the reading, writing, grammar and other parts, with the timed activities inside each. In history it is the introduction, the guided reading and the check for understanding, then the optional activities. In science it is the lesson's numbered steps, one day at a time.
+3. *Check the work and finish*: the answer key.
+
+**Next step** and **Back** move through the lesson, and the book turns to the page of each step. You can also click any step in the list. A step with a time has a timer you can start. Under *Books for this lesson*, buttons switch the book between the teacher guide, the student pages, the reader and the answer key without leaving the lesson. **Finish the lesson** ticks it in the plan and offers the next lesson of the same day.
+
+The steps are read from the teacher guides, so they are the publisher's own. Three things to know. The guide is written for a teacher with a class: read "students" as your child and adapt group work. Some mathematics guides are printed in fonts whose letters cannot be read as text; their steps are still found, but may be named only "Activity 2", and a few have no time. And tests, review days and the end-of-year novel study have no parts to read, so they get three general steps.
+
+**The week.** *What this week covers* names the unit and lessons of each subject. Under it, each day lists its lessons, with their names where the guide gives them. Besides *Start lesson*, every lesson has links:
 
 - **Lesson plan**: the teacher guide, at that lesson.
 - **Student pages** or **Activity pages**: what the student works in.

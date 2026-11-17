@@ -123,9 +123,9 @@ test('activity pages are found by their number, and a day gets the right buttons
   const test_ = school.unitSessions(math, unit).at(-1);
   assert.equal(test_.kind, 'assessment');
   assert.deepEqual(school.linksFor(test_, unit, math, (id) => texts[id] || null).map((l) => [l.label, l.page]), [['The test', 9], ['Answer key', 10]]);
-  // Science days point at the pacing guide; history chapters open the reader at the chapter.
+  // Before anything is read a science day points at the teacher guide; history chapters open the reader at the chapter.
   const sci = G5.subjects.find((s) => s.id === 'sci');
-  assert.deepEqual(school.linksFor(school.unitSessions(sci, sci.units[0])[0], sci.units[0], sci, () => null).map((l) => l.label), ['Pacing guide', 'Teacher guide', 'Reader', 'Answer key']);
+  assert.deepEqual(school.linksFor(school.unitSessions(sci, sci.units[0])[0], sci.units[0], sci, () => null).map((l) => l.label), ['Teacher guide', 'Reader', 'Answer key']);
   const hist = G5.subjects.find((s) => s.id === 'hist');
   assert.deepEqual(school.linksFor(school.unitSessions(hist, hist.units[0])[0], hist.units[0], hist, () => null).map((l) => l.label), ['Lesson plan', 'Reading', 'Answer key']);
 });
