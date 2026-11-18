@@ -179,17 +179,63 @@
           <div id="map-job" hidden></div>
           <div id="map-summary"></div>
           <div id="map-setup" hidden></div>
-          <form id="map-search" class="map-search" hidden>
-            <label for="map-q">Find a place or a town</label>
-            <div class="map-search-row">
-              <input id="map-q" type="search" placeholder="Name, street or town" autocomplete="off" spellcheck="false">
-              <button class="btn primary" type="submit">Find</button>
-            </div>
-            <label for="map-cat">Kind of place</label>
-            <select id="map-cat"></select>
-            <p class="small-print" id="map-cat-note" hidden></p>
-          </form>
-          <div id="map-results" aria-live="polite"></div>
+          <div class="map-tabs" id="map-tabs" role="tablist" hidden>
+            <button type="button" role="tab" id="map-tab-find" aria-selected="true">Places</button>
+            <button type="button" role="tab" id="map-tab-go" aria-selected="false">Directions</button>
+          </div>
+          <div id="map-pane-find">
+            <form id="map-search" class="map-search" hidden>
+              <label for="map-q">Find a place or a town</label>
+              <div class="map-search-row">
+                <input id="map-q" type="search" placeholder="Name, street or town" autocomplete="off" spellcheck="false">
+                <button class="btn primary" type="submit">Find</button>
+              </div>
+              <label for="map-cat">Kind of place</label>
+              <select id="map-cat"></select>
+              <p class="small-print" id="map-cat-note" hidden></p>
+            </form>
+            <div id="map-results" aria-live="polite"></div>
+          </div>
+          <div id="map-pane-go" hidden>
+            <form id="map-go" class="map-search">
+              <label for="map-from">From</label>
+              <div class="map-search-row">
+                <input id="map-from" type="text" placeholder="A place, a town, or 35.22, -80.84" autocomplete="off" spellcheck="false">
+                <button class="btn small" type="button" id="map-from-pick">Pick on map</button>
+              </div>
+              <label for="map-to">To</label>
+              <div class="map-search-row">
+                <input id="map-to" type="text" placeholder="A place, a town, or 35.22, -80.84" autocomplete="off" spellcheck="false">
+                <button class="btn small" type="button" id="map-to-pick">Pick on map</button>
+              </div>
+              <label for="map-mode">Travelling by</label>
+              <select id="map-mode"></select>
+              <p class="small-print" id="map-mode-note"></p>
+              <label class="map-check" id="map-nomotor-row"><input type="checkbox" id="map-nomotor"><span>Keep off motorways</span></label>
+              <div class="map-go-row">
+                <button class="btn primary" type="submit" id="map-route">Get directions</button>
+                <button class="btn small" type="button" id="map-route-other" hidden>Another route</button>
+                <button class="btn small" type="button" id="map-route-clear" hidden>Clear</button>
+              </div>
+            </form>
+            <p class="small-print" id="map-pick-note" hidden></p>
+            <div id="map-route-out" aria-live="polite"></div>
+            <fieldset class="map-field">
+              <legend>Blocked roads and areas</legend>
+              <p class="small-print">Mark where you cannot go. The route is worked out again around it.</p>
+              <div class="map-search-row">
+                <select id="map-block-size" aria-label="Size of the blocked area">
+                  <option value="200">A spot on a road, 200 yards around</option>
+                  <option value="1609" selected>1 mile around</option>
+                  <option value="8047">5 miles around</option>
+                  <option value="40234">25 miles around</option>
+                  <option value="160934">100 miles around</option>
+                </select>
+                <button class="btn small" type="button" id="map-block-add">Mark on map</button>
+              </div>
+              <ul class="map-blocks" id="map-blocks"></ul>
+            </fieldset>
+          </div>
         </aside>
         <div class="map-stage">
           <div id="map-canvas"></div>

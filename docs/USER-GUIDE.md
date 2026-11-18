@@ -161,7 +161,7 @@ These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving
 
 ## Map
 
-The folded-map button in the top bar opens an offline map. The tools are on the left and the map is on the right. This version has the map and the places on it. Directions, address search and sending maps to a phone are not in yet.
+The folded-map button in the top bar opens an offline map. The tools are on the left and the map is on the right. It has the map, the places on it, and directions. Address search and sending maps to a phone are not in yet.
 
 **Setting it up.** Press *Set up the map*.
 
@@ -178,9 +178,25 @@ To change the regions or the detail, or to get a newer map, press *Change or upd
 
 Click a place for what is recorded about it: address, telephone, hours, who runs it, its position, and details that matter for its kind, such as whether a hospital has an emergency room or a fuel station sells diesel.
 
+**Directions.** Directions need routing data, which is separate from the map. Under *Change or update*, in the *Directions* box, press *Measure the routing data*; the app asks the server how big the files are for the regions ticked, then offers the download with its size. The engine that reads them (BRouter) and the Java it needs come with Wikivault.
+
+Then open the *Directions* tab.
+
+1. *From* and *To*: type a place or a town, or coordinates such as `35.22, -80.84`, or press *Pick on map* and click the spot. A place's details also have *Directions from here* and *Directions to here*. Street addresses cannot be typed yet.
+2. *Travelling by*: car; car with farm and forest tracks allowed, for a vehicle that can take them; bicycle; bicycle off road; on foot. For a car you can also keep off motorways.
+3. Press *Get directions*. The route is drawn on the map, with its length, an estimate of the time on open roads, and the steps. Click a step to see that turn on the map.
+
+*Another route* gives up to three alternatives.
+
+**When a road or an area is closed.** Under *Blocked roads and areas*, choose how far around the spot is closed, from 200 yards (one junction or bridge) to 100 miles (a whole region), press *Mark on map*, and click where it is. The route is worked out again at once, clear of every block you have marked. Blocks stay until you remove them. If no way is left, the app says so; try the car setting that allows tracks, or go on foot, which may use paths a car cannot.
+
+The names in the steps come from the map, because the routing data has none. With the map at *Every street* or more, turns are named. With less detail some steps read only "Turn left", and the route says the names are missing.
+
+The engine works out routes from the roads as they were mapped, with no knowledge of traffic, closures or damage; that is what the blocks are for. Check a route against what you can see.
+
 **What to keep in mind.** The places are what volunteers have mapped. Hospitals, fuel and shops in towns are well covered; the countryside is thinner, and a place can have closed since it was mapped. A shop being on the map says nothing about what it has in stock. Treat water from any spring or well before drinking it. There is no layer for public and private land yet.
 
-**Where it is kept.** `<library>\maps\map.pmtiles` is the map, `maps\places\` the places. They move with Wikipedia when the library is moved, count toward the size of a dedicated partition, and are removed by the uninstaller if you ask it to remove your data.
+**Where it is kept.** `<library>\maps\map.pmtiles` is the map, `maps\places\` the places, and `maps\routing\` the routing data. They move with Wikipedia when the library is moved, count toward the size of a dedicated partition, and are removed by the uninstaller if you ask it to remove your data.
 
 **Credit.** Map data and places are © OpenStreetMap contributors, under the Open Database License. The map file is cut from the Protomaps basemap. Wikivault is not affiliated with either.
 

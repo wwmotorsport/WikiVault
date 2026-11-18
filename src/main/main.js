@@ -32,6 +32,8 @@ const http = require('node:http');
 const schoolCore = require('../core/school');
 const { SchoolLibrary } = require('../core/school-library');
 const { MapsLibrary } = require('../core/maps-library');
+const routing = require('../core/routing');
+const { RouteEngine } = require('../core/route-engine');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -708,9 +710,20 @@ function startSchoolServer() {
 }
 
 let maps = null;
+let routeEngine = null;
+// The routing engine and its profiles are read by Java, which cannot look inside the app's archive.
+const ROUTING_ASSETS = path.join(__dirname, '..', '..', 'assets', 'routing').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+/** Java comes with the installed app; when run from source, the one on this machine is used. */
+const javaPath = () => process.env.WIKIVAULT_JAVA || (app.isPackaged ? path.join(process.resourcesPath, 'java', 'bin', 'java.exe') : 'java');
+function stopRouteEngine() { if (routeEngine) { routeEngine.stop(); routeEngine = null; } }
+function getRouteEngine() {
+  if (!routeEngine) routeEngine = new RouteEngine({ java: javaPath(), jar: path.join(ROUTING_ASSETS, 'brouter.jar'), profiles: path.join(ROUTING_ASSETS, 'profiles2'), segments: maps.segmentsDir, scratch: path.join(app.getPath('userData'), 'routing-scratch'), log });
+  return routeEngine;
+}
 const MAP_ASSETS = path.join(__dirname, '..', '..', 'assets', 'maps');
 async function initMaps() {
   if (maps) { maps.cancel(); maps.removeAllListeners(); }
+  stopRouteEngine();
   // Tests fetch from a stand-in server instead of the map and places servers.
   const base = process.env.WIKIVAULT_MAPS_BASE;
   maps = new MapsLibrary({
@@ -721,6 +734,7 @@ async function initMaps() {
   let last = 0;
   maps.on('changed', () => pushState());
   maps.on('progress', () => { const now = Date.now(); if (now - last > 400) { last = now; pushState(); } });
+  maps.onRoutingSwap = async () => { stopRouteEngine(); await new Promise((r) => setTimeout(r, 300)); };
   await maps.init();
 }
 const mapsBytes = () => (maps ? maps.status().bytes : 0);
@@ -1587,6 +1601,28 @@ function registerIpc() {
   handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a))); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
   handle('maps:search', inMaps((a) => maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, limit: Number(a.limit) || 50 })));
+  handle('maps:routing-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('routing sizes', maps.measureRouting(mapRegions(a))); }));
+  handle('maps:routing-download', inMaps(async (a) => {
+    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The routing data is kept in the same library.');
+    if (maps.status().job) throw new Error('Something is already being fetched for the map.');
+    return mapJob('routing data', maps.downloadRouting(mapRegions(a), { free: await freeAt(settings.dataDir) }));
+  }));
+  handle('maps:route', inMaps(async (a) => {
+    if (!maps.routing) throw new Error('Download the routing data first, under Change or update.');
+    const pt = (p) => { if (!Array.isArray(p) || p.length !== 2 || !p.every((v) => Number.isFinite(Number(v)))) throw new Error('A route needs a start and an end.'); return [Number(p[0]), Number(p[1])]; };
+    const o = {
+      points: (Array.isArray(a.points) ? a.points : []).map(pt), mode: String(a.mode || 'car'), alt: Number(a.alt) || 0, noMotorways: Boolean(a.noMotorways),
+      blocks: (Array.isArray(a.blocks) ? a.blocks : []).slice(0, 40).map((b) => (Array.isArray(b.polygon) ? { polygon: b.polygon.map(pt) } : { lon: Number(b.lon), lat: Number(b.lat), radius: Number(b.radius) })).filter((b) => b.polygon || (Number.isFinite(b.lon) && Number.isFinite(b.lat) && b.radius > 0)),
+    };
+    let answer;
+    try { answer = await getRouteEngine().ask((origin) => routing.routeUrl(origin, o)); } catch (err) { throw new Error(err.engine ? routing.explain(err.message) : err.message); }
+    // The engine's data has no road names; they are read from the map at each turn.
+    const wanted = [];
+    routing.parseRoute(answer, (lon, lat) => { wanted.push([lon, lat]); return ''; });
+    const names = await maps.roadNames(wanted);
+    const route = routing.parseRoute(answer, (lon, lat) => names.get(`${lon},${lat}`) || '');
+    return { ...route, alt: o.alt, mode: o.mode, named: names.size > 0 };
+  }));
   handle('maps:origin', inMaps(async () => (await startSchoolServer()).origin));
   const inSchool = (fn) => (arg) => { if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
   handle('school:overview', inSchool(() => school.overview()));
@@ -1895,6 +1931,7 @@ if (!app.requestSingleInstanceLock()) {
       speedAbort?.abort();
       school?.cancel();
       maps?.cancel();
+      stopRouteEngine();
       stopIndexer();
       const release = llm.releaseMemory({ stopService: true, also: ourModelIds() }).catch(() => {});
       Promise.race([release, new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit());

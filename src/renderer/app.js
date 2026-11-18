@@ -1684,6 +1684,11 @@ function paintMapJob(m) {
     title = j.stage === 'check' ? 'Checking the map' : j.stage === 'tiles' ? 'Downloading the map' : 'Working out which parts of the world map are needed';
     if (j.stage === 'tiles' && j.total) { value = j.downloaded || 0; max = j.total; detail = `${bytes(j.downloaded || 0)} of ${bytes(j.total)}`; } else if (j.stage === 'index') detail = `${bytes(j.indexBytes || 0)} of the index read.`;
   }
+  if (j.kind === 'routing-measure') { title = 'Asking how big the routing data is'; value = j.done || 0; max = j.total || 1; detail = `Square ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. Nothing is downloaded yet.`; }
+  if (j.kind === 'routing') {
+    title = 'Downloading the routing data';
+    if (j.stage === 'files' && j.bytes) { value = j.downloaded || 0; max = j.bytes; detail = `File ${Math.min((j.done || 0) + 1, j.total)} of ${j.total}. ${bytes(j.downloaded || 0)} of ${bytes(j.bytes)}.`; } else detail = 'Listing the files.';
+  }
   if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `Area ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. ${(j.found || 0).toLocaleString()} places so far. The server is free and shared, so this is done slowly.`; }
   const bar = document.createElement('progress');
   if (max) { bar.max = max; bar.value = value; }
@@ -1700,7 +1705,10 @@ function paintMapSummary(m) {
   else lines.push(el('p', '', 'No map is on this computer yet. Choose what to cover, see how big each level of detail would be, and then download.'));
   if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
   else lines.push(el('p', '', 'No places have been fetched yet. They can be fetched with or without the map.'));
+  if (m.routing) lines.push(el('p', '', `Routing data for directions: ${bytes(m.routing.bytes)}, fetched on ${mapDay(m.routing.date)}.`));
+  else lines.push(el('p', '', 'No routing data yet, so no directions.'));
   const b = el('button', 'btn small', mapSetupOpen ? 'Close' : m.map || m.places ? 'Change or update' : 'Set up the map');
+  if (m.map || m.places || m.routing) b.textContent = mapSetupOpen ? 'Close' : 'Change or update';
   b.type = 'button'; b.id = 'map-setup-toggle';
   b.setAttribute('aria-expanded', String(mapSetupOpen));
   b.addEventListener('click', () => { mapSetupOpen = !mapSetupOpen; renderMap(); });
@@ -1762,6 +1770,17 @@ function paintMapSetup(m) {
   getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked), $('map-error')));
   placesBox.append(getPlaces);
   parts.push(placesBox);
+  const routeBox = el('fieldset', 'map-field');
+  routeBox.append(el('legend', '', 'Directions'));
+  routeBox.append(el('p', 'small-print', `Turn-by-turn directions need routing data for the areas ticked above: one file for each square of five degrees. The engine that reads them comes with Wikivault. ${m.routingCredit}`));
+  const sized = m.routingMeasured && m.routingMeasured.regions.join() === picked.join() ? m.routingMeasured : null;
+  if (sized) routeBox.append(el('p', '', `${sized.files} files, ${bytes(sized.bytes)}.`));
+  const routeBtn = el('button', 'btn primary', sized ? `Download the routing data, ${bytes(sized.bytes)}` : m.routing ? 'Measure a newer set of routing data' : 'Measure the routing data');
+  routeBtn.type = 'button'; routeBtn.id = sized ? 'map-routing-download' : 'map-routing-measure'; routeBtn.disabled = busy || !picked.length;
+  if (m.routing && !sized) routeBtn.className = 'btn small';
+  routeBtn.addEventListener('click', () => guard(() => (sized ? api.mapsRoutingDownload(picked) : api.mapsRoutingMeasure(picked)), $('map-error')));
+  routeBox.append(routeBtn);
+  parts.push(routeBox);
   // Keep the boxes that are ticked: build the new content first, then swap.
   box.replaceChildren(...parts);
 }
@@ -1797,6 +1816,16 @@ function mapDetails(h) {
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
   if (h.km != null) row('From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
+  if (state?.maps?.routing) {
+    const go = el('div', 'map-place-go');
+    for (const [which, label] of [['from', 'Directions from here'], ['to', 'Directions to here']]) {
+      const b = el('button', 'btn small', label);
+      b.type = 'button';
+      b.addEventListener('click', () => { mapGo.tab = 'go'; mapSetPoint(which, { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` }); if (mapPopup) mapPopup.remove(); });
+      go.append(b);
+    }
+    box.append(go);
+  }
   return box;
 }
 
@@ -1859,6 +1888,156 @@ async function mapFind({ moved = false } = {}) {
   if (!moved && q && r.hits.length) mapSelect(r.hits[0].i);
 }
 
+// ---- directions
+
+const mapGo = { from: null, to: null, blocks: [], alt: 0, route: null, picking: null, busy: false, tab: 'find' };
+const tripMiles = (m) => (m < 160 ? `${Math.max(50, Math.round((m * 3.28084) / 50) * 50)} feet` : m < 16093 ? `${(m / 1609.344).toFixed(1)} miles` : `${Math.round(m / 1609.344)} miles`);
+const tripTime = (s) => { const min = Math.max(1, Math.round(s / 60)); return min < 60 ? `${min} minutes` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`; };
+const mapSpot = (lon, lat) => ({ lon, lat, label: `${lat.toFixed(5)}, ${lon.toFixed(5)}` });
+
+function mapSetPoint(which, point) {
+  mapGo[which] = point;
+  $(`map-${which}`).value = point ? point.label : '';
+  mapGo.route = null; mapGo.alt = 0;
+  paintMapGo();
+  mapDrawRoute();
+}
+
+/** What was typed, as a point: coordinates, the point already chosen, or the best match among the places and towns. */
+async function mapResolve(which) {
+  const text = $(`map-${which}`).value.trim();
+  if (!text) throw new Error(which === 'from' ? 'Say where you are starting from, or pick the spot on the map.' : 'Say where you are going, or pick the spot on the map.');
+  if (mapGo[which] && mapGo[which].label === text) return mapGo[which];
+  const c = /^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(text);
+  if (c) return mapSpot(Number(c[2]), Number(c[1]));
+  const r = await api.mapsSearch({ q: text, limit: 1 });
+  if (!r.hits.length) throw new Error(`Nothing was found for "${text}". Street addresses cannot be searched yet: use a place, a town, coordinates, or pick the spot on the map.`);
+  const h = r.hits[0];
+  return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || text };
+}
+
+async function mapRoute({ again = false } = {}) {
+  if (mapGo.busy) return;
+  mapGo.busy = true; paintMapGo();
+  try {
+    if (!again) { mapGo.from = await mapResolve('from'); mapGo.to = await mapResolve('to'); $('map-from').value = mapGo.from.label; $('map-to').value = mapGo.to.label; }
+    if (!mapGo.from || !mapGo.to) return;
+    mapGo.route = await api.mapsRoute({ points: [[mapGo.from.lon, mapGo.from.lat], [mapGo.to.lon, mapGo.to.lat]], mode: $('map-mode').value, alt: mapGo.alt, noMotorways: $('map-nomotor').checked, blocks: mapGo.blocks });
+    $('map-error').hidden = true;
+    if (mapView && !again) {
+      const b = new maplibregl.LngLatBounds();
+      for (const c of mapGo.route.coords) b.extend(c);
+      mapView.fitBounds(b, { padding: 60, maxZoom: Math.min(mapView.getMaxZoom(), 15), duration: 600 });
+    }
+  } catch (err) { mapGo.route = null; throw err; } finally { mapGo.busy = false; paintMapGo(); mapDrawRoute(); }
+}
+
+/** A circle on the ground as a ring of points. */
+function mapCircle(lon, lat, radius) {
+  const ring = [];
+  for (let i = 0; i <= 48; i++) { const a = (i / 48) * 2 * Math.PI; ring.push([lon + ((radius * Math.cos(a)) / (111320 * Math.cos((lat * Math.PI) / 180))), lat + (radius * Math.sin(a)) / 110540]); }
+  return ring;
+}
+
+function mapDrawRoute() {
+  if (!mapView || !mapView.getSource('route')) return;
+  const r = mapGo.route;
+  mapView.getSource('route').setData({ type: 'FeatureCollection', features: r ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } }] : [] });
+  mapView.getSource('blocks').setData({ type: 'FeatureCollection', features: mapGo.blocks.map((b) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [mapCircle(b.lon, b.lat, b.radius)] } })) });
+  const ends = [];
+  if (mapGo.from) ends.push({ type: 'Feature', properties: { end: 'from' }, geometry: { type: 'Point', coordinates: [mapGo.from.lon, mapGo.from.lat] } });
+  if (mapGo.to) ends.push({ type: 'Feature', properties: { end: 'to' }, geometry: { type: 'Point', coordinates: [mapGo.to.lon, mapGo.to.lat] } });
+  mapView.getSource('ends').setData({ type: 'FeatureCollection', features: ends });
+}
+
+function paintMapGo() {
+  const m = state?.maps;
+  if (!m) return;
+  const tabs = $('map-tabs');
+  tabs.hidden = !(m.places || m.routing);
+  if (!m.routing && mapGo.tab === 'go') mapGo.tab = 'find';
+  $('map-tab-find').setAttribute('aria-selected', String(mapGo.tab === 'find'));
+  $('map-tab-go').setAttribute('aria-selected', String(mapGo.tab === 'go'));
+  $('map-tab-go').disabled = !m.routing;
+  $('map-tab-go').title = m.routing ? '' : 'Download the routing data first, under Change or update';
+  $('map-pane-find').hidden = mapGo.tab !== 'find';
+  $('map-pane-go').hidden = mapGo.tab !== 'go';
+  if (mapGo.tab !== 'go') return;
+  const sel = $('map-mode');
+  if (!sel.children.length) for (const x of m.modes) sel.append(Object.assign(document.createElement('option'), { value: x.id, textContent: x.name }));
+  const mode = m.modes.find((x) => x.id === sel.value) || m.modes[0];
+  $('map-mode-note').textContent = mode.what;
+  $('map-nomotor-row').hidden = !mode.id.startsWith('car');
+  $('map-route').disabled = mapGo.busy;
+  $('map-route').textContent = mapGo.busy ? 'Working it out' : 'Get directions';
+  $('map-route-other').hidden = !mapGo.route;
+  $('map-route-clear').hidden = !(mapGo.route || mapGo.from || mapGo.to);
+  const note = $('map-pick-note');
+  note.hidden = !mapGo.picking;
+  note.textContent = mapGo.picking === 'block' ? 'Click the map where the way is blocked. Press Escape to leave it.' : mapGo.picking ? `Click the map to set the ${mapGo.picking === 'from' ? 'start' : 'destination'}. Press Escape to leave it.` : '';
+  $('map-canvas').classList.toggle('picking', Boolean(mapGo.picking));
+  for (const w of ['from', 'to']) $(`map-${w}-pick`).setAttribute('aria-pressed', String(mapGo.picking === w));
+  $('map-block-add').setAttribute('aria-pressed', String(mapGo.picking === 'block'));
+  $('map-block-add').disabled = !mapView;
+  for (const w of ['from', 'to']) $(`map-${w}-pick`).disabled = !mapView;
+
+  const list = $('map-blocks');
+  list.replaceChildren(...mapGo.blocks.map((b, i) => {
+    const li = el('li', '');
+    const x = el('button', 'btn small', 'Remove');
+    x.type = 'button';
+    x.addEventListener('click', () => { mapGo.blocks.splice(i, 1); paintMapGo(); mapDrawRoute(); if (mapGo.route) guard(() => mapRoute({ again: true }), $('map-error')); });
+    li.append(el('span', '', `${tripMiles(b.radius)} around ${b.lat.toFixed(4)}, ${b.lon.toFixed(4)}`), x);
+    return li;
+  }));
+
+  const out = $('map-route-out');
+  const r = mapGo.route;
+  if (!r) { out.replaceChildren(); return; }
+  const head = el('div', 'map-route-head');
+  head.append(el('p', 'map-route-total', `${tripMiles(r.meters)}, about ${tripTime(r.seconds)}`));
+  head.append(el('p', 'small-print', `${(m.modes.find((x) => x.id === r.mode) || mode).name}${r.alt ? `, route ${r.alt + 1} of up to 4` : ''}${mapGo.blocks.length ? `, keeping clear of ${mapGo.blocks.length} blocked ${mapGo.blocks.length === 1 ? 'area' : 'areas'}` : ''}. Times assume open roads.`));
+  if (!r.named) head.append(el('p', 'small-print', 'Road names are missing: the map on this computer has none for these roads at its level of detail.'));
+  const steps = el('ol', 'map-steps');
+  r.steps.forEach((st) => {
+    const li = el('li', '');
+    const b = el('button', '', '');
+    b.type = 'button';
+    b.append(el('span', 'map-step-text', st.text));
+    if (st.meters) b.append(el('span', 'map-step-far', `then ${tripMiles(st.meters)}`));
+    b.addEventListener('click', () => { if (mapView) mapView.easeTo({ center: st.at, zoom: Math.min(mapView.getMaxZoom(), Math.max(mapView.getZoom(), 14)), duration: 500 }); });
+    li.append(b);
+    steps.append(li);
+  });
+  out.replaceChildren(head, steps);
+}
+
+function mapPick(which) { mapGo.picking = mapGo.picking === which ? null : which; paintMapGo(); }
+/** A click on the map while a point is being picked. Returns true when the click was used. */
+function mapClicked(lngLat) {
+  const what = mapGo.picking;
+  if (!what) return false;
+  mapGo.picking = null;
+  if (what === 'block') {
+    mapGo.blocks.push({ lon: lngLat.lng, lat: lngLat.lat, radius: Number($('map-block-size').value) });
+    paintMapGo(); mapDrawRoute();
+    if (mapGo.route) guard(() => mapRoute({ again: true }), $('map-error'));
+  } else mapSetPoint(what, mapSpot(lngLat.lng, lngLat.lat));
+  return true;
+}
+
+$('map-tab-find').addEventListener('click', () => { mapGo.tab = 'find'; mapGo.picking = null; paintMapGo(); });
+$('map-tab-go').addEventListener('click', () => { mapGo.tab = 'go'; paintMapGo(); });
+$('map-go').addEventListener('submit', (e) => { e.preventDefault(); mapGo.alt = 0; guard(() => mapRoute(), $('map-error')); });
+$('map-route-other').addEventListener('click', () => { mapGo.alt = (mapGo.alt + 1) % 4; guard(() => mapRoute({ again: true }), $('map-error')); });
+$('map-route-clear').addEventListener('click', () => { mapGo.from = null; mapGo.to = null; mapGo.route = null; mapGo.alt = 0; $('map-from').value = ''; $('map-to').value = ''; paintMapGo(); mapDrawRoute(); });
+$('map-from-pick').addEventListener('click', () => mapPick('from'));
+$('map-to-pick').addEventListener('click', () => mapPick('to'));
+$('map-block-add').addEventListener('click', () => mapPick('block'));
+$('map-mode').addEventListener('change', () => { mapGo.alt = 0; paintMapGo(); if (mapGo.route) guard(() => mapRoute({ again: true }), $('map-error')); });
+$('map-nomotor').addEventListener('change', () => { if (mapGo.route) guard(() => mapRoute({ again: true }), $('map-error')); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && mapGo.picking) { mapGo.picking = null; paintMapGo(); } });
+
 async function mapEnsure(m) {
   const empty = $('map-empty');
   empty.hidden = Boolean(m.map);
@@ -1898,11 +2077,22 @@ async function mapEnsure(m) {
     map.addSource('hits', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#b3261e', '#14304d'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
     map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#14304d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
-    map.on('click', 'hits-dot', (e) => { const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
+    const empty = { type: 'FeatureCollection', features: [] };
+    map.addSource('blocks', { type: 'geojson', data: empty });
+    map.addSource('route', { type: 'geojson', data: empty });
+    map.addSource('ends', { type: 'geojson', data: empty });
+    map.addLayer({ id: 'blocks-fill', type: 'fill', source: 'blocks', paint: { 'fill-color': '#b3261e', 'fill-opacity': 0.22 } }, 'hits-dot');
+    map.addLayer({ id: 'blocks-edge', type: 'line', source: 'blocks', paint: { 'line-color': '#b3261e', 'line-width': 2, 'line-dasharray': [2, 2] } }, 'hits-dot');
+    map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 9 } }, 'hits-dot');
+    map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1a56c4', 'line-width': 5 } }, 'hits-dot');
+    map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e7f5c', '#14263b'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 } });
+    map.on('click', (e) => { mapClicked(e.lngLat); });
+    map.on('click', 'hits-dot', (e) => { if (mapGo.picking) return; const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
     map.on('mouseenter', 'hits-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
     $('map-canvas').dataset.ready = '1';
     mapDrawHits();
+    mapDrawRoute();
   });
   map.on('moveend', () => { mapFind({ moved: true }).catch(() => {}); });
   mapView = map;
@@ -1921,6 +2111,7 @@ function renderMap() {
   paintMapSetup(m);
   paintMapSearch(m);
   paintMapResults();
+  paintMapGo();
   mapEnsure(m).catch((err) => {
     mapKey = '';
     // MapLibre reports a missing graphics context as a long technical record; say it in words.
@@ -2109,6 +2300,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.19.0': [
+    'Map: Directions. Choose a start and a destination, by name, by coordinates or by clicking the map, and get a route with turn-by-turn steps, by car, bicycle or on foot.',
+    'Blocked roads and areas: mark where you cannot go and the route is worked out again around it. There is also a car setting that may use farm and forest tracks.',
+    'The routing data is measured before it is downloaded. The routing engine and the Java it needs now come with Wikivault.',
+  ],
   '0.18.0': [
     'Map, a new section: an offline map cut from OpenStreetMap for the regions you choose. The app measures how big each level of detail would be before anything is downloaded.',
     'Places: hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, searchable by name, kind and distance.',

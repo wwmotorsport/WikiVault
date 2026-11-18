@@ -583,6 +583,30 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+BRouter 1.7.10 (compiled from its unmodified release source; the routing engine)
+https://github.com/abrensch/brouter
+
+The MIT License (MIT)
+
+Copyright (c) 2019 BRouter contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 Noto Sans, Latin ranges, as map glyphs
 https://github.com/protomaps/basemaps-assets
 
@@ -923,6 +947,12 @@ Wikipedia edition (ZIM file)
 Wikibooks and Wikiversity editions (ZIM files)
   Text under the Creative Commons Attribution-ShareAlike licence; media under their own licences. Packaged and published by Kiwix / openZIM. Downloaded only if you add them.
 
+Java runtime (installed in resources\java)
+  Eclipse Temurin 25.0.5, a build of OpenJDK by the Eclipse Adoptium project (https://adoptium.net), under the GNU General Public License version 2 with the Classpath Exception. Its licence and the notices of the parts it contains are installed with it, in resources\java\legal. Its source is published at https://github.com/adoptium/jdk25u. Wikivault only runs it; nothing in it is changed.
+
+Routing data (rd5 files)
+  © OpenStreetMap contributors, under the Open Database License, prepared weekly by the BRouter project and downloaded from brouter.de only if you ask for it.
+
 The map and the places on it
   Map data and places © OpenStreetMap contributors, under the Open Database License (https://www.openstreetmap.org/copyright). The map file is cut from the Protomaps world basemap (https://protomaps.com), which is built from OpenStreetMap and Natural Earth. Places are asked for through the Overpass API. Both are downloaded only if you ask for them.
 
@@ -939,4 +969,4 @@ AI models
 NAMES
 ==============================================================================
 
-Wikipedia is a trademark of the Wikimedia Foundation. Kiwix, Microsoft, Foundry, IBM Plex, Core Knowledge, Illustrative Mathematics, OpenStreetMap, Protomaps and MapLibre are names or trademarks of their owners. Wikivault is not affiliated with, endorsed by or sponsored by any of them.
+Wikipedia is a trademark of the Wikimedia Foundation. Kiwix, Microsoft, Foundry, IBM Plex, Core Knowledge, Illustrative Mathematics, OpenStreetMap, Protomaps, MapLibre, BRouter, Eclipse Temurin and Java are names or trademarks of their owners. Wikivault is not affiliated with, endorsed by or sponsored by any of them.

@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -10,10 +10,11 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "dist": "node scripts/make-notices.js && electron-builder --win nsis --x64",
+    "dist": "node scripts/make-notices.js && node scripts/fetch-java.js && electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --win dir --x64",
     "notices": "node scripts/make-notices.js",
-    "vendor-maps": "node scripts/vendor-maps.js"
+    "vendor-maps": "node scripts/vendor-maps.js",
+    "fetch-java": "node scripts/fetch-java.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
@@ -69,6 +70,15 @@
       {
         "from": "THIRD-PARTY-NOTICES.txt",
         "to": "THIRD-PARTY-NOTICES.txt"
+      }
+    ],
+    "asarUnpack": [
+      "assets/routing/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/java-runtime",
+        "to": "java"
       }
     ]
   }

@@ -1,0 +1,15 @@
+brouter.jar is BRouter 1.7.10, the routing engine by Arndt Brenschede and contributors
+(https://github.com/abrensch/brouter), under the MIT licence in LICENSE.
+
+It was compiled for Wikivault from the unmodified source of the release tag v1.7.10
+(commit 4d2639af77ea5ed9c30d3e400764eb6f9e8522da, 17 July 2026) with:
+
+  javac --release 11 -encoding UTF-8 \
+    (all of src/main/java in brouter-util, brouter-codec, brouter-expressions,
+     brouter-mapaccess, brouter-core and brouter-server)
+  jar --create --file brouter.jar --main-class btools.server.RouteServer
+
+The Android app and the map-creation tools are not part of it. It needs only the java.base module.
+
+profiles2/ holds lookups.dat and four of BRouter's own routing profiles, unchanged:
+car-vario, trekking, mtb and hiking-mountain.

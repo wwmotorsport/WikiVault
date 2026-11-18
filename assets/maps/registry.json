@@ -895,5 +895,9 @@
     ]
    ]
   }
- ]
+ ],
+ "routing": {
+  "base": "https://brouter.de/brouter/segments4/",
+  "credit": "Routing data: © OpenStreetMap contributors, prepared weekly by the BRouter project."
+ }
 }

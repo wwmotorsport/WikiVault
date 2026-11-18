@@ -36,7 +36,9 @@ class RangeSource {
         const etag = res.headers.get('etag');
         if (etag) { if (this.etag && this.etag !== etag) throw new SourceChanged('The map file on the server changed during the download. Start again.'); this.etag = etag; }
         const buf = Buffer.from(await res.arrayBuffer());
-        if (buf.length < length) throw new Error('The map server sent less than was asked for.');
+        // Asking past the end of the file gives what there is: fine for a file smaller than the first read.
+        const total = Number((/\/(\d+)$/.exec(res.headers.get('content-range') || '') || [])[1]);
+        if (buf.length < length && !(total > 0 && offset + buf.length >= total)) throw new Error('The map server sent less than was asked for.');
         this.bytes += length;
         return buf.length === length ? buf : buf.subarray(0, length);
       } catch (err) {

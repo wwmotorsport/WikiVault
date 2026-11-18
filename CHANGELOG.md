@@ -2,6 +2,25 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.19.0 (2026-11-18)
+
+Map: directions. The second of the four stages.
+
+- Directions between two points, with turn-by-turn steps, the distance and an estimate of the time. A point can be a place or town found by name, coordinates typed as "35.22, -80.84", a click on the map, or "Directions from here" and "Directions to here" on any place.
+- Five ways of travelling: car; car with farm and forest tracks allowed; bicycle; bicycle off road; on foot. For cars, motorways can be kept off.
+- Blocked roads and areas. Mark a spot on the map and choose how far around it is closed, from 200 yards to 100 miles; the route is worked out again around every block. Blocks are listed and can be removed one by one.
+- Another route: up to three alternatives to the best one.
+- The routing data is measured before it is downloaded, like the map: one file for each five-degree square of the regions ticked. A stopped download carries on; the data in use stays until the new set is complete.
+- The engine is BRouter 1.7.10, an open routing engine that works entirely on this computer. It is included, compiled from its release source, and runs only while directions are in use, listening on this computer alone.
+- BRouter is a Java program, so a Java runtime (Eclipse Temurin 25.0.5) is now installed with Wikivault, in its own folder. It is not registered with Windows and nothing else uses it. The installer is about 30 MB larger.
+- Road names in the steps are read from the map, because the routing data holds none. With a map at "Every street" or more, turns are named; with less detail, some or all steps read "Turn left" without a name, and the route says so.
+- Places and Directions are now two tabs in the Map panel.
+- Fixed: the map download could refuse a very small map file.
+
+Street addresses cannot be searched yet; that is the next stage, together with more places from Overture Maps.
+
+Tested with the real engine: BRouter itself, built from the same source, routing on a small set of test roads made with BRouter's own data tools, on Linux and, with the Windows Java runtime that is shipped, under Wine. Not tested, because the build environment cannot reach it: the routing data server (brouter.de), the real files' sizes and download speed, and routes over real roads. Times are the engine's estimates for open roads.
+
 ## 0.18.0 (2026-11-18)
 
 Map, a new section (the folded-map button in the top bar). This is the first of four stages: the map and the places on it. Directions, address search, updates on a schedule and sending maps to a phone come later and are not in this version.

@@ -645,3 +645,28 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 .maplibregl-popup-close-button { font-size: 20px; padding: 2px 8px; }
 @media (max-width: 900px) { .view.mapview { grid-template-columns: 280px minmax(0, 1fr); } }
 .map-side .error { overflow-wrap: anywhere; }
+
+/* ---------- map: places and directions tabs, routes ---------- */
+.map-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 0 0 14px; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.map-tabs button { padding: 8px 10px; border: 0; background: #fff; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
+.map-tabs button[aria-selected="true"] { background: var(--ink); color: #fff; }
+.map-tabs button:disabled { cursor: default; opacity: .55; }
+.map-tabs button:focus-visible, .map-steps button:focus-visible { outline: 2px solid var(--mark); outline-offset: -2px; }
+.map-go-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#map-go .map-check { padding: 2px 0; }
+#map-pick-note { margin: 0 0 12px; padding: 8px 10px; background: var(--warn-bg); border-radius: 4px; color: var(--text); }
+#map-canvas.picking canvas { cursor: crosshair !important; }
+#map-pane-go .map-field { margin-top: 16px; }
+#map-pane-go .btn[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.map-blocks { list-style: none; margin: 8px 0 0; padding: 0; }
+.map-blocks li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; }
+.map-route-head { margin: 4px 0 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.map-route-total { margin: 0 0 2px; font: 600 20px/1.25 var(--read); }
+.map-route-head .small-print { margin: 0 0 4px; }
+.map-steps { list-style: none; margin: 0; padding: 0; counter-reset: turn; }
+.map-steps li { counter-increment: turn; border-top: 1px solid var(--rule); }
+.map-steps button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 0 8px; width: 100%; padding: 8px 6px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.map-steps button::before { content: counter(turn); grid-row: 1 / span 2; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.map-steps button:hover { background: #eef1f3; }
+.map-step-far { grid-column: 2; color: var(--muted); font-size: 13px; }
+.map-place-go { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
