@@ -2551,6 +2551,9 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.23.1': [
+    'Google contacts can be connected with an app password, as with iCloud. No Google Cloud project is needed.',
+  ],
   '0.23.0': [
     'Setup: one page for every choice and download, with sizes, what is already done, and one button to fetch the rest.',
     'GPS: plug in a USB receiver to see where you are, start a route from there, and be led turn by turn.',

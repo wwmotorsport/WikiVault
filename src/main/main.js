@@ -1664,25 +1664,26 @@ function initBook() {
 function bookState() {
   if (!book) return null;
   const s = readSecrets();
-  return { ...book.summary(), busy: bookBusy, everyHours: settings.contacts.everyHours, accounts: { google: Boolean(s.google), icloud: s.icloud ? s.icloud.user : null }, addressData: Boolean(maps && maps.status().addresses) };
+  return { ...book.summary(), busy: bookBusy, everyHours: settings.contacts.everyHours, accounts: { google: Boolean(s.google), googleBy: s.google ? (s.google.refreshToken ? 'sign-in' : 'app password') : null, googleUser: s.google && s.google.user ? s.google.user : null, icloud: s.icloud ? s.icloud.user : null }, addressData: Boolean(maps && maps.status().addresses) };
 }
 /** Read one account's contacts into the book. `loud` makes a failure an error for the caller; otherwise it is noted in the book. */
 async function syncContacts(source, loud = false) {
-  const name = source === 'google' ? 'Google' : 'iCloud';
+  const name = source.startsWith('google') ? 'Google' : 'iCloud';
   const s = readSecrets()[source];
   if (!s) throw new Error(`No ${name} account is connected.`);
-  const into = source === 'icloudTrial' ? 'icloud' : source;
+  const into = source.replace(/Trial$/, '');
   bookBusy = `Reading your contacts from ${name}`; pushState();
   try {
-    const contacts = source === 'google'
-      ? await contactsSync.googleContacts({ ...s, endpoints: googleEndpoints() })
+    const google = source === 'google' || source === 'googleTrial';
+    const contacts = google && s.refreshToken ? await contactsSync.googleContacts({ ...s, endpoints: googleEndpoints() })
+      : google ? await contactsSync.googleByPassword({ ...s, ...(contactsBase() ? { book: `${contactsBase()}/dav/home/card/` } : {}) })
       : await contactsSync.icloudContacts({ ...s, ...(contactsBase() ? { base: `${contactsBase()}/dav/` } : {}) });
-    const out = book.importContacts(contacts, into, source === 'google' ? {} : { account: s.user });
+    const out = book.importContacts(contacts, into, s.user ? { account: s.user } : {});
     log(`contacts: ${name}: ${out.contacts} contacts, ${out.entries} entries, ${out.located} placed`);
     return out;
   } catch (err) {
     log(`contacts: ${name}: ${err.message}`);
-    if (source !== 'icloudTrial') book.noteError(into, err.code === 'SIGN_IN_AGAIN' ? `${err.message}` : `Could not be read: ${err.message} The contacts already in the book are kept.`);
+    if (!source.endsWith('Trial')) book.noteError(into, err.code === 'SIGN_IN_AGAIN' ? `${err.message}` : `Could not be read: ${err.message} The contacts already in the book are kept.`);
     if (loud) throw err;
     return null;
   } finally { bookBusy = null; pushState(); }
@@ -1870,6 +1871,13 @@ function registerIpc() {
       await writeSecrets({ ...readSecrets(), google: { clientId: id, clientSecret: secret, refreshToken } });
     } finally { bookBusy = null; pushState(); }
     return syncContacts('google', true);
+  });
+  handle('book:google-password', async ({ user, password }) => {
+    if (!(await canSeal())) throw new Error('This computer cannot keep a sign-in safely, so the account was not connected.');
+    const account = { user: String(user || '').trim(), password: String(password || '').replace(/\s+/g, '') };
+    // Tried first, and only kept if Google accepts it.
+    secrets = { ...secrets, googleTrial: account };
+    try { const r = await syncContacts('googleTrial', true); const { googleTrial, ...rest } = secrets; await writeSecrets({ ...rest, google: account }); pushState(); return r; } catch (err) { const { googleTrial, ...rest } = secrets; secrets = rest; throw err; }
   });
   handle('book:icloud-connect', async ({ user, password }) => {
     if (!(await canSeal())) throw new Error('This computer cannot keep a sign-in safely, so the account was not connected.');

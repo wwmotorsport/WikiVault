@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('api', {
   bookImportFile: () => call('book:import-file'),
   bookGoogleConnect: (clientId, clientSecret) => call('book:google-connect', { clientId, clientSecret }),
   bookIcloudConnect: (user, password) => call('book:icloud-connect', { user, password }),
+  bookGooglePassword: (user, password) => call('book:google-password', { user, password }),
   bookSync: (source) => call('book:sync', { source }),
   bookDisconnect: (source, keep) => call('book:disconnect', { source, keep }),
   bookEvery: (hours) => call('book:every', { hours }),

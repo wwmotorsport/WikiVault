@@ -188,5 +188,11 @@ test('iCloud: the address books are found and their cards read, across a move to
     assert.deepEqual(seen.map((s) => s.replace(/ depth=/, ' ')), ['front PROPFIND / 0', 'front PROPFIND /1234/principal/ 0', 'back PROPFIND /1234/carddavhome/ 1', 'back PROPFIND /1234/carddavhome/card/ 1', 'back REPORT /1234/carddavhome/card/ 1']);
     await assert.rejects(sync.icloudContacts({ user: 'ada@example.com', password: 'my-usual-password', base: `${first.origin}/` }), (err) => err.code === 'SIGN_IN_AGAIN' && /app-specific password/.test(err.message));
     await assert.rejects(sync.icloudContacts({ user: '', password: '' }), /first/);
+    // Google by app password: the one address book is read directly, with nothing asked first.
+    seen.length = 0;
+    const g = await sync.googleByPassword({ user: 'ada@example.com', password: 'abcd-efgh-ijkl-mnop', book: `${second.origin}/1234/carddavhome/card/` });
+    assert.deepEqual([g.length, g[0].name, seen.length], [4, 'Ada Okafor', 2]);
+    await assert.rejects(sync.googleByPassword({ user: 'ada@example.com', password: 'wrong', book: `${second.origin}/1234/carddavhome/card/` }), (err) => err.code === 'SIGN_IN_AGAIN' && /myaccount\.google\.com\/apppasswords/.test(err.message));
+    assert.equal(sync.GOOGLE_BOOK('ada+x@example.com'), 'https://www.googleapis.com/carddav/v1/principals/ada%2Bx%40example.com/lists/default/');
   } finally { await first.close(); await second.close(); }
 });

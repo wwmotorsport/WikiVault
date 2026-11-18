@@ -618,24 +618,29 @@
     <section class="acc">
       <h3>Google</h3>
       <p class="small-print" id="acc-google-status"></p>
-      <details id="acc-google-how">
-        <summary>How to connect Google (once, about ten minutes)</summary>
-        <p class="small-print">Google only lets a program read contacts through a "client" registered with Google. This app cannot carry one for everybody, so you make your own, free, and it stays yours.</p>
-        <ol class="small-print">
-          <li>Open <b>console.cloud.google.com</b>, sign in, and create a project (any name).</li>
-          <li>Under <i>APIs and services, Library</i>, find <b>People API</b> and press <i>Enable</i>.</li>
-          <li>Under <i>Google Auth Platform</i> (or <i>OAuth consent screen</i>): choose <b>External</b>, give it a name and your e-mail address. Under <i>Audience</i>, press <b>Publish app</b> so the status is <b>In production</b>. Left in <i>Testing</i>, Google ends the sign-in after seven days. No review by Google is needed for your own use.</li>
-          <li>Under <i>Clients</i> (or <i>Credentials</i>): <i>Create client</i>, type <b>Desktop app</b>. Copy the <b>Client ID</b> and the <b>Client secret</b> into the two boxes below.</li>
-          <li>Press <i>Sign in with Google</i>. Your browser opens Google's own sign-in page. It will warn that the app is not verified, because the client is your own: choose <i>Advanced</i>, then continue, and allow it to see your contacts.</li>
-        </ol>
-      </details>
-      <div class="field"><label class="field-label" for="acc-google-id">Client ID</label><input type="text" id="acc-google-id" autocomplete="off" spellcheck="false"></div>
-      <div class="field"><label class="field-label" for="acc-google-secret">Client secret</label><input type="password" id="acc-google-secret" autocomplete="off" spellcheck="false"></div>
+      <p class="small-print">The simple way is an <b>app password</b>. Turn on 2-Step Verification for the Google Account, then make an app password at <b>myaccount.google.com/apppasswords</b>. Google shows it as four groups of four letters, and it can be withdrawn there at any time. Google does not promise to keep this way open: if it is refused, use the sign-in further down.</p>
+      <div class="field"><label class="field-label" for="acc-google-user">Google Account (e-mail address)</label><input type="text" id="acc-google-user" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="field-label" for="acc-google-pass">App password</label><input type="password" id="acc-google-pass" autocomplete="off" spellcheck="false" placeholder="xxxx xxxx xxxx xxxx"></div>
       <div class="actions">
-        <button type="button" class="btn primary" id="acc-google-connect">Sign in with Google</button>
+        <button type="button" class="btn primary" id="acc-google-pass-connect">Connect with an app password</button>
         <button type="button" class="btn" id="acc-google-sync" hidden>Read again now</button>
         <button type="button" class="btn" id="acc-google-off" hidden>Disconnect</button>
       </div>
+      <details id="acc-google-how">
+        <summary>The other way: sign in through a client of your own (longer to set up)</summary>
+        <p class="small-print">Google's official route for a program is a "client" registered with Google. This app cannot carry one for everybody, so you make your own, free.</p>
+        <ol class="small-print">
+          <li>Open <b>console.cloud.google.com</b>, sign in, and create a project (any name).</li>
+          <li>Under <i>APIs and services, Library</i>, find <b>People API</b> and press <i>Enable</i>.</li>
+          <li>Under <i>Google Auth Platform</i>, press <i>Get started</i>: give it any name, choose your own address as the support e-mail, choose <b>External</b>, give your address again as the contact, and press <i>Create</i>.</li>
+          <li>Under <i>Audience, Test users</i>, add your own Google address. The status stays <i>Testing</i>, in which Google ends the sign-in every seven days: you then press <i>Sign in again</i> here, and the contacts already copied stay meanwhile. Publishing the client, so that its status is <i>In production</i>, removes the limit, but Google first asks for a home page and a privacy policy page on a site of yours.</li>
+          <li>Under <i>Clients</i>, press <i>Create client</i>, type <b>Desktop app</b>. Copy the <b>Client ID</b> and the <b>Client secret</b> into the two boxes below.</li>
+          <li>Press <i>Sign in with Google</i>. Your browser opens Google's own sign-in page. It warns that the app is not verified, because the client is your own: choose <i>Advanced</i>, continue, and allow it to see your contacts.</li>
+        </ol>
+        <div class="field"><label class="field-label" for="acc-google-id">Client ID</label><input type="text" id="acc-google-id" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label class="field-label" for="acc-google-secret">Client secret</label><input type="password" id="acc-google-secret" autocomplete="off" spellcheck="false"></div>
+        <div class="actions"><button type="button" class="btn" id="acc-google-connect">Sign in with Google</button></div>
+      </details>
     </section>
     <section class="acc">
       <h3>Apple iCloud</h3>

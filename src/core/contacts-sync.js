@@ -109,21 +109,29 @@ const inner = (text, name) => { const m = new RegExp(`<(?:[\\w-]+:)?${name}\\b[^
 const responsesOf = (text) => [...text.matchAll(/<(?:[\w-]+:)?response\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?response>/g)].map((m) => m[1]);
 const hrefOf = (text) => { const h = inner(text || '', 'href'); return h == null ? null : unxml(h).trim(); };
 
-async function dav(fetchImpl, url, { method, depth, body, auth, signal }) {
+async function dav(fetchImpl, url, { method, depth, body, auth, signal, denied }) {
   const res = await fetchImpl(url, { method, signal, timeoutMs: 60000, headers: { authorization: auth, depth: String(depth), 'content-type': 'application/xml; charset=utf-8', accept: 'application/xml, text/xml' }, body });
   const text = await res.text();
-  if (res.status === 401 || res.status === 403) throw again('Apple did not accept the Apple ID and the app-specific password. An app-specific password is made at account.apple.com, under Sign-In and Security; your usual password will not work here.');
+  if (res.status === 401 || res.status === 403) throw again(denied);
   if (res.status !== 207) throw new Error(`The contacts server answered ${res.status}.`);
   return { text, url: res.url || url };
 }
 
-/** Read every contact of an iCloud account (or another CardDAV server at `base`). */
-async function icloudContacts({ user, password, base = ICLOUD, fetchImpl = fetchLike, signal = null }) {
-  if (!user || !password) throw new Error('Enter the Apple ID and an app-specific password first.');
+const APPLE_DENIED = 'Apple did not accept the Apple ID and the app-specific password. An app-specific password is made at account.apple.com, under Sign-In and Security; your usual password will not work here.';
+const GOOGLE_DENIED = 'Google did not accept the address and the app password. An app password is made at myaccount.google.com/apppasswords and needs 2-Step Verification to be on; your usual password will not work here. If the app password is right, Google may not allow this way in for your account: use the sign-in through a client instead.';
+
+/**
+ * Read every contact of a CardDAV account. `base` is where the server is asked whose account this is and where
+ * its address books are (iCloud's way in). `book`, when given, is one address book's own address, read directly.
+ */
+async function carddavContacts({ user, password, base = ICLOUD, book = null, denied = APPLE_DENIED, fetchImpl = fetchLike, signal = null }) {
+  if (!user || !password) throw new Error('Enter the account and an app password first.');
   const auth = `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`;
-  const ask = (url, method, depth, body) => dav(fetchImpl, url, { method, depth, body, auth, signal });
+  const ask = (url, method, depth, body) => dav(fetchImpl, url, { method, depth, body, auth, signal, denied });
   const prop = (p) => `<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav"><d:prop>${p}</d:prop></d:propfind>`;
 
+  let books = book ? [book] : null;
+  if (!books) {
   const a = await ask(base, 'PROPFIND', 0, prop('<d:current-user-principal/>'));
   const principal = hrefOf(inner(a.text, 'current-user-principal'));
   if (!principal) throw new Error('The contacts server did not say whose account this is.');
@@ -131,19 +139,25 @@ async function icloudContacts({ user, password, base = ICLOUD, fetchImpl = fetch
   const home = hrefOf(inner(b.text, 'addressbook-home-set'));
   if (!home) throw new Error('The account has no address books.');
   const c = await ask(new URL(home, b.url).toString(), 'PROPFIND', 1, prop('<d:resourcetype/><d:displayname/>'));
-  const books = responsesOf(c.text).filter((r) => /<(?:[\w-]+:)?addressbook\b/.test(inner(r, 'resourcetype') || '')).map((r) => new URL(hrefOf(r), c.url).toString());
+  books = responsesOf(c.text).filter((r) => /<(?:[\w-]+:)?addressbook\b/.test(inner(r, 'resourcetype') || '')).map((r) => new URL(hrefOf(r), c.url).toString());
+  }
   const out = [];
-  for (const book of books) {
-    const list = await ask(book, 'PROPFIND', 1, prop('<d:getetag/><d:resourcetype/>'));
-    const bookPath = new URL(book).pathname.replace(/\/+$/, '');
-    const hrefs = responsesOf(list.text).filter((r) => !/<(?:[\w-]+:)?collection\b/.test(inner(r, 'resourcetype') || '')).map(hrefOf).filter((h) => h && new URL(h, book).pathname.replace(/\/+$/, '') !== bookPath);
+  for (const one of books) {
+    const list = await ask(one, 'PROPFIND', 1, prop('<d:getetag/><d:resourcetype/>'));
+    const bookPath = new URL(one).pathname.replace(/\/+$/, '');
+    const hrefs = responsesOf(list.text).filter((r) => !/<(?:[\w-]+:)?collection\b/.test(inner(r, 'resourcetype') || '')).map(hrefOf).filter((h) => h && new URL(h, one).pathname.replace(/\/+$/, '') !== bookPath);
     for (let i = 0; i < hrefs.length; i += 50) {
       const body = `<?xml version="1.0" encoding="utf-8"?><card:addressbook-multiget xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav"><d:prop><d:getetag/><card:address-data/></d:prop>${hrefs.slice(i, i + 50).map((h) => `<d:href>${xml(h)}</d:href>`).join('')}</card:addressbook-multiget>`;
-      const got = await ask(book, 'REPORT', 1, body);
+      const got = await ask(one, 'REPORT', 1, body);
       for (const r of responsesOf(got.text)) { const data = inner(r, 'address-data'); if (data) for (const card of vcard.parse(unxml(data))) out.push(card); }
     }
   }
   return out;
 }
 
-module.exports = { googleSignIn, googleContacts, icloudContacts, GOOGLE, ICLOUD };
+const icloudContacts = (o) => carddavContacts({ ...o, denied: APPLE_DENIED });
+/** Google's contacts by app password: its CardDAV server, at the account's one address book. Google documents this server as needing the full sign-in, but it has gone on accepting app passwords. */
+const GOOGLE_BOOK = (user) => `https://www.googleapis.com/carddav/v1/principals/${encodeURIComponent(user)}/lists/default/`;
+const googleByPassword = ({ user, password, book = null, ...rest }) => carddavContacts({ ...rest, user, password, book: book || GOOGLE_BOOK(user), denied: GOOGLE_DENIED });
+
+module.exports = { googleSignIn, googleContacts, googleByPassword, icloudContacts, carddavContacts, GOOGLE, GOOGLE_BOOK, ICLOUD };

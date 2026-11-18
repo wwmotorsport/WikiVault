@@ -2,6 +2,11 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.23.1 (2026-11-18)
+
+- Google contacts can be connected with an address and an app password, the same way as iCloud, with no Google Cloud project. It reads Google's contacts (CardDAV) server. Google documents that server as needing the full sign-in but has gone on accepting app passwords; this was written from that reported behaviour and tested against a stand-in server, not against Google.
+- The steps for the other way, signing in through a client of your own, now match what Google asks for: its set-up form comes first, and a client left in *Testing* works with you as a test user, with a new sign-in every seven days. Publishing it needs a home page and a privacy policy page, which the earlier text did not say.
+
 ## 0.23.0 (2026-11-18)
 
 A Setup page, GPS, and an address book.

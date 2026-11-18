@@ -133,15 +133,17 @@ function paintAccounts() {
   const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })} at ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`; };
   const line = (on, s, off) => (on ? `${s && s.date ? `Connected. Last read on ${when(s.date)}: ${s.contacts.toLocaleString()} contacts, ${s.entries.toLocaleString()} entries.` : 'Connected.'}${s && s.error ? ` ${s.error}` : ''}` : off);
   const g = b.accounts.google; const i = b.accounts.icloud;
-  $('acc-google-status').textContent = line(g, b.sources.google, 'Not connected.');
+  $('acc-google-status').textContent = line(g, b.sources.google, 'Not connected.') + (g ? ` Connected by ${b.accounts.googleBy}${b.accounts.googleUser ? `: ${b.accounts.googleUser}` : ''}.` : '');
   $('acc-icloud-status').textContent = line(Boolean(i), b.sources.icloud, 'Not connected.') + (i ? ` Account: ${i}.` : '');
   for (const [k, on] of [['google', g], ['icloud', Boolean(i)]]) { $(`acc-${k}-sync`).hidden = !on; $(`acc-${k}-off`).hidden = !on; }
-  $('acc-google-connect').textContent = g ? 'Sign in again' : 'Sign in with Google';
+  $('acc-google-connect').textContent = g && b.accounts.googleBy === 'sign-in' ? 'Sign in again' : 'Sign in with Google';
+  $('acc-google-pass-connect').textContent = g && b.accounts.googleBy === 'app password' ? 'Connect again' : 'Connect with an app password';
+  if (b.sources.google && b.sources.google.error && b.accounts.googleBy === 'sign-in') $('acc-google-how').open = true; // where the button to sign in again is
   $('acc-icloud-connect').textContent = i ? 'Connect again' : 'Connect iCloud';
   if (b.sources.file) $('acc-file-status').textContent = `Last file: ${b.sources.file.name || 'a contacts file'}, ${b.sources.file.contacts.toLocaleString()} contacts. Importing again replaces what it brought in.`;
   if (document.activeElement !== $('book-every')) $('book-every').value = String([6, 24, 168].includes(b.everyHours) ? b.everyHours : 24);
   const busy = Boolean(b.busy) || bookUi.busy;
-  for (const id of ['acc-google-connect', 'acc-google-sync', 'acc-google-off', 'acc-icloud-connect', 'acc-icloud-sync', 'acc-icloud-off', 'acc-file']) $(id).disabled = busy;
+  for (const id of ['acc-google-pass-connect', 'acc-google-connect', 'acc-google-sync', 'acc-google-off', 'acc-icloud-connect', 'acc-icloud-sync', 'acc-icloud-off', 'acc-file']) $(id).disabled = busy;
   if (b.busy) { $('book-acc-done').textContent = `${b.busy}...`; $('book-acc-done').hidden = false; }
 }
 async function bookDo(work, done) {
@@ -157,6 +159,7 @@ const bookTold = (name) => (r) => `${name}: ${r.contacts.toLocaleString()} conta
 $('book-accounts').addEventListener('click', () => { $('book-acc-error').hidden = true; $('book-acc-done').hidden = true; $('book-acc').showModal(); paintAccounts(); });
 $('book-acc-close').addEventListener('click', () => $('book-acc').close());
 $('acc-google-connect').addEventListener('click', () => bookDo(() => api.bookGoogleConnect($('acc-google-id').value, $('acc-google-secret').value).then((r) => { $('acc-google-secret').value = ''; $('acc-google-how').open = false; return r; }), bookTold('Google')));
+$('acc-google-pass-connect').addEventListener('click', () => bookDo(() => api.bookGooglePassword($('acc-google-user').value, $('acc-google-pass').value).then((r) => { $('acc-google-pass').value = ''; return r; }), bookTold('Google')));
 $('acc-icloud-connect').addEventListener('click', () => bookDo(() => api.bookIcloudConnect($('acc-icloud-user').value, $('acc-icloud-pass').value).then((r) => { $('acc-icloud-pass').value = ''; return r; }), bookTold('iCloud')));
 $('acc-google-sync').addEventListener('click', () => bookDo(() => api.bookSync('google').then((r) => r.google), bookTold('Google')));
 $('acc-icloud-sync').addEventListener('click', () => bookDo(() => api.bookSync('icloud').then((r) => r.icloud), bookTold('iCloud')));

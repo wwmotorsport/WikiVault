@@ -243,7 +243,8 @@ The receiver is only read, never written to. A receiver that shows up in Windows
 
 *Contacts accounts* keeps a copy of your contacts on this computer and reads them again by itself, once a day unless you choose otherwise, so the addresses are there when the network is not. It only reads; nothing in your account is changed.
 
-- **Google** only lets a program read contacts through a "client" registered with Google, and the app cannot carry one for everybody. You make your own, once, free: the dialog lists the steps. Set the client's status to *In production*; left in *Testing*, Google ends the sign-in after seven days. You then sign in on Google's own page in your browser.
+- **Google**, the simple way: your Google address and an *app password*, made at myaccount.google.com/apppasswords once 2-Step Verification is on. It can be withdrawn there at any time. Google's own documentation says its contacts server wants the full sign-in, and yet it has gone on accepting app passwords; if yours is refused, use the other way.
+- **Google**, the other way: sign in on Google's own page in your browser, through a "client" that you register with Google once, free. The dialog lists the steps. While the client's status is *Testing*, Google ends the sign-in every seven days and you sign in again; the contacts already copied stay. Publishing it to *In production* removes the limit, but Google asks for a home page and a privacy policy page first.
 - **Apple iCloud** needs your Apple Account's e-mail address and an *app-specific password*, made at account.apple.com. Your usual password does not work here, and the app-specific one can be withdrawn at any time.
 - **A file**: a vCard (.vcf) file from any contacts program, or a CSV file from Google Contacts or Outlook.
 
