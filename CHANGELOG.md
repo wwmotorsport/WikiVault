@@ -2,6 +2,31 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.23.0 (2026-11-18)
+
+A Setup page, GPS, and an address book.
+
+**Setup and downloads**
+- One page, under *Setup* in the top bar, lists everything the app can fetch or set up and says for each whether it is done, to do, has an update, is working, failed, or is not chosen. What has been added since your last version is marked *New*.
+- Tick what you want, choose the map's areas and detail, and *Work out the sizes* adds up what is ticked against the free space.
+- *Download everything ticked* fetches the lot, one thing after another, and carries on after a restart. A failure in one does not stop the others. The offline answers are set up alongside and then tuned to the computer.
+- The page opens by itself on a new installation and once after each update, with *I'll do this later*.
+- School books, the map and its data can now be fetched as soon as the library has a home, while Wikipedia is still downloading.
+
+**GPS**
+- A USB receiver is found by trying every serial port at the usual speeds. The position is shown on the map and can be the start of a route.
+- Turn by turn: a banner gives the next turn and the distance to it, a new route is worked out when the route is left, and the turns can be spoken.
+- A journey that starts away from any road (a car park, a field) is not treated as off the route until it has reached it.
+
+**Address book**
+- The *Saved* tab of the Map keeps people and places, placed on the map from their address, or by hand.
+- Saved entries are found by name in search and in directions, and any place on the map can be saved.
+- Contacts are read from Google (sign-in in your browser, with a client you register once) and from Apple iCloud (app-specific password), and from vCard or CSV files. They are read again by themselves, once a day by default. Sign-ins are stored encrypted by Windows.
+
+Also fixed: the list of Wikipedia sizes on the Library page could miss the mark on the copy in use after the library was moved.
+
+What could not be checked from here, and so is untested against the real thing: a real GPS receiver on a real serial port (the reading of sentences, the route following and the re-routing were tested with a recorded drive), Google's sign-in and People service, and iCloud's contacts server (both were tested against stand-in servers written from their published behaviour).
+
 ## 0.22.0 (2026-11-18)
 
 Library: the partition can be managed after setup.

@@ -55,6 +55,21 @@ Download the newer installer the same way and run it. It replaces the app and ke
 
 *Windows Settings > Apps > Installed apps > Wikivault > Uninstall*. The uninstaller asks whether to remove the downloaded library and your settings as well; choose No if you plan to install again.
 
+## Setup and downloads
+
+**Setup**, in the top bar, is one page for everything the app can fetch or set up: Wikipedia, the offline answers, the school books, the map, directions, addresses, places, the other libraries, a GPS receiver and the address book. The number on the button is how many ticked things are still to do.
+
+Each row says where it stands:
+
+- **Done**: in place and up to date. It is left alone.
+- **To do** or **Update**: ticked, and not there yet, or there is something newer.
+- **Working**, **Failed** (with the reason), or **Not chosen**.
+- **New** marks what has been added since the version you last had.
+
+Tick what you want. For the map, tick the areas and choose how much detail to keep. **Work out the sizes** reads only summaries and fills in how big each ticked thing is; the line under the list adds them up and sets the total against the free space on the library's drive. **Download everything ticked** then fetches them one after another: school books, map, directions, places, addresses, the slow places last, and the other libraries once Wikipedia is there. The offline answers set themselves up alongside, and are then tuned to this computer by timing the models that suit it. You can leave the page and use the app meanwhile. If the app is closed part-way, it carries on when it is opened again. One thing failing does not stop the rest.
+
+The page opens by itself the first time the app is run, and once after each update, with what is new at the top. **I'll do this later** closes it. On a new installation the first row, *Where the library lives, and Wikipedia*, leads to the first-run page described next; the other rows can be fetched as soon as the library has a home, while Wikipedia is still downloading.
+
 ## First run
 
 **How much of Wikipedia.** Kiwix publishes English Wikipedia in three sizes, and the setup screen lists them with the real size of the newest edition of each:
@@ -213,6 +228,26 @@ Once the addresses are there, type one in the Places box or as the start or dest
 - Directions to an approximate address carry the same warning above the steps. They will take you to the right street and close to the house, not to the door.
 
 Places that come from Overture say so when opened. They are added only where OpenStreetMap has no place of a like name close by, and they are checked less, so one may have moved or closed.
+
+**GPS.** Plug a USB GPS receiver into the computer, open *Directions*, and press *Find my GPS receiver*. The app tries each serial port at the usual speeds until one sends positions, so there is nothing to set. Outdoors or by a window the first position takes a minute or two. Then:
+
+- a blue dot shows where you are, and *Keep the map on my position* follows it;
+- *Start from my position* makes the position the start of a route;
+- with a route on the map, a banner at the top says the next turn and how far it is, and how far there is still to go;
+- if you leave the route, a new one is worked out from where you are;
+- *Speak the turns* reads each turn aloud as it comes up, using the voices Windows has.
+
+The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port.
+
+**Saved: the address book.** The *Saved* tab keeps people and places: a name, an address, telephone numbers and notes. An entry's address is looked up in the app's own address data to place it on the map, with the same *Approximate* marking as any address; one that cannot be found can be placed by clicking the map. Saved entries are found by name in the Places box and as the start or end of a route, ahead of everything else, and any place on the map can be saved from its pop-up.
+
+*Contacts accounts* keeps a copy of your contacts on this computer and reads them again by itself, once a day unless you choose otherwise, so the addresses are there when the network is not. It only reads; nothing in your account is changed.
+
+- **Google** only lets a program read contacts through a "client" registered with Google, and the app cannot carry one for everybody. You make your own, once, free: the dialog lists the steps. Set the client's status to *In production*; left in *Testing*, Google ends the sign-in after seven days. You then sign in on Google's own page in your browser.
+- **Apple iCloud** needs your Apple Account's e-mail address and an *app-specific password*, made at account.apple.com. Your usual password does not work here, and the app-specific one can be withdrawn at any time.
+- **A file**: a vCard (.vcf) file from any contacts program, or a CSV file from Google Contacts or Outlook.
+
+The sign-ins are kept encrypted by Windows for your user account, in the app's own data folder, and go only to Google or Apple. A contact with two addresses becomes two entries. An entry you change is yours from then on, and reading the account again leaves it alone.
 
 **Directions.** Directions need routing data, which is separate from the map. Under *Change or update*, in the *Directions* box, press *Measure the routing data*; the app asks the server how big the files are for the regions ticked, then offers the download with its size. The engine that reads them (BRouter) and the Java it needs come with Wikivault.
 
@@ -501,6 +536,7 @@ When no article contains every word, the search is retried without filler words 
 | The map and its places | `<library>\maps\` (`map.pmtiles`, `places\`) |
 | School books, their text index and your progress | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |
 | Wiki golf players and records | `%APPDATA%\Wikivault\golf.json` |
+| The address book, and the sign-ins for contacts accounts (encrypted) | `%APPDATA%\Wikivault\addressbook.json`, `accounts.json` |
 
 ## If something goes wrong
 

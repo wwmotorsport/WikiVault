@@ -65,7 +65,8 @@ function showView(next) {
   if (view === next) return;
   if (view && view !== 'setup') prevView = view;
   view = next;
-  for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school', 'map']) $(`view-${v}`).hidden = v !== next;
+  for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school', 'map', 'hub']) $(`view-${v}`).hidden = v !== next;
+  if (next === 'hub' && state && typeof renderHub === 'function') renderHub();
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
   if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
   if (next === 'golf' || state?.golf) renderGolf();
@@ -78,7 +79,7 @@ function updateNav() {
   let fwd = false;
   if (view === 'reader' && readerReady) {
     try { back = reader.canGoBack(); fwd = reader.canGoForward(); } catch { /* not attached yet */ }
-  } else if ((view === 'results' || view === 'library' || view === 'school' || view === 'map') && prevView) back = true;
+  } else if ((view === 'results' || view === 'library' || view === 'school' || view === 'map' || view === 'hub') && prevView) back = true;
   else if (view === 'golf' && !state?.golf && prevView && prevView !== 'golf') back = true;
   $('nav-back').disabled = !back;
   $('nav-forward').disabled = !fwd;
@@ -1380,6 +1381,7 @@ function renderAgreement() {
 // Changing how much of Wikipedia is kept, after setup.
 let libFlavours = null;      // what the main process last reported
 let libFlavourKey = null;    // the state that report was asked for
+let libFlavourAsk = 0;       // counts the requests, so that a late answer to an old one is dropped
 let libFlavourPick = null;   // the size ticked but not yet confirmed
 function renderLibraryFlavours() {
   if (view !== 'library' || !state.edition?.active) return;
@@ -1387,7 +1389,17 @@ function renderLibraryFlavours() {
   if (libFlavourKey !== key) {
     libFlavourKey = key;
     libFlavourPick = null;
-    api.libraryFlavours().then((info) => { libFlavours = info; renderLibraryFlavours(); }).catch(() => { libFlavours = { options: [] }; renderLibraryFlavours(); });
+    // Only the latest answer counts, and an answer given while the library was still opening (it names no edition
+    // though one is in use) is asked for again a moment later.
+    const ask = (triesLeft) => {
+      const mine = ++libFlavourAsk;
+      api.libraryFlavours().then((info) => {
+        if (mine !== libFlavourAsk) return;
+        if (!info.hasEdition && state.edition?.active && triesLeft > 0) { setTimeout(() => { if (mine === libFlavourAsk) ask(triesLeft - 1); }, 1500); return; }
+        libFlavours = info; renderLibraryFlavours();
+      }).catch(() => { if (mine !== libFlavourAsk) return; libFlavours = { options: [] }; renderLibraryFlavours(); });
+    };
+    ask(4);
   }
   const info = libFlavours;
   if (!info) return;
@@ -1849,6 +1861,8 @@ function mapAddOverlays(map) {
   map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#d93025', dark ? '#ffd84a' : '#14304d'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': dark ? '#ffe9a6' : '#14304d', 'text-halo-color': dark ? '#0b0d10' : '#ffffff', 'text-halo-width': 1.5 } });
   map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e9e6f', dark ? '#f0f2f4' : '#14263b'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 3 } });
+  gpsOverlay(map);
+  bookOverlay(map);
   mapDrawHits();
   mapDrawRoute();
 }
@@ -2041,6 +2055,7 @@ function mapDetails(h) {
   if (h.c === 'address') { box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.d || 'This address is in the address data.')); } else row('Address', h.d);
   row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
   if (h.s === 'ov') box.append(el('p', 'small-print', 'From Overture Maps, not OpenStreetMap. It may have moved or closed.'));
+  if (h.c === 'saved') box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.how === 'manual' ? 'From your address book. You placed it on the map yourself.' : h.approx ? `From your address book. ${h.why || 'The position is approximate.'}` : 'From your address book.'));
   const words = { emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
@@ -2055,6 +2070,10 @@ function mapDetails(h) {
     }
     box.append(go);
   }
+  const keep = el('button', 'btn small', h.c === 'saved' ? 'Edit' : 'Save to the address book');
+  keep.type = 'button';
+  keep.addEventListener('click', () => { if (mapPopup) mapPopup.remove(); if (h.c === 'saved') bookEdit(h.i.replace(/^bk/, '')); else bookEdit(null, { name: h.c === 'address' ? '' : h.n || '', address: h.c === 'address' ? h.n : h.d || '', phones: h.p || '', lat: h.a, lon: h.o }); });
+  box.append(keep);
   return box;
 }
 
@@ -2138,12 +2157,16 @@ function mapSetPoint(which, point) {
 /** A found place or address as an end of a route. An address that was not found exactly carries the reason, to warn with. */
 function mapPointOf(h, typed = '') {
   if (h.c === 'address') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.d } : {}) };
+  if (h.c === 'saved') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.why || 'Its address was not found exactly in the address data.' } : {}) };
   return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || typed || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` };
 }
+
+const MY_POSITION = 'My position';
 
 async function mapResolve(which) {
   const text = $(`map-${which}`).value.trim();
   if (!text) throw new Error(which === 'from' ? 'Say where you are starting from, or pick the spot on the map.' : 'Say where you are going, or pick the spot on the map.');
+  if (text.toLowerCase() === MY_POSITION.toLowerCase()) { const p = gpsPoint(); if (!p) throw new Error('The GPS receiver has no position yet. Give it a clear view of the sky and a minute or two, or type where you are starting from.'); return p; }
   if (mapGo[which] && mapGo[which].label === text) return mapGo[which];
   const c = /^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(text);
   if (c) return mapSpot(Number(c[2]), Number(c[1]));
@@ -2177,6 +2200,7 @@ function mapCircle(lon, lat, radius) {
 }
 
 function mapDrawRoute() {
+  gpsRouteChanged();
   if (!mapView || !mapView.getSource('route')) return;
   const r = mapGo.route;
   mapView.getSource('route').setData({ type: 'FeatureCollection', features: r ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } }] : [] });
@@ -2191,8 +2215,11 @@ function paintMapGo() {
   const m = state?.maps;
   if (!m) return;
   const tabs = $('map-tabs');
-  tabs.hidden = !(m.places || m.routing);
+  tabs.hidden = !m.map;
   if (!m.routing && mapGo.tab === 'go') mapGo.tab = 'find';
+  $('map-tab-book').setAttribute('aria-selected', String(mapGo.tab === 'book'));
+  $('map-pane-book').hidden = mapGo.tab !== 'book';
+  if (mapGo.tab === 'book') paintBook();
   $('map-tab-find').setAttribute('aria-selected', String(mapGo.tab === 'find'));
   $('map-tab-go').setAttribute('aria-selected', String(mapGo.tab === 'go'));
   $('map-tab-go').disabled = !m.routing;
@@ -2266,6 +2293,8 @@ function mapClicked(lngLat) {
 
 $('map-tab-find').addEventListener('click', () => { mapGo.tab = 'find'; mapGo.picking = null; paintMapGo(); });
 $('map-tab-go').addEventListener('click', () => { mapGo.tab = 'go'; paintMapGo(); });
+$('map-tab-book').addEventListener('click', () => { mapGo.tab = 'book'; mapGo.picking = null; paintMapGo(); bookLoad(); });
+$('open-hub').addEventListener('click', () => { showView('hub'); render(); });
 $('map-go').addEventListener('submit', (e) => { e.preventDefault(); mapGo.alt = 0; guard(() => mapRoute(), $('map-error')); });
 $('map-route-other').addEventListener('click', () => { mapGo.alt = (mapGo.alt + 1) % 4; guard(() => mapRoute({ again: true }), $('map-error')); });
 $('map-route-clear').addEventListener('click', () => { mapGo.from = null; mapGo.to = null; mapGo.route = null; mapGo.alt = 0; $('map-from').value = ''; $('map-to').value = ''; paintMapGo(); mapDrawRoute(); });
@@ -2522,6 +2551,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.23.0': [
+    'Setup: one page for every choice and download, with sizes, what is already done, and one button to fetch the rest.',
+    'GPS: plug in a USB receiver to see where you are, start a route from there, and be led turn by turn.',
+    'Address book: save people and places, and keep a copy of your Google or iCloud contacts for when there is no connection.',
+  ],
   '0.22.0': [
     'Library: the partition can be managed after setup. Give the library its own partition at any time, or change the size of the one it has.',
     'The Library page shows how full the partition is.',
@@ -3445,7 +3479,10 @@ function render() {
   renderGolf();
   renderSchool();
   renderMap();
+  const extras = typeof hubMaybePop === 'function'; // the scripts for these load after this one, and the first state can arrive in between
+  if (extras) { renderHub(); paintGps(); paintBook(); }
   maybeTour();
+  if (extras) hubMaybePop();
   const e = state.edition;
   const active = e?.active;
   $('edition-label').textContent = active ? (active.date ? `${editionName(active.date)} edition` : 'Local edition') : 'No edition yet';
@@ -3470,7 +3507,8 @@ function render() {
     // The library is being moved: for a moment there is no edition open. That is not a reason to show the first-run page.
     if (view === 'library') renderLibrary();
   } else if (!active) {
-    showView('setup');
+    // With nothing downloaded the first-run page is home. The Setup page can still be looked at.
+    if (view !== 'hub') showView('setup');
     renderSetup();
   } else {
     if (!landed) {

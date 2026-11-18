@@ -3,7 +3,7 @@
 // edition updater and the local model, and exposes them to the UI over IPC.
 // The UI itself never touches the network.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, session, powerSaveBlocker, powerMonitor, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, session, powerSaveBlocker, powerMonitor, utilityProcess, safeStorage } = require('electron');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
@@ -38,6 +38,9 @@ const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
 const catalog = require('../core/catalog');
+const { AddressBook } = require('../core/address-book');
+const vcard = require('../core/vcard');
+const contactsSync = require('../core/contacts-sync');
 const { PartitionTool, SimulatedPartitionTool, sizePlan, capPlan, FALLBACK_EDITION_BYTES, GB } = require('../core/partition');
 
 const { DEFAULT_BASE } = catalog;
@@ -64,6 +67,8 @@ const DEFAULTS = {
   launchAtLogin: true,
   enginePath: null,
   tour: { hide: false, seenVersion: null }, // the guided tour: switched off? and the version it was last shown in
+  hub: { seenVersion: null, want: null, running: false }, // the Setup page: the version it last opened itself in, what was ticked, and whether "download all" is under way
+  contacts: { everyHours: 24 }, // how often the contacts accounts are read again
   ai: {
     enabled: true,
     provider: 'foundry',
@@ -90,7 +95,7 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings() {
   try {
     const saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) }, tour: { ...DEFAULTS.tour, ...(saved.tour || {}) } };
+    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) }, tour: { ...DEFAULTS.tour, ...(saved.tour || {}) }, hub: { ...DEFAULTS.hub, ...(saved.hub || {}) }, contacts: { ...DEFAULTS.contacts, ...(saved.contacts || {}) } };
   } catch { /* first run */ }
   if (process.env.WIKIVAULT_BASE_URL) settings.baseUrl = process.env.WIKIVAULT_BASE_URL;
 }
@@ -368,6 +373,9 @@ async function partitionInfo() {
   return { driveLetter, analysis, edition, plans, base, stagingDir: defaultStagingDir() };
 }
 
+/** True once the library has a home: from then on the school files, the map and the rest have somewhere to go, even while Wikipedia is still downloading. */
+const libraryChosen = () => Boolean(settings.dataDir && editions);
+
 /** What the library holds, by part. */
 function libraryBreakdown() {
   const wikipedia = editions?.snapshot().active?.bytes || 0;
@@ -460,6 +468,8 @@ async function getState() {
       return { id, name: lib.name, about: lib.about, ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
     }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
+    book: bookState(),
+    gpsFake: Boolean(process.env.WIKIVAULT_GPS_FAKE),
     partition: settings.partition,
     libraryOnPartition: libraryOnPartition(),
     maintenance,
@@ -865,6 +875,17 @@ function lockAppSession() {
     },
   );
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  // A GPS receiver is a serial port. The app's own window may read serial ports (it never writes to one);
+  // the reader, which shows downloaded pages, has a session of its own and gets nothing.
+  session.defaultSession.setDevicePermissionHandler((details) => details.deviceType === 'serial');
+  session.defaultSession.on('select-serial-port', (event, portList, _wc, callback) => {
+    event.preventDefault();
+    const list = portList.map((p) => ({ id: p.portId, name: p.displayName || p.portName || 'Serial port', port: p.portName || '', vendorId: p.vendorId || '', productId: p.productId || '' }));
+    if (win && !win.isDestroyed()) win.webContents.send('gps-ports', list);
+    const pick = list.find((p) => p.id === gpsWanted) || (gpsWanted ? null : list[0]);
+    gpsWanted = null;
+    callback(pick ? pick.id : '');
+  });
   silenceSpellCheck(session.defaultSession);
   silenceSpellCheck(session.fromPartition('persist:reader'));
 }
@@ -1586,6 +1607,108 @@ async function changePartition({ sizeBytes, staged, allowBattery }) {
   }
 }
 
+// ---------------------------------------------------------------- the address book and contacts accounts
+
+let book = null;
+let bookBusy = null; // what the book is doing with an account, in words, or null
+let gpsWanted = null; // the serial port the window asked to open next
+
+const secretsFile = () => path.join(app.getPath('userData'), 'accounts.json');
+// Sign-ins for the contacts accounts. On disk each is encrypted by Windows for this user of this computer;
+// in memory they are kept as read, so that asking which accounts exist costs nothing.
+let secrets = {};
+// The tests run where there is no keyring to encrypt with, and say so; nothing else may store a sign-in unsealed.
+const testSeal = () => Boolean(process.env.WIKIVAULT_TEST_SEAL);
+const canSeal = async () => testSeal() || safeStorage.isAsyncEncryptionAvailable().catch(() => false);
+async function loadSecrets() {
+  secrets = {};
+  let j = null;
+  try { j = JSON.parse(await fsp.readFile(secretsFile(), 'utf8')); } catch { return; }
+  for (const [k, v] of Object.entries(j)) {
+    try {
+      const buf = Buffer.from(v, 'base64');
+      const text = testSeal() ? Buffer.from(buf.toString('latin1').split('').reverse().join(''), 'latin1').toString('utf8') : (await safeStorage.decryptStringAsync(buf)).result;
+      secrets[k] = JSON.parse(text);
+    } catch { /* sealed on another computer or by another user: of no use here */ }
+  }
+}
+const readSecrets = () => secrets;
+async function writeSecrets(all) {
+  const out = {};
+  for (const [k, v] of Object.entries(all)) {
+    const text = JSON.stringify(v);
+    const buf = testSeal() ? Buffer.from(Buffer.from(text, 'utf8').toString('latin1').split('').reverse().join(''), 'latin1') : await safeStorage.encryptStringAsync(text);
+    out[k] = buf.toString('base64');
+  }
+  await fsp.mkdir(app.getPath('userData'), { recursive: true });
+  await fsp.writeFile(secretsFile(), JSON.stringify(out));
+  secrets = { ...all };
+}
+
+// Tests read contacts from a stand-in server, and its "browser" is a plain request.
+const contactsBase = () => process.env.WIKIVAULT_CONTACTS_BASE || null;
+const googleEndpoints = () => (contactsBase() ? { ...contactsSync.GOOGLE, auth: `${contactsBase()}/auth`, token: `${contactsBase()}/token`, people: `${contactsBase()}/people` } : contactsSync.GOOGLE);
+const openSignIn = (url) => (contactsBase() ? fetch(url).then(() => true) : shell.openExternal(url));
+
+function initBook() {
+  const locate = (address) => {
+    if (!maps) return null;
+    let hit = null;
+    try { hit = maps.findAddress(address).hits[0] || null; } catch { hit = null; }
+    return hit ? { lat: hit.a, lon: hit.o, how: hit.how, why: hit.d || '' } : null;
+  };
+  book = new AddressBook(path.join(app.getPath('userData'), 'addressbook.json'), { locate, log }).load();
+  loadSecrets().then(() => pushState()).catch(() => {});
+}
+
+function bookState() {
+  if (!book) return null;
+  const s = readSecrets();
+  return { ...book.summary(), busy: bookBusy, everyHours: settings.contacts.everyHours, accounts: { google: Boolean(s.google), icloud: s.icloud ? s.icloud.user : null }, addressData: Boolean(maps && maps.status().addresses) };
+}
+/** Read one account's contacts into the book. `loud` makes a failure an error for the caller; otherwise it is noted in the book. */
+async function syncContacts(source, loud = false) {
+  const name = source === 'google' ? 'Google' : 'iCloud';
+  const s = readSecrets()[source];
+  if (!s) throw new Error(`No ${name} account is connected.`);
+  const into = source === 'icloudTrial' ? 'icloud' : source;
+  bookBusy = `Reading your contacts from ${name}`; pushState();
+  try {
+    const contacts = source === 'google'
+      ? await contactsSync.googleContacts({ ...s, endpoints: googleEndpoints() })
+      : await contactsSync.icloudContacts({ ...s, ...(contactsBase() ? { base: `${contactsBase()}/dav/` } : {}) });
+    const out = book.importContacts(contacts, into, source === 'google' ? {} : { account: s.user });
+    log(`contacts: ${name}: ${out.contacts} contacts, ${out.entries} entries, ${out.located} placed`);
+    return out;
+  } catch (err) {
+    log(`contacts: ${name}: ${err.message}`);
+    if (source !== 'icloudTrial') book.noteError(into, err.code === 'SIGN_IN_AGAIN' ? `${err.message}` : `Could not be read: ${err.message} The contacts already in the book are kept.`);
+    if (loud) throw err;
+    return null;
+  } finally { bookBusy = null; pushState(); }
+}
+
+/** Read the accounts again when it has been long enough. Runs at start and every hour; quiet when there is no connection. */
+async function contactsDue() {
+  if (!book || bookBusy) return;
+  const every = settings.contacts.everyHours * 3600 * 1000;
+  for (const source of ['google', 'icloud']) {
+    if (!readSecrets()[source]) continue;
+    const src = book.sources[source] || {};
+    const last = Math.max(Date.parse(src.date || 0) || 0, Date.parse(src.tried || 0) || 0);
+    if (Date.now() - last >= every) await syncContacts(source).catch(() => {});
+  }
+}
+
+/** Address-book entries as search results for the map. Only those with a position can be shown or driven to. */
+function bookHits(q) {
+  if (!book) return [];
+  return book.search(q, 6).filter((e) => e.lat != null).map((e) => ({
+    c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: 'Saved',
+    how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why || '',
+  }));
+}
+
 // ---------------------------------------------------------------- IPC
 
 function handle(channel, fn) {
@@ -1693,27 +1816,89 @@ function registerIpc() {
   const mapJob = (name, p) => { p.then((r) => log(`maps: ${name} ${r ? 'finished' : 'stopped'}`)).catch((err) => log(`maps: ${name}: ${err.message}`)); return true; };
   handle('maps:measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('measure', maps.measure(mapRegions(a))); }));
   handle('maps:download', inMaps(async (a) => {
-    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The map is kept in the same library.');
+    if (!libraryChosen()) throw new Error('Choose where the library lives first, on the Setup page. The map is kept in the same library.');
     if (maps.status().job) throw new Error('Something is already being fetched for the map.');
     const free = await freeAt(settings.dataDir);
     return mapJob('map', maps.downloadMap(mapRegions(a), Number(a.zoom), { free }));
   }));
   handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a))); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
-  handle('maps:search', inMaps((a) => maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 })));
+  handle('maps:search', inMaps((a) => {
+    const r = maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 });
+    // People and places from the address book come first, when words were typed and no kind of place was chosen.
+    const saved = String(a.q || '').trim() && !(Array.isArray(a.categories) && a.categories.length) && !a.box ? bookHits(String(a.q)) : [];
+    return saved.length ? { total: r.total + saved.length, hits: [...saved, ...r.hits] } : r;
+  }));
   handle('maps:routing-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('routing sizes', maps.measureRouting(mapRegions(a))); }));
   handle('maps:routing-download', inMaps(async (a) => {
-    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The routing data is kept in the same library.');
+    if (!libraryChosen()) throw new Error('Choose where the library lives first, on the Setup page. The routing data is kept in the same library.');
     if (maps.status().job) throw new Error('Something is already being fetched for the map.');
     return mapJob('routing data', maps.downloadRouting(mapRegions(a), { free: await freeAt(settings.dataDir) }));
   }));
   handle('maps:overture-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('Overture sizes', maps.measureOverture(mapRegions(a))); }));
+  handle('gps:want', ({ id }) => { gpsWanted = id ? String(id) : null; return true; });
+  handle('gps:fake', () => { try { return process.env.WIKIVAULT_GPS_FAKE ? fs.readFileSync(process.env.WIKIVAULT_GPS_FAKE, 'utf8') : null; } catch { return null; } });
+
+  handle('hub:save', (patch) => {
+    const p = patch || {};
+    if ('seenVersion' in p) settings.hub.seenVersion = p.seenVersion ? String(p.seenVersion) : null;
+    if ('running' in p) settings.hub.running = Boolean(p.running);
+    if (p.want && typeof p.want === 'object') settings.hub.want = JSON.parse(JSON.stringify(p.want));
+    saveSettings(); pushState();
+    return true;
+  });
+
+  handle('book:list', () => ({ entries: book.list(), ...bookState() }));
+  handle('book:put', (e) => { const r = book.put(e || {}); pushState(); return r; });
+  handle('book:remove', ({ id }) => { const r = book.remove(String(id)); pushState(); return r; });
+  handle('book:locate-all', () => { const r = book.locateAll(); pushState(); return r; });
+  handle('book:import-file', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Choose a contacts file', properties: ['openFile'], filters: [{ name: 'Contacts (vCard or CSV)', extensions: ['vcf', 'vcard', 'csv'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const contacts = vcard.parseAny(await fsp.readFile(r.filePaths[0], 'utf8'));
+    if (!contacts.length) throw new Error('No contacts were found in that file. It should be a vCard (.vcf) file, or a CSV file exported from Google Contacts or Outlook.');
+    const out = book.importContacts(contacts, 'file', { name: path.basename(r.filePaths[0]) });
+    pushState();
+    return out;
+  });
+  handle('book:google-connect', async ({ clientId, clientSecret }) => {
+    if (!(await canSeal())) throw new Error('This computer cannot keep a sign-in safely, so the account was not connected.');
+    const id = String(clientId || '').trim(); const secret = String(clientSecret || '').trim();
+    bookBusy = 'Waiting for the Google sign-in to finish in your browser'; pushState();
+    try {
+      const { refreshToken } = await contactsSync.googleSignIn({ clientId: id, clientSecret: secret, endpoints: googleEndpoints(), open: openSignIn });
+      await writeSecrets({ ...readSecrets(), google: { clientId: id, clientSecret: secret, refreshToken } });
+    } finally { bookBusy = null; pushState(); }
+    return syncContacts('google', true);
+  });
+  handle('book:icloud-connect', async ({ user, password }) => {
+    if (!(await canSeal())) throw new Error('This computer cannot keep a sign-in safely, so the account was not connected.');
+    const account = { user: String(user || '').trim(), password: String(password || '').replace(/\s+/g, '') };
+    // Tried first, and only kept if Apple accepts it.
+    secrets = { ...secrets, icloudTrial: account };
+    try { const r = await syncContacts('icloudTrial', true); const { icloudTrial, ...rest } = secrets; await writeSecrets({ ...rest, icloud: account }); pushState(); return r; } catch (err) { const { icloudTrial, ...rest } = secrets; secrets = rest; throw err; }
+  });
+  handle('book:sync', async ({ source } = {}) => {
+    const out = {};
+    for (const s of ['google', 'icloud']) if ((!source || source === s) && readSecrets()[s]) out[s] = await syncContacts(s, true);
+    return out;
+  });
+  handle('book:disconnect', async ({ source, keep }) => {
+    const s = String(source);
+    const { [s]: gone, ...rest } = readSecrets(); await writeSecrets(rest);
+    book.dropSource(s, Boolean(keep));
+    pushState();
+    return true;
+  });
+  handle('book:every', ({ hours }) => { settings.contacts.everyHours = Math.min(720, Math.max(1, Math.round(Number(hours) || 24))); saveSettings(); pushState(); return true; });
+
   handle('maps:overture-download', inMaps(async (a) => {
-    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The addresses and places are kept in the same library.');
+    if (!libraryChosen()) throw new Error('Choose where the library lives first, on the Setup page. The addresses and places are kept in the same library.');
     if (maps.status().job) throw new Error('Something is already being fetched for the map.');
     const kinds = ['places', 'addresses'].filter((k) => Array.isArray(a.kinds) && a.kinds.includes(k));
     if (!kinds.length) throw new Error('Choose addresses, places or both.');
-    return mapJob('Overture data', maps.downloadOverture(mapRegions(a), { kinds, free: await freeAt(settings.dataDir) }));
+    // With new address data, addresses in the book that could not be placed before are tried again.
+    return mapJob('Overture data', maps.downloadOverture(mapRegions(a), { kinds, free: await freeAt(settings.dataDir) }).then((r) => { if (r && book) { book.locateAll(); pushState(); } return r; }));
   }));
   handle('maps:address', inMaps((a) => maps.findAddress(String(a.q || ''), Array.isArray(a.near) ? a.near.map(Number) : null)));
   handle('maps:route', inMaps(async (a) => {
@@ -1738,7 +1923,7 @@ function registerIpc() {
   handle('school:week', inSchool(({ number }) => school.week(Number(number) || school.currentWeek())));
   handle('school:lesson', inSchool(({ id }) => { const l = school.lesson(String(id)); if (!l) throw new Error('That lesson is not in the plan. A unit may have been skipped.'); return l; }));
   handle('school:download', inSchool(async () => {
-    if (!editions?.snapshot().active) throw new Error('Set up Wikipedia first; the school files are kept in the same library.');
+    if (!libraryChosen()) throw new Error('Choose where the library lives first, on the Setup page; the school files are kept in the same library.');
     const free = await freeAt(settings.dataDir);
     if (free != null && free < 4 * 2 ** 30) throw new Error(`The school files for one grade need a few gigabytes and the library drive has ${(free / 2 ** 30).toFixed(1)} GB free.`);
     school.downloadAll().then((r) => log(`school: download ${r.stopped ? 'stopped' : 'finished'}, ${r.failed.length} failed`)).catch((err) => log(`school: ${err.message}`));
@@ -2009,7 +2194,10 @@ if (!app.requestSingleInstanceLock()) {
     loadSettings();
     log(`Wikivault ${app.getVersion()} starting on ${process.platform} ${process.arch}, Electron ${process.versions.electron}`);
     lockAppSession();
+    initBook();
     registerIpc();
+    setTimeout(() => contactsDue().catch(() => {}), 45000);
+    setInterval(() => contactsDue().catch(() => {}), 3600 * 1000).unref();
     await reapOrphanEngine();
     // Keep the window's idea of the power state current.
     powerMonitor.on('on-ac', pushState);

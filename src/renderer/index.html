@@ -46,6 +46,7 @@
         <span class="dot" id="edition-dot"></span><span id="edition-label">No edition yet</span>
       </button>
       <button class="bar-btn" id="toggle-ask" aria-pressed="false">Ask</button>
+      <button class="bar-btn" id="open-hub" title="Setup and downloads: everything the app can fetch, in one place">Setup<span class="hub-badge" id="hub-badge" hidden></span></button>
       <button class="bar-btn" id="open-library">Library</button>
     </div>
   </header>
@@ -169,6 +170,24 @@
       </section>
 
       <!-- Library: edition, updates, answers -->
+      <section class="view pad" id="view-hub" hidden>
+        <div class="column hub" id="hub-home">
+          <div id="hub-panel">
+            <h1 class="display" id="hub-title">Setup and downloads</h1>
+            <p class="lead" id="hub-lead"></p>
+            <div class="hub-note" id="hub-new" hidden><b id="hub-new-title"></b><ul id="hub-new-list"></ul></div>
+            <ol class="hub-steps" id="hub-steps"></ol>
+            <div class="hub-total" id="hub-total"></div>
+            <p class="error" id="hub-error" hidden></p>
+            <div class="actions">
+              <button type="button" class="btn" id="hub-sizes">Work out the sizes</button>
+              <button type="button" class="btn primary" id="hub-go">Download everything ticked</button>
+              <button type="button" class="btn" id="hub-stop" hidden>Stop after this one</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="view mapview" id="view-map" hidden>
         <aside class="map-side" id="map-side" aria-label="Map tools">
           <header>
@@ -187,6 +206,7 @@
           <div class="map-tabs" id="map-tabs" role="tablist" hidden>
             <button type="button" role="tab" id="map-tab-find" aria-selected="true">Places</button>
             <button type="button" role="tab" id="map-tab-go" aria-selected="false">Directions</button>
+            <button type="button" role="tab" id="map-tab-book" aria-selected="false">Saved</button>
           </div>
           <div id="map-pane-find">
             <form id="map-search" class="map-search" hidden>
@@ -240,9 +260,31 @@
               </div>
               <ul class="map-blocks" id="map-blocks"></ul>
             </fieldset>
+            <fieldset class="map-field" id="gps-box">
+              <legend>GPS receiver</legend>
+              <p class="small-print" id="gps-status">Not connected.</p>
+              <div class="actions">
+                <button type="button" class="btn small" id="gps-find">Find my GPS receiver</button>
+                <button type="button" class="btn small" id="gps-from" hidden>Start from my position</button>
+                <button type="button" class="btn small" id="gps-off" hidden>Disconnect</button>
+              </div>
+              <label class="map-check" id="gps-follow-row" hidden><input type="checkbox" id="gps-follow"><span>Keep the map on my position</span></label>
+              <label class="map-check" id="gps-speak-row" hidden><input type="checkbox" id="gps-speak"><span>Speak the turns</span></label>
+            </fieldset>
+          </div>
+          <div id="map-pane-book" hidden>
+            <p class="small-print" id="book-status"></p>
+            <div class="actions">
+              <button type="button" class="btn small primary" id="book-add">Add a person or place</button>
+              <button type="button" class="btn small" id="book-accounts">Contacts accounts</button>
+            </div>
+            <label class="visually-hidden" for="book-q">Filter the saved list</label>
+            <input type="search" id="book-q" placeholder="Filter by name or address" autocomplete="off">
+            <ul class="book-hits" id="book-list"></ul>
           </div>
         </aside>
         <div class="map-stage">
+          <div class="map-guide" id="map-guide" hidden><b id="map-guide-next"></b><span id="map-guide-rest"></span></div>
           <div id="map-canvas"></div>
           <div class="map-empty" id="map-empty" hidden></div>
         </div>
@@ -549,6 +591,80 @@
     </div>
   </dialog>
 
+  <dialog id="book-edit" aria-labelledby="book-edit-title">
+    <h2 id="book-edit-title">Saved place</h2>
+    <form id="book-form" method="dialog">
+      <div class="field"><label class="field-label" for="book-name">Name</label><input type="text" id="book-name" maxlength="200" autocomplete="off"></div>
+      <div class="field"><label class="field-label" for="book-label">Kind (home, work, cabin...)</label><input type="text" id="book-label" maxlength="40" autocomplete="off"></div>
+      <div class="field"><label class="field-label" for="book-address">Address</label><textarea id="book-address" rows="3" maxlength="500"></textarea></div>
+      <div class="field"><label class="field-label" for="book-phones">Telephone</label><input type="text" id="book-phones" maxlength="300" autocomplete="off"></div>
+      <div class="field"><label class="field-label" for="book-note">Notes</label><textarea id="book-note" rows="3" maxlength="2000"></textarea></div>
+      <p class="small-print" id="book-where"></p>
+      <p class="error" id="book-edit-error" hidden></p>
+      <div class="actions">
+        <button type="button" class="btn" id="book-cancel">Cancel</button>
+        <button type="button" class="btn" id="book-pin">Place it on the map</button>
+        <button type="button" class="btn danger" id="book-delete" hidden>Delete</button>
+        <button type="submit" class="btn primary" id="book-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="book-acc" aria-labelledby="book-acc-title">
+    <h2 id="book-acc-title">Contacts accounts</h2>
+    <p>The app reads your contacts and keeps a copy on this computer, so the addresses are here when there is no connection. It only reads: nothing in your account is ever changed. The copy is refreshed <label for="book-every" class="visually-hidden">how often</label><select id="book-every"><option value="6">every 6 hours</option><option value="24">once a day</option><option value="168">once a week</option></select> while the app is running.</p>
+    <p class="error" id="book-acc-error" hidden></p>
+    <p class="hub-note" id="book-acc-done" hidden></p>
+    <section class="acc">
+      <h3>Google</h3>
+      <p class="small-print" id="acc-google-status"></p>
+      <details id="acc-google-how">
+        <summary>How to connect Google (once, about ten minutes)</summary>
+        <p class="small-print">Google only lets a program read contacts through a "client" registered with Google. This app cannot carry one for everybody, so you make your own, free, and it stays yours.</p>
+        <ol class="small-print">
+          <li>Open <b>console.cloud.google.com</b>, sign in, and create a project (any name).</li>
+          <li>Under <i>APIs and services, Library</i>, find <b>People API</b> and press <i>Enable</i>.</li>
+          <li>Under <i>Google Auth Platform</i> (or <i>OAuth consent screen</i>): choose <b>External</b>, give it a name and your e-mail address. Under <i>Audience</i>, press <b>Publish app</b> so the status is <b>In production</b>. Left in <i>Testing</i>, Google ends the sign-in after seven days. No review by Google is needed for your own use.</li>
+          <li>Under <i>Clients</i> (or <i>Credentials</i>): <i>Create client</i>, type <b>Desktop app</b>. Copy the <b>Client ID</b> and the <b>Client secret</b> into the two boxes below.</li>
+          <li>Press <i>Sign in with Google</i>. Your browser opens Google's own sign-in page. It will warn that the app is not verified, because the client is your own: choose <i>Advanced</i>, then continue, and allow it to see your contacts.</li>
+        </ol>
+      </details>
+      <div class="field"><label class="field-label" for="acc-google-id">Client ID</label><input type="text" id="acc-google-id" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="field-label" for="acc-google-secret">Client secret</label><input type="password" id="acc-google-secret" autocomplete="off" spellcheck="false"></div>
+      <div class="actions">
+        <button type="button" class="btn primary" id="acc-google-connect">Sign in with Google</button>
+        <button type="button" class="btn" id="acc-google-sync" hidden>Read again now</button>
+        <button type="button" class="btn" id="acc-google-off" hidden>Disconnect</button>
+      </div>
+    </section>
+    <section class="acc">
+      <h3>Apple iCloud</h3>
+      <p class="small-print" id="acc-icloud-status"></p>
+      <p class="small-print">Apple needs an <b>app-specific password</b>, not your usual one: make it at <b>account.apple.com</b>, under <i>Sign-In and Security, App-Specific Passwords</i>. It can be withdrawn there at any time. Two-factor authentication must be on for the Apple Account.</p>
+      <div class="field"><label class="field-label" for="acc-icloud-user">Apple Account (e-mail address)</label><input type="text" id="acc-icloud-user" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="field-label" for="acc-icloud-pass">App-specific password</label><input type="password" id="acc-icloud-pass" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx"></div>
+      <div class="actions">
+        <button type="button" class="btn primary" id="acc-icloud-connect">Connect iCloud</button>
+        <button type="button" class="btn" id="acc-icloud-sync" hidden>Read again now</button>
+        <button type="button" class="btn" id="acc-icloud-off" hidden>Disconnect</button>
+      </div>
+    </section>
+    <section class="acc">
+      <h3>A file</h3>
+      <p class="small-print" id="acc-file-status">A vCard (.vcf) file from any contacts program, or a CSV file exported from Google Contacts or Outlook. Importing again replaces what the last file brought in.</p>
+      <div class="actions"><button type="button" class="btn" id="acc-file">Import a contacts file</button></div>
+    </section>
+    <p class="small-print">Sign-ins are kept encrypted by Windows for your user account on this computer, in the app's own data folder, and are sent only to Google or Apple. Contacts are not sent anywhere.</p>
+    <div class="actions"><button type="button" class="btn" id="book-acc-close">Close</button></div>
+  </dialog>
+
+  <dialog id="hub-pop" aria-labelledby="hub-title">
+    <div id="hub-pop-body"></div>
+    <div class="actions hub-pop-foot">
+      <button type="button" class="btn" id="hub-later">I'll do this later</button>
+    </div>
+  </dialog>
+
   <dialog id="psize-dialog" aria-labelledby="psize-title">
     <h2 id="psize-title"></h2>
     <p id="psize-intro"></p>
@@ -588,6 +704,11 @@
   <script src="../vendor/pmtiles/pmtiles.js"></script>
   <script src="../vendor/basemaps/basemaps.js"></script>
   <script src="map-style.js"></script>
+  <script src="nmea.js"></script>
+  <script src="guide.js"></script>
   <script src="app.js"></script>
+  <script src="gps.js"></script>
+  <script src="book.js"></script>
+  <script src="hub.js"></script>
 </body>
 </html>
