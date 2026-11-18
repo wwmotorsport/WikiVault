@@ -359,3 +359,18 @@ test('other libraries on the same partition raise the smallest and the recommend
   assert.equal(have.minBytes, plain.minBytes + 8 * GB);
   assert.equal(have.otherBytes, 16 * GB);
 });
+
+test('a plan is limited to what the drive can give up at the moment it is shrunk', () => {
+  const { capPlan } = require('../src/core/partition');
+  const plan = sizePlan({ editionBytes: 115 * GB, volumeFree: 900 * GB, partitionSize: 953 * GB, sizeMin: null, editions: 1, otherBytes: 40 * GB });
+  assert.ok(plan.feasible && plan.maxBytes > 300 * GB);
+  // The library is sitting on the drive while it is shrunk, so less can be given than will be free in the end.
+  const capped = capPlan(plan, 250.7 * GB, 'C');
+  assert.deepEqual([capped.maxBytes, capped.feasible, capped.reason], [250 * GB, true, null]);
+  assert.ok(capped.recommendedBytes <= 250 * GB && capped.recommendedBytes >= capped.minBytes);
+  const none = capPlan(plan, 100 * GB, 'C');
+  assert.deepEqual([none.feasible, none.recommendedBytes, none.maxBytes], [false, null, 100 * GB]);
+  assert.match(none.reason, /needs at least \d+ GB, and drive C: can give up 100 GB at the moment/);
+  assert.equal(capPlan(plan, 5000 * GB).maxBytes, plan.maxBytes, 'a cap above the plan changes nothing');
+  assert.equal(capPlan(plan, -5 * GB).maxBytes, 0);
+});

@@ -296,7 +296,13 @@
           <div id="lib-partition" hidden>
             <h2>Partition</h2>
             <p id="lib-partition-text"></p>
-            <div class="actions"><button class="btn" id="revert-open">Stop using the partition</button></div>
+            <div class="meter" id="lib-partition-meter" hidden><i></i></div>
+            <p class="small-print" id="lib-partition-use" hidden></p>
+            <div class="actions">
+              <button class="btn" id="psize-open" hidden></button>
+              <button class="btn" id="part-movein" hidden></button>
+              <button class="btn" id="revert-open">Stop using the partition</button>
+            </div>
           </div>
 
           <h2>Updates</h2>
@@ -540,6 +546,25 @@
     <div class="actions">
       <button class="btn" id="move-cancel">Cancel</button>
       <button class="btn primary" id="move-go">Move library</button>
+    </div>
+  </dialog>
+
+  <dialog id="psize-dialog" aria-labelledby="psize-title">
+    <h2 id="psize-title"></h2>
+    <p id="psize-intro"></p>
+    <dl class="facts" id="psize-facts"></dl>
+    <label class="check"><input type="checkbox" id="psize-staged"><span>Download each update to the Windows drive first, then move it in. The partition only needs to hold one edition of Wikipedia.</span></label>
+    <div class="field">
+      <label class="field-label" for="psize-gb">Size of the partition, in GB</label>
+      <div class="path-row"><input type="number" id="psize-gb" step="1" inputmode="numeric"><button class="btn small" type="button" id="psize-recommended">Use the recommended size</button></div>
+      <span class="field-help" id="psize-range"></span>
+    </div>
+    <ol id="psize-steps"></ol>
+    <ul class="notes" id="psize-notes"></ul>
+    <label class="check" id="psize-battery-row" hidden><input type="checkbox" id="psize-battery"><span>The laptop is running on battery power. Continue anyway.</span></label>
+    <div class="actions">
+      <button class="btn" id="psize-cancel">Cancel</button>
+      <button class="btn primary" id="psize-go"></button>
     </div>
   </dialog>
 

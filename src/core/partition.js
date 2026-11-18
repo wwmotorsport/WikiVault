@@ -77,6 +77,20 @@ function sizePlan({ editionBytes, volumeFree, partitionSize, sizeMin, editions =
   };
 }
 
+/**
+ * Limit a size plan to what the drive can give up at the moment it is shrunk, which can be less than
+ * what it will have free once everything is in place (the library may be sitting on it meanwhile).
+ */
+function capPlan(plan, capBytes, sourceLetter = 'C') {
+  const maxBytes = Math.max(0, Math.min(plan.maxBytes, floorGb(capBytes)));
+  const feasible = maxBytes >= plan.minBytes;
+  return {
+    ...plan, maxBytes, feasible,
+    recommendedBytes: feasible ? Math.min(Math.max(plan.recommendedBytes ?? plan.minBytes, plan.minBytes), maxBytes) : null,
+    reason: feasible ? null : plan.reason || `The partition needs at least ${plan.minBytes / GB} GB, and drive ${sourceLetter}: can give up ${maxBytes / GB} GB at the moment. Free up space on ${sourceLetter}: first.`,
+  };
+}
+
 const SCRIPT_SOURCE = path.join(__dirname, 'partition.ps1');
 
 function powershellPath() {
@@ -256,7 +270,7 @@ class SimulatedPartitionTool {
       throw e;
     }
     fs.mkdirSync(s.mountAt, { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify({ ...s, lastCreate: { driveLetter, sizeBytes } }));
+    fs.writeFileSync(this.file, JSON.stringify({ ...s, merged: false, lastCreate: { driveLetter, sizeBytes } }));
     return { ok: true, mode: 'create', driveLetter: 'W', sizeBytes, label: 'Wikivault', shrunk: true, sourceLetter: driveLetter, mountAt: s.mountAt };
   }
   _leftovers(s) {
@@ -294,6 +308,6 @@ class SimulatedPartitionTool {
 }
 
 module.exports = {
-  PartitionTool, SimulatedPartitionTool, sizePlan,
+  PartitionTool, SimulatedPartitionTool, sizePlan, capPlan,
   GB, FALLBACK_EDITION_BYTES, WINDOWS_RESERVE_BYTES, SCRIPT_SOURCE,
 };

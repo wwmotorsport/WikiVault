@@ -38,7 +38,7 @@ const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
 const catalog = require('../core/catalog');
-const { PartitionTool, SimulatedPartitionTool, sizePlan, FALLBACK_EDITION_BYTES, GB } = require('../core/partition');
+const { PartitionTool, SimulatedPartitionTool, sizePlan, capPlan, FALLBACK_EDITION_BYTES, GB } = require('../core/partition');
 
 const { DEFAULT_BASE } = catalog;
 
@@ -365,7 +365,56 @@ async function partitionInfo() {
   if (mapsBytes() > 0) { otherBytes += mapsBytes(); otherAllowance += mapsBytes(); }
   const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin, otherBytes, otherAllowance };
   const plans = { staged: sizePlan({ ...base, editions: 1 }), selfContained: sizePlan({ ...base, editions: 2 }) };
-  return { driveLetter, analysis, edition, plans, stagingDir: defaultStagingDir() };
+  return { driveLetter, analysis, edition, plans, base, stagingDir: defaultStagingDir() };
+}
+
+/** What the library holds, by part. */
+function libraryBreakdown() {
+  const wikipedia = editions?.snapshot().active?.bytes || 0;
+  let others = 0;
+  for (const id of Object.keys(LIBRARIES)) others += extras.get(id)?.manager.snapshot().active?.bytes || 0;
+  const schoolPart = schoolBytes(); const mapsPart = mapsBytes();
+  return { wikipedia, others, school: schoolPart, maps: mapsPart, total: wikipedia + others + schoolPart + mapsPart };
+}
+
+/**
+ * What giving the library a partition, or changing the size of the one it has, would involve now.
+ *
+ * Windows can only grow a partition into free space that follows it, and the library's partition sits
+ * directly after the Windows drive, so neither can be stretched into the other's space. A change of size
+ * is therefore a rebuild: the library moves to a folder on the Windows drive, the partition is removed
+ * and made again at the new size, and the library moves back. This works out what that needs.
+ */
+async function partitionPlan() {
+  if (!partitionAvailable()) throw new Error('Partitions can only be managed on Windows.');
+  if (!editions?.snapshot().active) throw new Error('Set up the library first.');
+  const info = await partitionInfo();
+  const a = info.analysis;
+  const lib = libraryBreakdown();
+  const p = settings.partition;
+  const onPart = Boolean(p) && libraryOnPartition();
+  const src = info.driveLetter;
+  const sameDrive = (dir) => Boolean(partitionSim) || path.resolve(String(dir)).slice(0, 2).toUpperCase() === `${src}:`;
+  const libOnSource = !onPart && sameDrive(settings.dataDir);
+  const old = onPart ? p.sizeBytes : 0;
+  const tempDir = defaultDataDir();
+  // Room on the Windows drive once all is done, before the partition is taken out of it.
+  const freeAfterAll = a.volumeFree + old + (libOnSource ? lib.total : 0);
+  // Room at the moment the drive is shrunk: by then the library is on it, if it was not already.
+  const freeAtShrink = a.volumeFree + old - (onPart && sameDrive(tempDir) ? lib.total : 0);
+  const base = { ...info.base, editionBytes: Math.max(info.base.editionBytes, lib.wikipedia), volumeFree: freeAfterAll, partitionSize: a.partitionSize + old, sizeMin: onPart ? null : a.sizeMin };
+  const cap = freeAtShrink - 2 * GB;
+  const plans = { staged: capPlan(sizePlan({ ...base, editions: 1 }), cap, src), selfContained: capPlan(sizePlan({ ...base, editions: 2 }), cap, src) };
+  const tempNeeded = onPart ? lib.total + 2 * GB : 0;
+  const tempFree = onPart ? await freeAt(tempDir) : null;
+  return {
+    mode: onPart ? 'resize' : p ? 'blocked' : 'create',
+    source: src, sourceSize: a.partitionSize, sourceFree: a.volumeFree, freeAfterAll,
+    current: p ? { driveLetter: p.driveLetter, sizeBytes: p.sizeBytes, free: onPart ? await freeAt(settings.dataDir) : null } : null,
+    library: lib, dataDir: settings.dataDir, plans,
+    tempDir, tempNeeded, tempFree, tempOk: !onPart || tempFree == null || tempFree >= tempNeeded,
+    staged: Boolean(settings.stagingDir), onBattery: onBattery(),
+  };
 }
 
 const llm = new LlmService({
@@ -386,6 +435,7 @@ async function getState() {
     platform: process.platform,
     packaged: app.isPackaged,
     partitionAvailable: partitionAvailable(),
+    libraryBytes: libraryBreakdown().total,
     onBattery: onBattery(),
     settings: pub,
     suggestedDataDir: dir,
@@ -1487,6 +1537,55 @@ async function revertPartition({ toDir, allowBattery }) {
   }
 }
 
+/**
+ * Give the library a partition of its own, or change the size of the one it has (see partitionPlan).
+ * Each step leaves the library whole and in use: if a later step fails, the library is where the last
+ * finished step put it, and the message says where.
+ */
+async function changePartition({ sizeBytes, staged, allowBattery }) {
+  if (onBattery() && !allowBattery) throw new Error('The laptop is on battery power. Plug in the charger, or confirm that you want to continue on battery.');
+  const plan = await partitionPlan();
+  if (plan.mode === 'blocked') throw new Error(`Drive ${plan.current.driveLetter}: exists but the library is not on it. Move the library onto it, or remove the drive, and then choose a size.`);
+  const chosen = staged ? plan.plans.staged : plan.plans.selfContained;
+  if (!chosen.feasible) throw new Error(chosen.reason);
+  const bytes = Math.floor(Number(sizeBytes) / GB) * GB;
+  if (!(bytes >= chosen.minBytes && bytes <= chosen.maxBytes)) throw new Error(`Choose a size between ${chosen.minBytes / GB} and ${chosen.maxBytes / GB} GB.`);
+  if (plan.mode === 'resize' && bytes === plan.current.sizeBytes && staged === plan.staged) throw new Error('That is the size the partition has now.');
+  if (!plan.tempOk) throw new Error(`Changing the size means keeping the library on ${plan.source}: for a while, which needs ${Math.ceil(plan.tempNeeded / GB)} GB free there. There is ${Math.floor(plan.tempFree / GB)} GB. Free up space on ${plan.source}:, or remove part of the library, and try again.`);
+  let at = 'start';
+  try {
+    if (plan.mode === 'resize') await revertPartition({ toDir: plan.tempDir, allowBattery: true });
+    at = 'create';
+    setMaintenance({ kind: 'partition', step: `Creating a ${bytes / GB} GB partition. Windows asks for administrator approval`, done: null, total: null, error: null });
+    let r; let adjusted = false;
+    try { r = await partitionTool.create(plan.source, bytes, 'Wikivault'); } catch (err) {
+      // Windows found less room than it reported beforehand: take what it can give, if that is still enough.
+      const most = err.code === 'TOO_LARGE' && err.maxBytes ? Math.floor(err.maxBytes / GB) * GB : 0;
+      if (most < chosen.minBytes) throw err;
+      adjusted = true;
+      setMaintenance({ step: `Windows can free ${most / GB} GB right now. Creating a partition of that size. It asks for approval again` });
+      r = await partitionTool.create(plan.source, most, 'Wikivault');
+    }
+    const dataDir = r.mountAt ? path.join(r.mountAt, 'Wikivault') : `${r.driveLetter}:\\Wikivault`;
+    settings.partition = { driveLetter: r.driveLetter, sourceLetter: plan.source, sizeBytes: r.sizeBytes, root: r.mountAt || `${r.driveLetter}:\\` };
+    settings.stagingDir = staged ? defaultStagingDir() : null; // taken up by the move once the library is on the partition
+    saveSettings();
+    log(`partition: created ${r.driveLetter}: at ${Math.round(r.sizeBytes / GB)} GB for the library`);
+    at = 'move';
+    await moveLibrary(dataDir, 'partition');
+    setMaintenance(null);
+    return { driveLetter: r.driveLetter, sizeBytes: r.sizeBytes, dataDir, adjusted, was: plan.current ? plan.current.sizeBytes : null };
+  } catch (err) {
+    if (at !== 'start' && !libraryOnPartition() && settings.stagingDir) { settings.stagingDir = null; saveSettings(); }
+    const tail = at === 'create' ? ` The library is whole and in use in ${settings.dataDir}. Nothing else was changed, and you can choose a size again.`
+      : at === 'move' ? ` The new drive was made, and the library is still whole and in use in ${settings.dataDir}. From the Library page you can move it onto the drive or remove the drive.` : '';
+    const message = `${err.message}${tail}`;
+    log(`change partition (${at}): ${err.code || 'ERROR'} ${err.message}`);
+    setMaintenance({ kind: 'partition', step: null, done: null, error: message });
+    throw new Error(message);
+  }
+}
+
 // ---------------------------------------------------------------- IPC
 
 function handle(channel, fn) {
@@ -1867,6 +1966,11 @@ function registerIpc() {
   });
   handle('library:dismiss-maintenance', () => { if (maintenance?.error) setMaintenance(null); return true; });
   handle('partition:status', partitionStatus);
+  handle('partition:plan', partitionPlan);
+  handle('partition:change', (opts) => {
+    if (maintenance && !maintenance.error) throw new Error('Another library operation is already running.');
+    return changePartition({ sizeBytes: opts.sizeBytes, staged: Boolean(opts.staged), allowBattery: Boolean(opts.allowBattery) });
+  });
   handle('partition:revert', (opts) => {
     if (maintenance && !maintenance.error) throw new Error('Another library operation is already running.');
     return revertPartition(opts);

@@ -722,13 +722,34 @@ function renderMaintenance() {
   $('maint-done').hidden = !maintDone || running || Boolean(err);
 
   const p = state.partition;
-  $('lib-partition').hidden = !p;
+  const canPartition = Boolean(state.partitionAvailable && state.edition?.active);
+  $('lib-partition').hidden = !p && !canPartition;
+  const onIt = Boolean(p && state.libraryOnPartition);
+  $('revert-open').hidden = !p;
+  $('psize-open').hidden = !(canPartition && (onIt || !p));
+  $('psize-open').textContent = onIt ? 'Change the size' : 'Give the library its own partition';
+  $('psize-open').disabled = running;
+  $('part-movein').hidden = !(p && !onIt && state.edition?.active);
+  $('part-movein').disabled = running;
+  $('lib-partition-meter').hidden = !onIt;
+  $('lib-partition-use').hidden = !onIt;
   if (p) {
-    $('lib-partition-text').textContent = state.libraryOnPartition
-      ? `Wikipedia has its own partition: drive ${p.driveLetter}: (${gbOf(p.sizeBytes)} GB). You can move the library back to a folder and return this space to ${p.sourceLetter}:.`
-      : `Drive ${p.driveLetter}: (${gbOf(p.sizeBytes)} GB) was created for Wikipedia but the library no longer lives on it. Its space can be returned to ${p.sourceLetter}:.`;
-    $('revert-open').textContent = state.libraryOnPartition ? 'Stop using the partition' : `Remove drive ${p.driveLetter}:`;
+    $('lib-partition-text').textContent = onIt
+      ? `The library has its own partition: drive ${p.driveLetter}:, ${gbOf(p.sizeBytes)} GB. Its size can be changed, or the library can go back to a folder and the space back to ${p.sourceLetter}:.`
+      : `Drive ${p.driveLetter}: (${gbOf(p.sizeBytes)} GB) was created for the library but the library does not live on it. Move the library onto it, or return its space to ${p.sourceLetter}:.`;
+    $('part-movein').textContent = `Move the library onto drive ${p.driveLetter}:`;
+    $('revert-open').textContent = onIt ? 'Stop using the partition' : `Remove drive ${p.driveLetter}:`;
     $('revert-open').disabled = running;
+    if (onIt) {
+      // How full it is, and what fills it: this is where running out shows before it happens.
+      const free = state.freeBytes; const used = Math.max(0, p.sizeBytes - (free || 0));
+      $('lib-partition-meter').className = `meter${free != null && free < 0.08 * p.sizeBytes ? ' low' : ''}`;
+      $('lib-partition-meter').firstChild.style.width = `${Math.min(100, (100 * used) / p.sizeBytes).toFixed(1)}%`;
+      const upd = state.settings.stagingDir ? '' : ` An update of Wikipedia needs about ${bytes((state.edition.active.bytes || 0) * 1.15)} of that while it runs.`;
+      $('lib-partition-use').textContent = free == null ? '' : `${bytes(used)} in use, ${bytes(free)} free. The library itself is ${bytes(state.libraryBytes || 0)}.${upd}`;
+    }
+  } else if (canPartition) {
+    $('lib-partition-text').textContent = 'The library is in an ordinary folder, where Windows and other programs can use up the room it needs. It can be given a partition of its own, of a size you choose.';
   }
   const moveBtn = $('move-open');
   if (moveBtn) moveBtn.disabled = running;
@@ -739,7 +760,7 @@ const move = { dest: null, free: null };
 
 async function showMoveDest() {
   $('move-dest').textContent = move.dest || 'No folder chosen yet';
-  const need = state.edition.active.bytes;
+  const need = state.libraryBytes || state.edition.active.bytes; // everything that moves: Wikipedia, the other libraries, School and the map
   move.free = move.dest ? await api.freeSpace(move.dest).catch(() => null) : null;
   const short = move.free != null && move.free < need + 2 * GB;
   $('move-free').textContent = move.dest
@@ -795,7 +816,7 @@ async function showRevert() {
   $('revert-title').textContent = moving ? 'Stop using the Wikipedia partition?' : `Remove drive ${p.driveLetter}:?`;
   const steps = [];
   if (moving) {
-    steps.push(`The library (${bytes(a.bytes)}) is copied to a folder on ${src}: and checked against its checksum. Wikipedia stays available.`);
+    steps.push(`The library (${bytes(state.libraryBytes || a.bytes)}) is copied to a folder on ${src}: and checked against its checksum. Wikipedia stays available.`);
     steps.push(`Once the copy is verified, the app switches to it and removes the copy on drive ${p.driveLetter}:.`);
   }
   steps.push(`Drive ${p.driveLetter}: is removed and its ${gbOf(p.sizeBytes)} GB is added back to ${src}:. Windows asks for administrator approval.`);
@@ -807,8 +828,9 @@ async function showRevert() {
   if (moving) {
     $('revert-dest').textContent = revert.dest;
     const free = await api.freeSpace(revert.dest).catch(() => null);
-    const short = free != null && free < a.bytes + 2 * GB;
-    $('revert-free').textContent = free == null ? '' : `${bytes(free)} free there now. The library needs ${bytes(a.bytes)}.`;
+    const all = state.libraryBytes || a.bytes;
+    const short = free != null && free < all + 2 * GB;
+    $('revert-free').textContent = free == null ? '' : `${bytes(free)} free there now. The library needs ${bytes(all)}.`;
     if (short) { notes.push(['warn', 'There is not enough free space in that folder\'s drive for the library. Choose another folder or free up space first.']); revert.blocked = true; }
     notes.push(['', `After this, updates are downloaded inside the library folder, which needs room for a second edition (about ${bytes(a.bytes * 1.15)}) while an update runs.`]);
   } else if (st.exists === false) {
@@ -853,6 +875,111 @@ $('revert-go').addEventListener('click', async () => {
     const r = await api.revertPartition({ toDir: revert.dest, allowBattery });
     maintDone = r.warning || `Drive ${r.removedLetter}: was removed and ${r.sourceLetter}: is ${gbOf(r.sourceSizeAfter)} GB again.${moved ? ` The library is in ${revert.dest}.` : ''}`;
   } catch { /* shown through the maintenance state; the partition stays listed so it can be retried */ }
+  render();
+});
+
+// ---- a partition for the library: create one later, or change its size
+const psize = { plan: null };
+const psizePlan = () => (psize.plan ? ($('psize-staged').checked ? psize.plan.plans.staged : psize.plan.plans.selfContained) : null);
+
+function showPsize(reset) {
+  const pl = psize.plan; const plan = psizePlan();
+  const resize = pl.mode === 'resize';
+  const lib = pl.library; const src = pl.source;
+  $('psize-title').textContent = resize ? `Change the size of drive ${pl.current.driveLetter}:` : 'Give the library its own partition';
+  $('psize-intro').textContent = resize
+    ? `Windows cannot stretch a partition towards the drive in front of it, so the partition is made again at the new size. The library waits on ${src}: meanwhile and stays usable throughout.`
+    : `A piece of drive ${src}: is set aside as a drive of its own, and the library moves onto it. Windows and other programs can then never use up the room the library needs.`;
+  const input = $('psize-gb');
+  if (reset && plan.feasible) input.value = String(plan.recommendedBytes / GB);
+  input.min = String(plan.minBytes / GB); input.max = String(plan.maxBytes / GB); input.disabled = !plan.feasible;
+  const gb = Math.floor(Number(input.value));
+  const n = gb * GB;
+  const inRange = plan.feasible && Number.isFinite(gb) && n >= plan.minBytes && n <= plan.maxBytes;
+  const same = resize && n === pl.current.sizeBytes && $('psize-staged').checked === pl.staged;
+
+  const facts = $('psize-facts'); facts.replaceChildren();
+  const parts = [['Wikipedia', lib.wikipedia], ['other libraries', lib.others], ['School', lib.school], ['map, places, addresses and routing', lib.maps]].filter(([, b]) => b > 0).map(([name, b]) => `${name} ${bytes(b)}`);
+  fact(facts, 'The library holds', `${bytes(lib.total)}${parts.length > 1 ? ` (${parts.join(', ')})` : ''}`);
+  if (resize) fact(facts, `Drive ${pl.current.driveLetter}: now`, `${gbOf(pl.current.sizeBytes)} GB${pl.current.free != null ? `, ${bytes(pl.current.free)} free` : ''}`);
+  fact(facts, `Free on ${src}: now`, bytes(pl.sourceFree));
+  if (inRange) fact(facts, `Free on ${src}: afterwards`, bytes(pl.freeAfterAll - n));
+
+  $('psize-range').textContent = plan.feasible
+    ? `Between ${plan.minBytes / GB} and ${plan.maxBytes / GB} GB. Recommended: ${plan.recommendedBytes / GB} GB, which leaves room for ${$('psize-staged').checked ? 'one edition of Wikipedia and some years of growth' : 'two editions of Wikipedia, so that updates can be downloaded inside it'}, and for a second copy of the map and the other libraries while they update.`
+    : '';
+  $('psize-recommended').disabled = !plan.feasible;
+
+  const steps = [];
+  if (resize) {
+    steps.push(`The library (${bytes(lib.total)}) is copied to ${pl.tempDir} and checked. Once the copy is verified the app uses it.`);
+    steps.push(`Drive ${pl.current.driveLetter}: is removed and its space returned to ${src}:. Windows asks for administrator approval.`);
+    steps.push(`A new partition${inRange ? ` of ${gb} GB` : ''} is made out of ${src}:. Windows asks for approval a second time.`);
+    steps.push('The library is copied onto the new partition and checked, and the copy in the folder is removed.');
+  } else {
+    steps.push(`Drive ${src}: is made smaller${inRange ? ` by ${gb} GB` : ''} and a new drive is made in the space. Only the new, empty drive is formatted. Windows asks for administrator approval.`);
+    steps.push(`The library (${bytes(lib.total)}) is copied onto it and checked. Once the copy is verified the app uses it and removes the copy in ${pl.dataDir}.`);
+  }
+  $('psize-steps').replaceChildren(...steps.map((t) => el('li', '', t)));
+
+  const notes = [];
+  let blocked = !inRange || same;
+  if (!plan.feasible) notes.push(['warn', plan.reason]);
+  else if (!inRange) notes.push(['warn', `Choose a size between ${plan.minBytes / GB} and ${plan.maxBytes / GB} GB.`]);
+  else if (same) notes.push(['', 'That is the size the partition has now.']);
+  if (resize && !pl.tempOk) { notes.push(['warn', `The library has to wait on ${src}: while the partition is made again, which needs ${bytes(pl.tempNeeded)} free there. There is ${bytes(pl.tempFree)}. Free up space on ${src}:, or remove part of the library first.`]); blocked = true; }
+  notes.push(['', resize ? `The library is copied twice, which takes a while for ${bytes(lib.total)}. Keep the laptop plugged in and let it finish. If a step fails, the library stays whole wherever the last finished step put it, and the app says where.` : `Copying ${bytes(lib.total)} takes a while. Keep the laptop plugged in and let it finish. If a step fails, the library stays where it is.`]);
+  notes.push(['', 'If Windows turns out to be able to free less than this, the app makes the partition as large as Windows allows, provided that is still enough for the library, and tells you.']);
+  $('psize-notes').replaceChildren(...notes.map(([cls, text]) => el('li', cls, text)));
+  $('psize-go').textContent = resize ? (inRange ? `Make it ${gb} GB` : 'Change the size') : (inRange ? `Create a ${gb} GB partition` : 'Create the partition');
+  const onBattery = Boolean(state?.onBattery);
+  $('psize-battery-row').hidden = !onBattery;
+  if (!onBattery) $('psize-battery').checked = false;
+  $('psize-go').disabled = blocked || (onBattery && !$('psize-battery').checked);
+}
+
+$('psize-open').addEventListener('click', async () => {
+  $('psize-open').disabled = true;
+  $('maint-error').hidden = true;
+  try {
+    psize.plan = await api.partitionPlan();
+    $('psize-staged').checked = psize.plan.mode === 'resize' ? psize.plan.staged : false;
+    $('psize-battery').checked = false;
+    showPsize(true);
+    $('psize-dialog').showModal();
+    $('psize-cancel').focus();
+  } catch (err) {
+    $('maint-error').textContent = err.message;
+    $('maint-error').hidden = false;
+  } finally { $('psize-open').disabled = maintaining(); }
+});
+$('psize-gb').addEventListener('input', () => showPsize(false));
+$('psize-staged').addEventListener('change', () => showPsize(true));
+$('psize-battery').addEventListener('change', () => showPsize(false));
+$('psize-recommended').addEventListener('click', () => showPsize(true));
+$('psize-cancel').addEventListener('click', () => $('psize-dialog').close());
+$('psize-go').addEventListener('click', async () => {
+  const opts = { sizeBytes: Math.floor(Number($('psize-gb').value)) * GB, staged: $('psize-staged').checked, allowBattery: $('psize-battery').checked };
+  $('psize-dialog').close();
+  maintDone = null;
+  renderMaintenance();
+  try {
+    const r = await api.partitionChange(opts);
+    maintDone = `${r.was ? `Drive ${r.driveLetter}: is now ${gbOf(r.sizeBytes)} GB (it was ${gbOf(r.was)} GB)` : `The library now has its own partition, drive ${r.driveLetter}:, ${gbOf(r.sizeBytes)} GB`}.${r.adjusted ? ' That is less than you asked for: it is as much as Windows could free.' : ''}`;
+  } catch { /* shown through the maintenance state, which says where the library is */ }
+  showView('library');
+  render();
+});
+$('part-movein').addEventListener('click', async () => {
+  const p = state.partition;
+  maintDone = null;
+  renderMaintenance();
+  try {
+    const sep = p.root.includes('\\') ? '\\' : '/';
+    const r = await api.moveLibrary(`${p.root.replace(/[\\/]+$/, '')}${sep}Wikivault`);
+    maintDone = `The library now lives in ${r.dataDir}.`;
+  } catch { /* shown through the maintenance state */ }
+  showView('library');
   render();
 });
 
@@ -2395,6 +2522,10 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.22.0': [
+    'Library: the partition can be managed after setup. Give the library its own partition at any time, or change the size of the one it has.',
+    'The Library page shows how full the partition is.',
+  ],
   '0.21.0': [
     'Map: street addresses. Fetch them under Change or update, then search an address or get directions to one.',
     'An address that is not in the data is placed between its neighbours on the same street, and the app says the position is approximate.',

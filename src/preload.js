@@ -97,6 +97,8 @@ contextBridge.exposeInMainWorld('api', {
   dismissMaintenance: () => call('library:dismiss-maintenance'),
   partitionStatus: () => call('partition:status'),
   revertPartition: (opts) => call('partition:revert', opts),
+  partitionPlan: () => call('partition:plan'),
+  partitionChange: (opts) => call('partition:change', opts),
 
   setSettings: (patch) => call('settings:set', patch),
   openExternal: (url) => call('shell:open-external', { url }),

@@ -110,8 +110,27 @@ Things to know:
 
 - Back up anything you cannot afford to lose first. Shrinking a live system drive is a standard Windows operation, but a power cut or disk fault partway through can damage a drive.
 - If `C:` is protected by BitLocker (device encryption), the new partition is not encrypted.
-- Only the system drive is offered. It is available before the first download, not afterwards.
+- Only the system drive is offered. It can be done before the first download, as described here, or at any time afterwards from the Library page (see *Managing the partition later*).
 - It can be undone from inside the app; see the next section.
+
+### Managing the partition later
+
+The **Partition** section of the Library page shows how full the partition is: how much is in use, how much is free, and how much of that the library itself takes. The bar turns amber when less than a twelfth is free. A map, addresses, routing data and school files all live on the partition, so it fills as you add them.
+
+**Change the size** opens a box with the smallest, largest and recommended sizes and a field for the size you want. The same box opens from **Give the library its own partition** when the library is in an ordinary folder.
+
+Windows can only grow a partition into free space that comes after it on the disk. The library's partition sits directly after `C:`, so it cannot be stretched into space taken from `C:`, and `C:` cannot be stretched over space given up by the partition. Changing the size therefore means making the partition again:
+
+1. The library is copied to a folder on `C:` and checked. The app switches to that copy.
+2. The partition is removed and its space returned to `C:`. Windows asks for administrator approval.
+3. A new partition of the chosen size is made. Windows asks a second time.
+4. The library is copied onto it and checked, and the copy in the folder is removed.
+
+This needs enough free space on `C:` to hold the whole library for a while, and the box says how much there is and how much is needed. The library is copied twice, so allow time for it. The library stays usable throughout.
+
+If a step fails, nothing is lost: the library is whole wherever the last finished step put it, and the message says where. If Windows can free less than it reported beforehand, the app makes the partition as large as Windows allows, provided that still holds the library, and says so.
+
+If the library ends up in a folder with an empty partition beside it, the Library page offers **Move the library onto drive W:** and **Remove drive W:**.
 
 ### Going back to a folder
 

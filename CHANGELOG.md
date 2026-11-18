@@ -2,6 +2,19 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.22.0 (2026-11-18)
+
+Library: the partition can be managed after setup.
+
+- **How full it is.** The Partition section of the Library page shows a bar with the space in use and free, and how much of it the library itself takes.
+- **Change the size.** Choose a new size between the smallest that holds the library and the largest the Windows drive can give. Windows cannot stretch a partition towards the drive in front of it, so the app does it by steps it already had: the library moves to a folder on the Windows drive, the partition is removed, a new one is made at the chosen size, and the library moves back. Each copy is checked before the app switches to it, and the library stays usable throughout.
+- **Give the library a partition at any time.** Before, this could only be done ahead of the first download. Now a library that lives in an ordinary folder can be moved onto a new partition from the Library page.
+- If a step fails, the library is whole wherever the last finished step put it, and the message says where. If Windows can free less than expected, the partition is made as large as Windows allows, when that still holds the library.
+- A partition that exists without the library on it now offers *Move the library onto drive W:* beside *Remove drive W:*.
+- The boxes for moving the library and for leaving the partition now count the whole library (Wikipedia, other libraries, School, the map and its data) when they say how much room is needed. They counted only Wikipedia, though the move itself already checked the full amount.
+
+No new disk operation was written for this: only the two that were already in the app, making the partition and removing it, are used, in a new order. The sequence was tested with the pretend drive the tests use. It has not been run on a real disk from here.
+
 ## 0.21.0 (2026-11-18)
 
 Map: street addresses, and more places, from Overture Maps.

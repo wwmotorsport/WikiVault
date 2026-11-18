@@ -681,3 +681,8 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 /* Addresses: a position that was worked out and not found is said to be so. */
 .map-approx { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #b26a00; background: rgba(178, 106, 0, 0.09); font-size: 13px; }
 .map-hit-approx { display: block; color: #8a5200; font-size: 13px; font-weight: 600; }
+
+/* How full the library's partition is. */
+#lib-partition .meter { margin: 8px 0 4px; max-width: 520px; }
+.meter.low > i { background: #b26a00; }
+#psize-dialog input[type="number"] { width: 110px; }
