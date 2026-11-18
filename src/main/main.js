@@ -722,13 +722,13 @@ function getRouteEngine() {
 }
 const MAP_ASSETS = path.join(__dirname, '..', '..', 'assets', 'maps');
 async function initMaps() {
-  if (maps) { maps.cancel(); maps.removeAllListeners(); }
+  if (maps) { maps.cancel(); maps.removeAllListeners(); await maps.closeArchive(); } // the map file must not stay open: on Windows an open file cannot be moved or deleted
   stopRouteEngine();
   // Tests fetch from a stand-in server instead of the map and places servers.
   const base = process.env.WIKIVAULT_MAPS_BASE;
   maps = new MapsLibrary({
     dir: path.join(settings.dataDir, 'maps'), log, agent: `Wikivault/${app.getVersion()} (offline map for personal use)`,
-    rewrite: (u) => (base ? base + new URL(u).pathname : u),
+    ...(base ? { base } : {}),
     ...(base ? { pause: () => new Promise((r) => setTimeout(r, 20)) } : {}),
   });
   let last = 0;
@@ -1422,7 +1422,8 @@ async function moveLibrary(toDir, kind = 'move') {
 
     setMaintenance({ step: 'Removing the old copy', done: null });
     if (hasSchool) await fsp.rm(oldSchool, { recursive: true, force: true }).catch((err) => log(`old school folder: ${err.message}`));
-    if (hasMaps) await fsp.rm(oldMaps, { recursive: true, force: true }).catch((err) => log(`old maps folder: ${err.message}`));
+    // The routing engine was told to stop a moment ago and may still hold its files; a few tries give it time to let go.
+    if (hasMaps) await fsp.rm(oldMaps, { recursive: true, force: true, maxRetries: 8, retryDelay: 400 }).catch((err) => log(`old maps folder: ${err.message}`));
     for (const id of Object.keys(LIBRARIES)) await removeLibraryFiles(path.join(oldDir, 'more', id), { log });
     await fsp.rmdir(path.join(oldDir, 'more')).catch(() => {});
     await removeLibraryFiles(oldDir, { log });
@@ -1600,13 +1601,22 @@ function registerIpc() {
   }));
   handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a))); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
-  handle('maps:search', inMaps((a) => maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, limit: Number(a.limit) || 50 })));
+  handle('maps:search', inMaps((a) => maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 })));
   handle('maps:routing-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('routing sizes', maps.measureRouting(mapRegions(a))); }));
   handle('maps:routing-download', inMaps(async (a) => {
     if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The routing data is kept in the same library.');
     if (maps.status().job) throw new Error('Something is already being fetched for the map.');
     return mapJob('routing data', maps.downloadRouting(mapRegions(a), { free: await freeAt(settings.dataDir) }));
   }));
+  handle('maps:overture-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('Overture sizes', maps.measureOverture(mapRegions(a))); }));
+  handle('maps:overture-download', inMaps(async (a) => {
+    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The addresses and places are kept in the same library.');
+    if (maps.status().job) throw new Error('Something is already being fetched for the map.');
+    const kinds = ['places', 'addresses'].filter((k) => Array.isArray(a.kinds) && a.kinds.includes(k));
+    if (!kinds.length) throw new Error('Choose addresses, places or both.');
+    return mapJob('Overture data', maps.downloadOverture(mapRegions(a), { kinds, free: await freeAt(settings.dataDir) }));
+  }));
+  handle('maps:address', inMaps((a) => maps.findAddress(String(a.q || ''), Array.isArray(a.near) ? a.near.map(Number) : null)));
   handle('maps:route', inMaps(async (a) => {
     if (!maps.routing) throw new Error('Download the routing data first, under Change or update.');
     const pt = (p) => { if (!Array.isArray(p) || p.length !== 2 || !p.every((v) => Number.isFinite(Number(v)))) throw new Error('A route needs a start and an end.'); return [Number(p[0]), Number(p[1])]; };

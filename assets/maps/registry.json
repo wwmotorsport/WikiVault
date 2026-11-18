@@ -486,7 +486,13 @@
      "hospital"
     ]
    ],
-   "note": "Check \"emergency\" in the details: not every hospital has an emergency room."
+   "note": "Check \"emergency\" in the details: not every hospital has an emergency room.",
+   "overture": [
+    "hospital",
+    "childrens_hospital",
+    "emergency_room",
+    "general_hospital"
+   ]
   },
   {
    "id": "clinic",
@@ -505,6 +511,15 @@
      "amenity",
      "doctors"
     ]
+   ],
+   "overture": [
+    "urgent_care_clinic",
+    "walk_in_clinic",
+    "public_health_clinic",
+    "community_health_center",
+    "medical_center",
+    "urgent_care",
+    "health_clinic"
    ]
   },
   {
@@ -516,6 +531,11 @@
      "amenity",
      "pharmacy"
     ]
+   ],
+   "overture": [
+    "pharmacy",
+    "drugstore",
+    "chemist"
    ]
   },
   {
@@ -527,6 +547,10 @@
      "shop",
      "medical_supply"
     ]
+   ],
+   "overture": [
+    "medical_supply",
+    "hospital_equipment_and_supplies"
    ]
   },
   {
@@ -538,6 +562,13 @@
      "amenity",
      "veterinary"
     ]
+   ],
+   "overture": [
+    "veterinarian",
+    "animal_hospital",
+    "emergency_pet_hospital",
+    "veterinary_clinic",
+    "vet"
    ]
   },
   {
@@ -549,6 +580,11 @@
      "amenity",
      "fire_station"
     ]
+   ],
+   "overture": [
+    "fire_department",
+    "fire_station",
+    "fire_rescue"
    ]
   },
   {
@@ -560,6 +596,14 @@
      "amenity",
      "police"
     ]
+   ],
+   "overture": [
+    "police_department",
+    "law_enforcement",
+    "police_station",
+    "sheriff",
+    "sheriff_department",
+    "police"
    ]
   },
   {
@@ -571,6 +615,12 @@
      "emergency",
      "ambulance_station"
     ]
+   ],
+   "overture": [
+    "ambulance_and_ems_services",
+    "ambulance_service",
+    "emergency_medical_service",
+    "ambulance_and_ems"
    ]
   },
   {
@@ -646,6 +696,11 @@
      "power",
      "plant"
     ]
+   ],
+   "overture": [
+    "power_plants_and_power_plant_service",
+    "power_plant",
+    "power_station"
    ]
   },
   {
@@ -668,6 +723,13 @@
      "amenity",
      "fuel"
     ]
+   ],
+   "overture": [
+    "gas_station",
+    "truck_gas_station",
+    "fuel_dock",
+    "fuel_station",
+    "petrol_station"
    ]
   },
   {
@@ -679,6 +741,9 @@
      "shop",
      "gas"
     ]
+   ],
+   "overture": [
+    "propane_supplier"
    ]
   },
   {
@@ -694,6 +759,13 @@
      "shop",
      "greengrocer"
     ]
+   ],
+   "overture": [
+    "grocery_store",
+    "supermarket",
+    "specialty_grocery_store",
+    "international_grocery_store",
+    "grocery"
    ]
   },
   {
@@ -705,6 +777,13 @@
      "shop",
      "wholesale"
     ]
+   ],
+   "overture": [
+    "wholesale_store",
+    "warehouse_store",
+    "wholesale_club",
+    "wholesale_grocer",
+    "warehouse_club"
    ]
   },
   {
@@ -720,6 +799,10 @@
      "social_facility",
      "food_bank"
     ]
+   ],
+   "overture": [
+    "food_banks",
+    "food_pantry"
    ]
   },
   {
@@ -735,6 +818,11 @@
      "shop",
      "general"
     ]
+   ],
+   "overture": [
+    "department_store",
+    "discount_store",
+    "general_store"
    ]
   },
   {
@@ -754,6 +842,14 @@
      "shop",
      "trade"
     ]
+   ],
+   "overture": [
+    "hardware_store",
+    "home_improvement_store",
+    "building_supply_store",
+    "lumber_store",
+    "hardware",
+    "building_supplies"
    ]
   },
   {
@@ -765,6 +861,17 @@
      "shop",
      "agrarian"
     ]
+   ],
+   "overture": [
+    "farm_equipment_and_supply",
+    "livestock_feed_and_supply_store",
+    "agricultural_seed_store",
+    "farming_equipment_store",
+    "feed_store",
+    "fertilizer_store",
+    "farm_supply_store",
+    "farm_and_ranch_supply",
+    "feed_and_seed_store"
    ]
   },
   {
@@ -780,6 +887,15 @@
      "shop",
      "sports"
     ]
+   ],
+   "overture": [
+    "outdoor_gear",
+    "sporting_goods",
+    "military_surplus_store",
+    "outdoor_gear_store",
+    "sporting_goods_store",
+    "camping_store",
+    "army_surplus_store"
    ]
   },
   {
@@ -795,6 +911,17 @@
      "shop",
      "hunting"
     ]
+   ],
+   "overture": [
+    "gun_and_ammo",
+    "hunting_and_fishing_supplies",
+    "gunsmith",
+    "guns_and_ammo",
+    "gun_shop",
+    "gun_store",
+    "firearms_dealer",
+    "hunting_supplies",
+    "hunting_store"
    ]
   },
   {
@@ -806,6 +933,18 @@
      "aeroway",
      "aerodrome"
     ]
+   ],
+   "overture": [
+    "airport",
+    "domestic_airports",
+    "major_airports",
+    "heliports",
+    "gliderports",
+    "seaplane_bases",
+    "ultralight_airports",
+    "airfield",
+    "heliport",
+    "regional_airport"
    ]
   },
   {
@@ -821,6 +960,14 @@
      "highway",
      "services"
     ]
+   ],
+   "overture": [
+    "rest_areas",
+    "rest_stop",
+    "truck_stop",
+    "rest_area",
+    "travel_plaza",
+    "highway_rest_stop"
    ]
   },
   {
@@ -832,6 +979,12 @@
      "tourism",
      "camp_site"
     ]
+   ],
+   "overture": [
+    "campground",
+    "rv_park",
+    "campsite",
+    "camping_ground"
    ]
   },
   {
@@ -843,6 +996,9 @@
      "amenity",
      "ranger_station"
     ]
+   ],
+   "overture": [
+    "ranger_station"
    ]
   },
   {
@@ -859,7 +1015,14 @@
      "military"
     ]
    ],
-   "note": "Only sites with a name are kept."
+   "note": "Only sites with a name are kept.",
+   "overture": [
+    "armed_forces_branch",
+    "military_base",
+    "military",
+    "military_site",
+    "national_guard"
+   ]
   },
   {
    "id": "townhall",
@@ -874,6 +1037,13 @@
      "amenity",
      "courthouse"
     ]
+   ],
+   "overture": [
+    "town_hall",
+    "city_hall",
+    "courthouse",
+    "county_courthouse",
+    "municipal_building"
    ]
   },
   {
@@ -899,5 +1069,11 @@
  "routing": {
   "base": "https://brouter.de/brouter/segments4/",
   "credit": "Routing data: © OpenStreetMap contributors, prepared weekly by the BRouter project."
+ },
+ "overture": {
+  "releases": "https://labs.overturemaps.org/data/releases.json",
+  "bucket": "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/",
+  "minConfidence": 0.7,
+  "credit": "Addresses and added places: © Overture Maps Foundation and its sources, overturemaps.org. Address data includes the US National Address Database and OpenAddresses sources."
  }
 }

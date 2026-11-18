@@ -184,6 +184,17 @@ Buildings, like everything on the map, are what OpenStreetMap's volunteers have 
 
 Click a place for what is recorded about it: address, telephone, hours, who runs it, its position, and details that matter for its kind, such as whether a hospital has an emergency room or a fuel station sells diesel.
 
+**Addresses and more places.** Under *Change or update*, the *Addresses and more places* box fetches two things from Overture Maps for the ticked regions: street addresses, and places OpenStreetMap does not have. Press *Measure the addresses and places* first. It reads only the summaries of Overture's files and tells you how much there is to download and how much room the address index needs. Untick either line to leave it out, then press *Download*. The download is quick; reading and sorting a hundred million addresses takes longer, and the bar says which part it is on. You can keep using the map meanwhile. If you stop it or close the app, it carries on from the files it had finished.
+
+Once the addresses are there, type one in the Places box or as the start or destination of a route: `350 5th Ave, New York, NY`. The town, state or ZIP code can be left off, in which case the nearest street of that name to the middle of the map comes first.
+
+- An address that is in the data is shown as it is.
+- A number that is not in the data is placed between the nearest known numbers on the same street, and marked *Approximate position*. The note says which numbers it lies between.
+- If only the town can be found, you get the town, marked *Approximate: the town only*.
+- Directions to an approximate address carry the same warning above the steps. They will take you to the right street and close to the house, not to the door.
+
+Places that come from Overture say so when opened. They are added only where OpenStreetMap has no place of a like name close by, and they are checked less, so one may have moved or closed.
+
 **Directions.** Directions need routing data, which is separate from the map. Under *Change or update*, in the *Directions* box, press *Measure the routing data*; the app asks the server how big the files are for the regions ticked, then offers the download with its size. The engine that reads them (BRouter) and the Java it needs come with Wikivault.
 
 Then open the *Directions* tab.

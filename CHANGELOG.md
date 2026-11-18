@@ -2,6 +2,23 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.21.0 (2026-11-18)
+
+Map: street addresses, and more places, from Overture Maps.
+
+- **Addresses.** Under *Change or update*, *Addresses and more places* measures and then fetches the address points for the regions you ticked. After that an address can be typed in the Places box or as the start or destination of a route: `350 5th Ave, New York, NY`, with or without commas, ZIP code or state. Street names are matched however they are written (Fifth Avenue, 5th Ave).
+- **A best guess when the exact address is not known.** If the number is not in the data, it is placed between the nearest known numbers below and above it on the same street, on the same side where it can tell. With only one neighbour it points at that neighbour. If the street is known but not in that town's rows, the town's own position is used to find it. If the street is not known at all, the result is the town. Each of these says *Approximate* and why, in the results, in the pop-up on the map, and above the directions.
+- **More places.** Places from Overture Maps (Meta, Microsoft, Foursquare and others) are added in the kinds the app already has, but only where OpenStreetMap has no place of a like name within 150 metres. They are marked as coming from Overture, since they are less checked.
+- Overture's files are large and sit on fast servers, so this is far quicker than fetching places from OpenStreetMap's shared server. Only the groups of rows that touch your regions, and only the columns used, are downloaded. A fetch that is stopped carries on from the files it had finished.
+- The reading and sorting runs on its own thread, so the map stays usable meanwhile.
+- The address index is one file, `addresses.dat`, in the library's `maps` folder.
+- Fixed: moving the library after using directions could leave the old map and routing files behind on Windows, because the app still had them open. The map file is now closed first, and the removal waits for the routing engine to let go.
+- Fixed: after a move the app could jump to the reader without saying where the library now is. It stays on the Library page and says so.
+
+What this build could not check from here: the real Overture servers. The file layout, the listing and the row format are written from Overture's published schema and documentation, and tested against stand-in files of the same shape. Three things are guesses until a real fetch has run: how long it takes, whether Overture's current names for kinds of place match the list in the app (they renamed about four hundred in 2026; the app matches loosely and keeps a tally of the kinds it passed over, in `overture.json`), and how complete the addresses are in each state.
+
+Not in this build: Census address ranges. Interpolation uses known neighbouring addresses only, so a street with no address in Overture at all falls back to the town.
+
 ## 0.20.0 (2026-11-18)
 
 Map: a clearer look, a choice of what it shows, and a fix for a crash while downloading routing data.

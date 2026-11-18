@@ -677,3 +677,7 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 .map-look summary:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
 .map-look .map-check { padding: 3px 0; }
 #map-look-groups { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--rule); }
+
+/* Addresses: a position that was worked out and not found is said to be so. */
+.map-approx { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #b26a00; background: rgba(178, 106, 0, 0.09); font-size: 13px; }
+.map-hit-approx { display: block; color: #8a5200; font-size: 13px; font-weight: 600; }

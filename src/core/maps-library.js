@@ -22,6 +22,9 @@ const pm = require('./pmtiles');
 const mvt = require('./mvt');
 const zlib = require('node:zlib');
 const { fetchLike } = require('./httpx');
+const { Worker } = require('node:worker_threads');
+const overture = require('./overture');
+const addresses = require('./addresses');
 
 /** Let go of an answer whose body will not be read, so its connection is not left open. */
 function drop(res) { try { if (res.body && res.body.destroy) res.body.destroy(); else if (res.body && res.body.cancel) res.body.cancel().catch(() => {}); } catch { /* nothing to let go of */ } }
@@ -46,14 +49,15 @@ class MapsLibrary extends EventEmitter {
    * @param {Function} [o.pause]      (ms) => Promise, the wait between questions to the places server
    * @param {string} [o.agent]        how the app names itself to the servers
    */
-  constructor({ dir, registry = loadRegistry(), fetchImpl = fetchLike, rewrite = (u) => u, pause = (ms) => new Promise((r) => setTimeout(r, ms)), agent = 'Wikivault', log = () => {} }) {
+  constructor({ dir, registry = loadRegistry(), fetchImpl = fetchLike, base = null, rewrite = base ? (u) => { const x = new URL(u); return base + x.pathname + x.search; } : (u) => u, pause = (ms) => new Promise((r) => setTimeout(r, ms)), agent = 'Wikivault', log = () => {} }) {
     super();
-    this.dir = dir; this.registry = registry; this.fetch = fetchImpl; this.rewrite = rewrite; this.pause = pause; this.agent = agent; this.log = log;
+    this.dir = dir; this.registry = registry; this.fetch = fetchImpl; this.base = base; this.rewrite = rewrite; this.pause = pause; this.agent = agent; this.log = log;
     this.map = null; this.placesInfo = null; this.measured = null; this.job = null; this.error = null;
     this.loaded = new Map(); // category id -> records
     this.routing = null; this.routingMeasured = null;
     this.onRoutingSwap = async () => {}; // called before the routing files are replaced: the engine must let go of them
     this.archive = null; this.tiles = new Map(); // the map file, open for reading road names
+    this.overture = null; this.addresses = null; this.addressIndex = null; this.overtureMeasured = null; // places and addresses from Overture Maps
   }
 
   get mapFile() { return path.join(this.dir, 'map.pmtiles'); }
@@ -68,6 +72,9 @@ class MapsLibrary extends EventEmitter {
     if (this.routing && !fs.existsSync(this.segmentsDir)) this.routing = null;
     // Leftovers of an update that did not finish are not kept, except a map download that can carry on.
     await fsp.rm(path.join(this.dir, 'places.new'), { recursive: true, force: true });
+    await fsp.rm(path.join(this.dir, 'overture.new'), { recursive: true, force: true });
+    await fsp.rm(path.join(this.dir, 'addresses.new.dat'), { force: true });
+    this.loadOverture();
   }
 
   rings(regionIds) {
@@ -85,11 +92,12 @@ class MapsLibrary extends EventEmitter {
       places: this.placesInfo,
       measured: this.measured,
       routing: this.routing, routingMeasured: this.routingMeasured, routingCredit: this.registry.routing.credit,
+      overture: this.overture, addresses: this.addresses, overtureMeasured: this.overtureMeasured, overtureCredit: this.registry.overture.credit,
       modes: routing.MODES.map(({ id, name, what }) => ({ id, name, what })),
       job: this.job ? { ...this.job, controller: undefined } : null,
       error: this.error,
-      categories: this.registry.categories.map((c) => ({ id: c.id, group: c.group, name: c.name, note: c.note || '', count: this.placesInfo ? this.placesInfo.counts[c.id] || 0 : 0 })),
-      bytes: (this.map ? this.map.bytes : 0) + (this.placesInfo ? this.placesInfo.bytes || 0 : 0) + (this.routing ? this.routing.bytes : 0),
+      categories: this.registry.categories.map((c) => ({ id: c.id, group: c.group, name: c.name, note: c.note || '', count: this.placesInfo ? this.placesInfo.counts[c.id] || 0 : 0, extra: this.overture ? this.overture.counts[c.id] || 0 : 0 })),
+      bytes: (this.map ? this.map.bytes : 0) + (this.placesInfo ? this.placesInfo.bytes || 0 : 0) + (this.routing ? this.routing.bytes : 0) + (this.overture ? this.overture.bytes || 0 : 0) + (this.addresses ? this.addresses.bytes || 0 : 0),
     };
   }
 
@@ -371,25 +379,137 @@ class MapsLibrary extends EventEmitter {
 
   recordsOf(id) {
     if (!this.loaded.has(id)) {
-      let items = [];
-      try { items = JSON.parse(fs.readFileSync(path.join(this.dir, 'places', `${id}.json`), 'utf8')).items; } catch { items = []; }
-      for (const it of items) it.c = id;
-      this.loaded.set(id, items);
+      const read = (folder) => { try { return JSON.parse(fs.readFileSync(path.join(this.dir, folder, `${id}.json`), 'utf8')).items; } catch { return []; } };
+      const items = this.placesInfo ? read('places') : [];
+      // Places from Overture are added only where OpenStreetMap has no place of a like name close by.
+      const extra = this.overture && this.overture.counts[id] ? places.fresh(items, read('overture')) : [];
+      const all = extra.length ? items.concat(extra) : items;
+      for (const it of all) it.c = id;
+      this.loaded.set(id, all);
     }
     return this.loaded.get(id);
   }
 
-  /** Search the places. `categories` limits it to some; with none given, all are searched. */
-  search({ q = '', categories = null, near = null, box = null, limit = 50 } = {}) {
-    if (!this.placesInfo) return { total: 0, hits: [] };
-    const ids = (categories && categories.length ? categories : this.registry.categories.map((c) => c.id)).filter((id) => this.placesInfo.counts[id]);
-    if (!q.trim() && !box && !near && ids.length > 1) return { total: 0, hits: [] };
-    const all = [];
-    for (const id of ids) for (const rec of this.recordsOf(id)) all.push(rec);
+  /** Search the places, and the addresses when the words read as one. `categories` limits it to some places; with none given, all are searched. */
+  search({ q = '', categories = null, near = null, box = null, around = null, limit = 50 } = {}) {
+    const chosen = Boolean(categories && categories.length);
+    // `around` is where the map is looking: of two streets of one name, the nearer is listed first.
+    const found = !chosen && !box && q.trim() ? this.findAddress(q, around || near).hits : [];
+    const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && this.overture.counts[id]);
+    const ids = (chosen ? categories : this.registry.categories.map((c) => c.id)).filter(has);
+    let r = { total: 0, hits: [] };
+    if (ids.length && (q.trim() || box || near || ids.length === 1)) {
+      const all = [];
+      for (const id of ids) for (const rec of this.recordsOf(id)) all.push(rec);
+      r = places.search(all, { q, near, box, limit: Math.min(2000, Math.max(1, limit)) });
+    }
     const names = new Map(this.registry.categories.map((c) => [c.id, c.name]));
-    const r = places.search(all, { q, near, box, limit: Math.min(2000, Math.max(1, limit)) });
-    return { total: r.total, hits: r.hits.map((h) => ({ ...h, kind: names.get(h.c) })) };
+    const hits = r.hits.map((h) => ({ ...h, kind: names.get(h.c) }));
+    // An address found under the street name as typed goes first; a looser match goes after the places.
+    return { total: r.total + found.length, hits: [...found.filter((h) => h.sure), ...hits, ...found.filter((h) => !h.sure)] };
+  }
+
+  // ---------------------------------------------------------------- Overture Maps: addresses and more places
+
+  /** Read what has been fetched from Overture. */
+  loadOverture() {
+    this.overture = readJsonSync(path.join(this.dir, 'overture.json'));
+    if (this.overture) delete this.overture.others; // a tally kept in the file for tuning, of no use to the window
+    if (this.overture && !fs.existsSync(path.join(this.dir, 'overture'))) this.overture = null;
+    const meta = readJsonSync(path.join(this.dir, 'addresses.json'));
+    const dat = path.join(this.dir, 'addresses.dat');
+    if (meta && Array.isArray(meta.offsets) && fs.existsSync(dat)) { const { offsets, ...summary } = meta; this.addresses = summary; this.addressIndex = new addresses.AddressIndex(dat, meta); } else { this.addresses = null; this.addressIndex = null; }
+    this.loaded.clear();
+  }
+
+  /** Where a named town is, from the places, for an address whose town the address data names differently. */
+  townAt(city, state, near) {
+    if (!this.placesInfo || !this.placesInfo.counts.town) return null;
+    const want = addresses.normCity(city);
+    let best = null;
+    for (const t of this.recordsOf('town')) {
+      if (addresses.normCity(t.n) !== want) continue;
+      const pop = t.x && t.x.population ? Number(String(t.x.population).replace(/\D/g, '')) || 0 : 0;
+      const score = near ? -places.km(near[1], near[0], t.a, t.o) : pop;
+      if (!best || score > best.score) best = { score, t };
+    }
+    return best ? best.t : null;
+  }
+
+  /**
+   * Find a typed address. Returns { hits, tried }: hits are records like places, with `how` saying how the
+   * point was arrived at ('exact', 'between', 'nearest', 'street' or 'town') and `approx` true for all but exact.
+   */
+  findAddress(text, near = null) {
+    if (!this.addressIndex) return { hits: [], tried: false };
+    const parsed = addresses.parse(text);
+    if (!addresses.looksLikeAddress(parsed)) return { hits: [], tried: false };
+    const r = this.addressIndex.find(text, { near, townAt: (city) => { const t = this.townAt(city, '', near); return t ? [t.o, t.a] : null; } });
+    const hits = r.hits.map((h) => ({ c: 'address', i: `ad${h.lon},${h.lat}`, a: h.lat, o: h.lon, n: h.label, d: h.note, kind: 'Address', how: h.how, approx: h.how !== 'exact', sure: h.sure, km: h.km }));
+    const loc = r.parsed && r.parsed.loc;
+    if (!hits.length && parsed.number != null && loc && loc.city) {
+      // Neither the number nor the street could be placed: the town is still a place to head for.
+      const t = this.townAt(loc.city, loc.state, near);
+      if (t) hits.push({ c: 'address', i: `ad${t.o},${t.a}`, a: t.a, o: t.o, n: `${t.n}${loc.state ? `, ${loc.state}` : ''}`, d: `Approximate. ${r.street ? 'That street was not found in this town' : 'That street is not'} in the address data, so this points at the town itself.`, kind: 'Address', how: 'town', approx: true, sure: true, km: near ? Math.round(places.km(near[1], near[0], t.a, t.o) * 10) / 10 : null });
+    }
+    return { hits, tried: true };
+  }
+
+  /** Measure what the regions need from Overture: rows and bytes of addresses and of places. Downloads only the files' footers. */
+  async measureOverture(regionIds) {
+    const job = this.begin('overture', { stage: 'measure', what: 'places', done: 0, total: 0 });
+    try {
+      const net = new overture.Net({ fetchImpl: this.fetch, rewrite: this.rewrite, agent: this.agent, signal: job.controller.signal, ...(this.base ? { pause: this.pause } : {}) });
+      const m = await overture.measure({ cfg: this.registry.overture, rings: this.rings(regionIds), net, onProgress: (p) => this.progress(p) });
+      this.overtureMeasured = { ...m, regions: regionIds, at: Date.now() };
+      this.end();
+      return this.overtureMeasured;
+    } catch (err) { const r = this.end(err); if (r.stopped) return null; throw err; }
+  }
+
+  /**
+   * Fetch places, addresses or both from Overture for these regions. What is in use stays until the new
+   * set is complete. The work is done on another thread; a stopped fetch carries on where it was next time.
+   */
+  async downloadOverture(regionIds, { kinds = ['places', 'addresses'], free = null, inline = false } = {}) {
+    const job = this.begin('overture', { stage: 'list', what: kinds[0], done: 0, total: 0, downloaded: 0, bytes: 0, kept: 0 });
+    try {
+      const rings = this.rings(regionIds);
+      const m = this.overtureMeasured;
+      if (free != null && m && kinds.includes('addresses') && m.addresses) {
+        // While it is built, the index needs room for its working files as well as itself.
+        const need = m.addresses.rows * 60 + 512 * 1024 * 1024;
+        if (need > free) throw new Error(`Building the address index needs about ${Math.ceil(need / 1e8) / 10} GB of free space while it works, and there is not that much. Choose fewer regions.`);
+      }
+      const data = { dir: this.dir, cfg: this.registry.overture, categories: this.registry.categories.map(({ id, overture: o }) => ({ id, overture: o || [] })), rings, regions: regionIds, kinds, base: this.base, agent: this.agent, fast: Boolean(this.base) };
+      const result = await this.runOverture(data, job, inline);
+      this.loadOverture();
+      this.end();
+      return result;
+    } catch (err) { this.loadOverture(); const r = this.end(err); if (r.stopped) return null; throw err; }
+  }
+
+  runOverture(data, job, inline) {
+    const signal = job.controller.signal;
+    if (inline) return overture.run({ ...data, signal }, (patch) => this.progress(patch));
+    return new Promise((resolve, reject) => {
+      // In the installed app the worker's files are kept outside the archive the rest of the app is in.
+      let file = path.join(__dirname, 'overture-worker.js');
+      const outside = file.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+      if (outside !== file && fs.existsSync(outside)) file = outside;
+      let worker = null; let settled = false; let heard = false;
+      const onAbort = () => { if (worker) worker.terminate(); settle(reject, new Error('Stopped.')); };
+      const settle = (fn, v) => { if (settled) return; settled = true; signal.removeEventListener('abort', onAbort); fn(v); };
+      const fallBack = (why) => { this.log(`maps: the worker thread could not start (${why}); doing the work on the main thread`); settle(resolve, this.runOverture(data, job, true)); };
+      try { worker = new Worker(file, { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 4096 } }); } catch (err) { fallBack(err.message); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+      worker.on('message', (m) => { heard = true; if (m.type === 'progress') this.progress(m.patch); else if (m.type === 'done') settle(resolve, m.result); else settle(reject, new Error(m.message)); });
+      worker.on('error', (err) => { if (!heard) fallBack(err.message); else settle(reject, err); });
+      worker.on('exit', (code) => settle(reject, new Error(`The work on the Overture data stopped unexpectedly (code ${code}).`)));
+    });
   }
 }
+
+const readJsonSync = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 
 module.exports = { MapsLibrary, loadRegistry };

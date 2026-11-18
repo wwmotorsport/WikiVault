@@ -116,4 +116,32 @@ function search(records, { q = '', near = null, box = null, limit = 50 } = {}) {
   return { total: out.length, hits: out.slice(0, limit).map((h) => ({ ...h.r, km: h.km == null ? null : Math.round(h.km * 10) / 10 })) };
 }
 
-module.exports = { boxesOf, quarter, queryFor, categoryOf, recordOf, inRings, km, search };
+const nameKey = (s) => fold(s || '').replace(/[^a-z0-9]+/g, ' ').trim();
+/** Two names for what is likely one place: the same, one inside the other, or sharing a first word of some length. A missing name matches anything. */
+function sameName(a, b) {
+  if (!a || !b) return true;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const first = a.split(' ')[0];
+  return first.length >= 4 && first === b.split(' ')[0];
+}
+
+/**
+ * The records of `extra` that are not already in `base`: no record of a like name within `reach`
+ * kilometres. Used to add places from a second source without listing a place twice.
+ */
+function fresh(base, extra, reach = 0.15) {
+  const cell = 0.003; // about 300 m of latitude: neighbours within reach are in the same cell or the next
+  const grid = new Map();
+  const put = (r, name) => { const k = `${Math.floor(r.o / cell)},${Math.floor(r.a / cell)}`; let l = grid.get(k); if (!l) grid.set(k, l = []); l.push([r, name]); };
+  for (const r of base) put(r, nameKey(r.n));
+  const out = [];
+  for (const r of extra) {
+    const name = nameKey(r.n); const cx = Math.floor(r.o / cell); const cy = Math.floor(r.a / cell);
+    let dup = false;
+    for (let dx = -1; dx <= 1 && !dup; dx++) for (let dy = -1; dy <= 1 && !dup; dy++) for (const [o, on] of grid.get(`${cx + dx},${cy + dy}`) || []) if (km(r.a, r.o, o.a, o.o) <= reach && sameName(name, on)) { dup = true; break; }
+    if (!dup) { out.push(r); put(r, name); }
+  }
+  return out;
+}
+
+module.exports = { boxesOf, quarter, queryFor, categoryOf, recordOf, inRings, km, search, fresh, sameName };

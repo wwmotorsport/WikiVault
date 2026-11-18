@@ -770,6 +770,8 @@ $('move-go').addEventListener('click', async () => {
     const r = await api.moveLibrary(move.dest);
     maintDone = `The library now lives in ${r.dataDir}.`;
   } catch { /* shown through the maintenance state */ }
+  // Stay on the Library page, where the outcome is shown, whatever the reader did while the library was away.
+  showView('library');
   render();
 });
 
@@ -1749,6 +1751,13 @@ function paintMapJob(m) {
     title = 'Downloading the routing data';
     if (j.stage === 'files' && j.bytes) { value = j.downloaded || 0; max = j.bytes; detail = `File ${Math.min((j.done || 0) + 1, j.total)} of ${j.total}. ${bytes(j.downloaded || 0)} of ${bytes(j.bytes)}.`; } else detail = 'Listing the files.';
   }
+  if (j.kind === 'overture') {
+    const of = j.stage === 'measure' || j.stage === 'list' ? (j.total ? `File ${Math.min((j.done || 0) + 1, j.total)} of ${j.total}.` : '') : '';
+    if (j.stage === 'measure') { title = 'Measuring what Overture Maps has'; value = j.done || 0; max = j.total || null; detail = `Reading the summaries of the ${j.what || 'data'} files. ${of} Nothing else is downloaded yet.`; }
+    else if (j.stage === 'list') { title = `Finding the ${j.what || 'data'} files`; value = j.done || 0; max = j.total || null; detail = of; }
+    else if (j.stage === 'index') { title = 'Building the address index'; value = j.done || 0; max = j.total || 100; detail = 'Sorting the addresses by street. This part needs no connection.'; }
+    else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
+  }
   if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `Area ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. ${(j.found || 0).toLocaleString()} places so far. The server is free and shared, so this is done slowly.`; }
   const bar = document.createElement('progress');
   if (max) { bar.max = max; bar.value = value; }
@@ -1765,10 +1774,13 @@ function paintMapSummary(m) {
   else lines.push(el('p', '', 'No map is on this computer yet. Choose what to cover, see how big each level of detail would be, and then download.'));
   if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
   else lines.push(el('p', '', 'No places have been fetched yet. They can be fetched with or without the map.'));
+  if (m.overture) lines.push(el('p', '', `${m.overture.total.toLocaleString()} more places from Overture Maps (release ${m.overture.release}), shown where OpenStreetMap has none.`));
+  if (m.addresses) lines.push(el('p', '', `${m.addresses.addresses.toLocaleString()} addresses on ${m.addresses.streets.toLocaleString()} streets, ${bytes(m.addresses.bytes)}, from Overture Maps release ${m.addresses.release}.`));
+  else lines.push(el('p', '', 'No addresses yet, so a street address cannot be searched.'));
   if (m.routing) lines.push(el('p', '', `Routing data for directions: ${bytes(m.routing.bytes)}, fetched on ${mapDay(m.routing.date)}.`));
   else lines.push(el('p', '', 'No routing data yet, so no directions.'));
   const b = el('button', 'btn small', mapSetupOpen ? 'Close' : m.map || m.places ? 'Change or update' : 'Set up the map');
-  if (m.map || m.places || m.routing) b.textContent = mapSetupOpen ? 'Close' : 'Change or update';
+  if (m.map || m.places || m.routing || m.addresses || m.overture) b.textContent = mapSetupOpen ? 'Close' : 'Change or update';
   b.type = 'button'; b.id = 'map-setup-toggle';
   b.setAttribute('aria-expanded', String(mapSetupOpen));
   b.addEventListener('click', () => { mapSetupOpen = !mapSetupOpen; renderMap(); });
@@ -1841,22 +1853,50 @@ function paintMapSetup(m) {
   routeBtn.addEventListener('click', () => guard(() => (sized ? api.mapsRoutingDownload(picked) : api.mapsRoutingMeasure(picked)), $('map-error')));
   routeBox.append(routeBtn);
   parts.push(routeBox);
+  const ovBox = el('fieldset', 'map-field');
+  ovBox.append(el('legend', '', 'Addresses and more places'));
+  ovBox.append(el('p', 'small-print', `Street addresses, so that an address can be searched and driven to, and places that OpenStreetMap does not have, for the areas ticked above. Both come from Overture Maps, as large files that download quickly. Only the parts for these areas are fetched. ${m.overtureCredit}`));
+  const ovSized = m.overtureMeasured && m.overtureMeasured.regions.join() === picked.join() ? m.overtureMeasured : null;
+  const ovKinds = [['addresses', 'Addresses'], ['places', 'More places']];
+  const ovWas = Object.fromEntries(ovKinds.map(([k]) => [k, document.getElementById(`map-ov-${k}`) ? document.getElementById(`map-ov-${k}`).checked : true]));
+  for (const [k, label] of ovKinds) {
+    const row = el('label', 'map-check');
+    const input = Object.assign(document.createElement('input'), { type: 'checkbox', id: `map-ov-${k}`, checked: ovWas[k], disabled: busy });
+    input.addEventListener('change', () => renderMap());
+    const s = ovSized && ovSized[k];
+    row.append(input, el('span', '', s ? `${label}: about ${s.rows.toLocaleString()} rows to read, ${bytes(s.bytes)} to download` : label));
+    ovBox.append(row);
+  }
+  const ovPicked = ovKinds.map(([k]) => k).filter((k) => ovWas[k]);
+  if (ovSized) {
+    const a = ovSized.addresses;
+    if (a && ovWas.addresses && a.rows) ovBox.append(el('p', 'small-print', `Release ${ovSized.release}. The address index will take roughly ${bytes(a.rows * 14)} when done, and needs about ${bytes(a.rows * 60)} of working room while it is built. Reading ${a.rows.toLocaleString()} rows takes a while: allow ${Math.max(1, Math.round(a.rows / 150000 / 60))} to ${Math.max(2, Math.round(a.rows / 50000 / 60))} minutes on top of the download.`));
+    else ovBox.append(el('p', 'small-print', `Release ${ovSized.release}.`));
+  }
+  const ovSize = ovSized ? ovPicked.reduce((n, k) => n + (ovSized[k] ? ovSized[k].bytes : 0), 0) : 0;
+  const ovBtn = el('button', 'btn primary', ovSized ? `Download, ${bytes(ovSize)}` : m.addresses || m.overture ? 'Measure a newer release' : 'Measure the addresses and places');
+  ovBtn.type = 'button'; ovBtn.id = ovSized ? 'map-ov-download' : 'map-ov-measure'; ovBtn.disabled = busy || !picked.length || (ovSized && !ovPicked.length);
+  if ((m.addresses || m.overture) && !ovSized) ovBtn.className = 'btn small';
+  ovBtn.addEventListener('click', () => guard(() => (ovSized ? api.mapsOvertureDownload(picked, ovPicked) : api.mapsOvertureMeasure(picked)), $('map-error')));
+  ovBox.append(ovBtn);
+  parts.push(ovBox);
   // Keep the boxes that are ticked: build the new content first, then swap.
   box.replaceChildren(...parts);
 }
 
 function paintMapSearch(m) {
   const form = $('map-search');
-  form.hidden = !m.places;
-  if (!m.places) return;
+  const any = m.places || m.overture || m.addresses;
+  form.hidden = !any;
+  if (!any) return;
   const sel = $('map-cat');
-  const key = m.categories.map((c) => `${c.id}:${c.count}`).join();
+  const key = m.categories.map((c) => `${c.id}:${c.count}:${c.extra}`).join();
   if (sel.dataset.key !== key) {
     const was = sel.value;
     sel.replaceChildren(Object.assign(document.createElement('option'), { value: '', textContent: 'Any kind' }));
     for (const group of [...new Set(m.categories.map((c) => c.group))]) {
       const og = document.createElement('optgroup'); og.label = group;
-      for (const c of m.categories.filter((x) => x.group === group && x.count)) og.append(Object.assign(document.createElement('option'), { value: c.id, textContent: `${c.name} (${c.count.toLocaleString()})` }));
+      for (const c of m.categories.filter((x) => x.group === group && (x.count || x.extra))) og.append(Object.assign(document.createElement('option'), { value: c.id, textContent: `${c.name} (${c.count.toLocaleString()}${c.extra ? `, and up to ${c.extra.toLocaleString()} more` : ''})` }));
       if (og.children.length) sel.append(og);
     }
     sel.value = was; if (sel.value !== was) sel.value = '';
@@ -1871,7 +1911,9 @@ function mapDetails(h) {
   const box = el('div', 'map-place');
   box.append(el('p', 'map-place-kind', h.kind || ''), el('h3', '', h.n || 'No name recorded'));
   const row = (label, value) => { if (!value) return; const p = el('p', ''); p.append(el('span', 'map-place-label', `${label} `), value); box.append(p); };
-  row('Address', h.d); row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
+  if (h.c === 'address') { box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.d || 'This address is in the address data.')); } else row('Address', h.d);
+  row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
+  if (h.s === 'ov') box.append(el('p', 'small-print', 'From Overture Maps, not OpenStreetMap. It may have moved or closed.'));
   const words = { emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
@@ -1881,7 +1923,7 @@ function mapDetails(h) {
     for (const [which, label] of [['from', 'Directions from here'], ['to', 'Directions to here']]) {
       const b = el('button', 'btn small', label);
       b.type = 'button';
-      b.addEventListener('click', () => { mapGo.tab = 'go'; mapSetPoint(which, { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` }); if (mapPopup) mapPopup.remove(); });
+      b.addEventListener('click', () => { mapGo.tab = 'go'; mapSetPoint(which, mapPointOf(h)); if (mapPopup) mapPopup.remove(); });
       go.append(b);
     }
     box.append(go);
@@ -1909,8 +1951,9 @@ function mapSelect(id, { fly = true } = {}) {
 
 function paintMapResults() {
   const box = $('map-results');
-  if (!state?.maps?.places || !mapAsked) { box.replaceChildren(); return; }
-  if (!mapHits.hits.length) { box.replaceChildren(el('p', 'small-print', 'Nothing found. Try fewer words, or another kind of place.')); return; }
+  const m = state?.maps;
+  if (!m || !(m.places || m.overture || m.addresses) || !mapAsked) { box.replaceChildren(); return; }
+  if (!mapHits.hits.length) { box.replaceChildren(el('p', 'small-print', m.addresses ? 'Nothing found. Try fewer words, another kind of place, or an address as number, street, town.' : 'Nothing found. Try fewer words, or another kind of place. Street addresses can be searched once they are fetched, under Change or update.')); return; }
   const head = el('p', 'small-print', mapHits.total > mapHits.hits.length ? `Showing ${mapHits.hits.length} of ${mapHits.total.toLocaleString()}.` : `${mapHits.total.toLocaleString()} found.`);
   const list = el('ul', 'map-hits');
   for (const h of mapHits.hits.slice(0, 60)) {
@@ -1918,7 +1961,7 @@ function paintMapResults() {
     const b = el('button', '', '');
     b.type = 'button';
     b.append(el('span', 'map-hit-name', h.n || 'No name recorded'), el('span', 'map-hit-kind', [h.kind, h.km != null ? `${(h.km * 0.621371).toFixed(1)} mi` : ''].filter(Boolean).join(', ')));
-    if (h.d) b.append(el('span', 'map-hit-addr', h.d));
+    if (h.c === 'address') { if (h.approx) b.append(el('span', 'map-hit-approx', h.how === 'town' ? 'Approximate: the town only' : h.how === 'street' ? 'The street, not a house' : 'Approximate position')); } else if (h.d) b.append(el('span', 'map-hit-addr', h.d));
     b.addEventListener('click', () => mapSelect(h.i));
     li.append(b);
     if (h.i === mapSelected && !mapView) li.append(mapDetails(h));
@@ -1931,12 +1974,13 @@ function paintMapResults() {
 async function mapFind({ moved = false } = {}) {
   const q = $('map-q').value.trim();
   const cat = $('map-cat').value;
-  if (!q && !cat) { mapAsked = 0; mapHits = { total: 0, hits: [] }; paintMapResults(); mapDrawHits(); return; }
+  if (!q && !cat) { mapAsked = 0; mapHits = { total: 0, hits: [] }; mapSelected = null; if (mapPopup) { mapPopup.remove(); mapPopup = null; } paintMapResults(); mapDrawHits(); return; }
   if (moved && q) return; // moving the map only refreshes a browse by kind
   const ask = ++mapAsked;
   const o = { q, categories: cat ? [cat] : null, limit: q ? 60 : 400 };
   if (mapView) {
     const c = mapView.getCenter();
+    o.around = [c.lng, c.lat];
     if (!q) { o.near = [c.lng, c.lat]; const b = mapView.getBounds(); o.box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; }
   }
   const r = await api.mapsSearch(o);
@@ -1964,16 +2008,22 @@ function mapSetPoint(which, point) {
 }
 
 /** What was typed, as a point: coordinates, the point already chosen, or the best match among the places and towns. */
+/** A found place or address as an end of a route. An address that was not found exactly carries the reason, to warn with. */
+function mapPointOf(h, typed = '') {
+  if (h.c === 'address') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.d } : {}) };
+  return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || typed || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` };
+}
+
 async function mapResolve(which) {
   const text = $(`map-${which}`).value.trim();
   if (!text) throw new Error(which === 'from' ? 'Say where you are starting from, or pick the spot on the map.' : 'Say where you are going, or pick the spot on the map.');
   if (mapGo[which] && mapGo[which].label === text) return mapGo[which];
   const c = /^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(text);
   if (c) return mapSpot(Number(c[2]), Number(c[1]));
-  const r = await api.mapsSearch({ q: text, limit: 1 });
-  if (!r.hits.length) throw new Error(`Nothing was found for "${text}". Street addresses cannot be searched yet: use a place, a town, coordinates, or pick the spot on the map.`);
-  const h = r.hits[0];
-  return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || text };
+  const centre = mapView ? [mapView.getCenter().lng, mapView.getCenter().lat] : null;
+  const r = await api.mapsSearch({ q: text, limit: 1, around: centre });
+  if (!r.hits.length) throw new Error(state?.maps?.addresses ? `Nothing was found for "${text}". Write an address as number, street, town (350 5th Ave, New York NY), or use a place, coordinates, or pick the spot on the map.` : `Nothing was found for "${text}". Street addresses can be searched once they are fetched, under Change or update. Until then use a place, a town, coordinates, or pick the spot on the map.`);
+  return mapPointOf(r.hits[0], text);
 }
 
 async function mapRoute({ again = false } = {}) {
@@ -2057,6 +2107,7 @@ function paintMapGo() {
   const head = el('div', 'map-route-head');
   head.append(el('p', 'map-route-total', `${tripMiles(r.meters)}, about ${tripTime(r.seconds)}`));
   head.append(el('p', 'small-print', `${(m.modes.find((x) => x.id === r.mode) || mode).name}${r.alt ? `, route ${r.alt + 1} of up to 4` : ''}${mapGo.blocks.length ? `, keeping clear of ${mapGo.blocks.length} blocked ${mapGo.blocks.length === 1 ? 'area' : 'areas'}` : ''}. Times assume open roads.`));
+  for (const [which, label] of [['from', 'The start'], ['to', 'The destination']]) if (mapGo[which] && mapGo[which].approx) head.append(el('p', 'map-approx', `${label} is approximate, so the last part of these directions may be off. ${mapGo[which].approx.replace(/^Approximate\. /, '')}`));
   if (!r.named) head.append(el('p', 'small-print', 'Road names are missing: the map on this computer has none for these roads at its level of detail.'));
   const steps = el('ol', 'map-steps');
   r.steps.forEach((st) => {
@@ -2344,6 +2395,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.21.0': [
+    'Map: street addresses. Fetch them under Change or update, then search an address or get directions to one.',
+    'An address that is not in the data is placed between its neighbours on the same street, and the app says the position is approximate.',
+    'More places, from Overture Maps, added where OpenStreetMap has none. They come as large files and download quickly.',
+  ],
   '0.20.0': [
     'Map: a clearer look. Highways, main roads, streets and tracks each have their own colour and weight, woodland and water stand out, and roads grow heavier as you zoom in.',
     'What the map shows: switch buildings, land use, water, streets, railways, borders, names and symbols on or off, and choose a dark map.',
@@ -3279,7 +3335,10 @@ function render() {
     : state.ai.resting ? 'The model is out of memory to keep this computer free. Your next question loads it again, which adds a short wait.'
     : `Answers are written on this laptop${state.ai.state === 'ready' && state.ai.device ? `, on the ${state.ai.device},` : ''} from articles in the offline copy. Follow-up questions use this conversation, which is forgotten when you start a new one or close the app.`;
 
-  if (!active) {
+  if (!active && maintaining()) {
+    // The library is being moved: for a moment there is no edition open. That is not a reason to show the first-run page.
+    if (view === 'library') renderLibrary();
+  } else if (!active) {
     showView('setup');
     renderSetup();
   } else {

@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -24,6 +24,9 @@
     "@protomaps/basemaps": "^5.7.2",
     "electron": "^45.0.0",
     "electron-builder": "^26.0.0",
+    "esbuild": "^0.28.2",
+    "hyparquet": "^1.33.1",
+    "hyparquet-writer": "^0.18.0",
     "maplibre-gl": "^5.24.1",
     "pmtiles": "^4.5.0"
   },
@@ -73,7 +76,9 @@
       }
     ],
     "asarUnpack": [
-      "assets/routing/**"
+      "assets/routing/**",
+      "src/core/**",
+      "src/vendor/parquet/**"
     ],
     "extraResources": [
       {
