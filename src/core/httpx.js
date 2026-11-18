@@ -107,4 +107,37 @@ async function head(url, opts = {}) {
   return { status: res.statusCode, headers: res.headers, url: finalUrl };
 }
 
-module.exports = { open, readBody, fetchText, fetchJson, head, HttpError, abortError, USER_AGENT };
+/**
+ * The part of `fetch` the map code uses, on Node's own http and https.
+ *
+ * Node's built-in fetch is not used for downloads: when a server closes the connection while a large
+ * body is still being written to disk, it fails an internal check and throws outside any promise, which
+ * nothing can catch. Here a dropped connection is an ordinary error on the body, and the caller retries.
+ *
+ * The body is a Node stream: read it with `for await`, or with arrayBuffer, text or json.
+ * A connection with no traffic for `timeoutMs` is closed.
+ */
+async function fetchLike(url, opts = {}) {
+  const headers = {};
+  for (const [k, v] of Object.entries(opts.headers || {})) headers[k.toLowerCase()] = v;
+  const body = opts.body == null ? undefined : Buffer.from(opts.body);
+  if (body) headers['content-length'] = body.length;
+  const { res, url: finalUrl } = await open(url, { method: opts.method || 'GET', headers, body, signal: opts.signal, timeoutMs: opts.timeoutMs || 120000 });
+  // A connection lost before anyone is reading must not become an error nobody is listening for.
+  res.on('error', () => {});
+  const cap = opts.maxBytes || 256 * 1024 * 1024;
+  // Read with the stream's own iterator: it reports a connection that was already lost, where listeners added late would wait for ever.
+  const whole = async () => { const chunks = []; let size = 0; for await (const c of res) { size += c.length; if (size > cap) throw new Error('Response too large'); chunks.push(c); } return Buffer.concat(chunks); };
+  return {
+    status: res.statusCode,
+    ok: res.statusCode >= 200 && res.statusCode < 300,
+    url: finalUrl,
+    headers: { get: (name) => { const v = res.headers[String(name).toLowerCase()]; return v == null ? null : Array.isArray(v) ? v.join(', ') : String(v); } },
+    body: res,
+    arrayBuffer: async () => { const b = await whole(); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); },
+    text: async () => (await whole()).toString('utf8'),
+    json: async () => JSON.parse((await whole()).toString('utf8')),
+  };
+}
+
+module.exports = { open, readBody, fetchText, fetchJson, head, fetchLike, HttpError, abortError, USER_AGENT };

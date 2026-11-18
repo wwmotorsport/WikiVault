@@ -172,6 +172,12 @@ The folded-map button in the top bar opens an offline map. The tools are on the 
 
 To change the regions or the detail, or to get a newer map, press *Change or update* and do the same again. The map you have stays in use until the new one is complete.
 
+**What the map shows.** Under the summary, *What the map shows* opens a list of switches. *Dark map* turns the map dark for a dark room or a night drive. The others switch kinds of feature off and on: woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Highways and main roads are always drawn. Your choices are kept.
+
+On the map, highways are orange, main roads amber, streets white, and tracks and paths brown and dashed. Roads are drawn heavier as you zoom in.
+
+Buildings, like everything on the map, are what OpenStreetMap's volunteers have drawn. A house built in the last few years is often not there yet. That does not affect directions, which follow roads.
+
 **Places.** In the same panel, *Fetch the places* asks OpenStreetMap for the places in the ticked regions: hospitals, clinics and pharmacies; fire, police and ambulance stations; water and wastewater works, water towers, drinking water, springs and wells; power plants and substations; fuel; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; and cities, towns and villages. The server that answers is free and shared, so the app asks slowly, one area at a time. Places can be fetched with or without the map.
 
 **Finding a place.** Type a name, a street or a town and press *Find*. The best match opens on the map. Or choose a *Kind of place* and leave the box empty: the map then shows the places of that kind in view, and the list has them nearest the middle of the map first, with the distance. Move the map and the list follows.

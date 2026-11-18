@@ -2,6 +2,21 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.20.0 (2026-11-18)
+
+Map: a clearer look, a choice of what it shows, and a fix for a crash while downloading routing data.
+
+- Fixed: downloading the routing data could stop with a box headed "A JavaScript error occurred in the main process" (`assert(!this.paused)`). The server had closed the connection part-way through a large file, and Node's built-in `fetch` fails an internal check when that happens instead of reporting an error. Every map download (the map, the places, the routing data) and the requests to the routing engine now go through the app's own HTTP code, where a closed connection is an ordinary error: the file carries on from the byte it reached, as many times as it takes while it keeps making progress. Files already fetched whole are kept, so pressing download again continues where it stopped.
+- A routing file's connection is given up on after a minute with no traffic and tried again, where before it could wait five.
+
+- Colours that tell things apart. Highways are orange, main roads amber, streets white with a firm edge, tracks and paths brown and dashed, railways dark. Woodland and parks are clearly green, water clearly blue, buildings tan, borders purple. Before, the roads were white on pale grey.
+- Roads are drawn heavier, each kind by its own amount, and grow with the zoom: highways most, then main roads, then streets. Highways stay visible with the whole country on screen.
+- *What the map shows*, in the Map panel: switch off woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Highways and main roads always stay.
+- Dark map: the same map on a dark ground, for a dark room or a night drive. The route, the blocked areas and the places found are recoloured to match.
+- The look you choose is kept between runs.
+
+The crash could not be reproduced from here: the tests cut a download again and again and check that the file still arrives whole, but the real server's behaviour is known only from the error box. The looks were checked as valid map styles and drawn in the tests on stand-in tiles. They have not been seen on the real map of the United States from here, so colours and weights may want tuning once you have looked at them.
+
 ## 0.19.0 (2026-11-18)
 
 Map: directions. The second of the four stages.

@@ -21,6 +21,10 @@ const routing = require('./routing');
 const pm = require('./pmtiles');
 const mvt = require('./mvt');
 const zlib = require('node:zlib');
+const { fetchLike } = require('./httpx');
+
+/** Let go of an answer whose body will not be read, so its connection is not left open. */
+function drop(res) { try { if (res.body && res.body.destroy) res.body.destroy(); else if (res.body && res.body.cancel) res.body.cancel().catch(() => {}); } catch { /* nothing to let go of */ } }
 
 const REGISTRY = path.join(__dirname, '..', '..', 'assets', 'maps', 'registry.json');
 const loadRegistry = (file = REGISTRY) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -42,7 +46,7 @@ class MapsLibrary extends EventEmitter {
    * @param {Function} [o.pause]      (ms) => Promise, the wait between questions to the places server
    * @param {string} [o.agent]        how the app names itself to the servers
    */
-  constructor({ dir, registry = loadRegistry(), fetchImpl = fetch, rewrite = (u) => u, pause = (ms) => new Promise((r) => setTimeout(r, ms)), agent = 'Wikivault', log = () => {} }) {
+  constructor({ dir, registry = loadRegistry(), fetchImpl = fetchLike, rewrite = (u) => u, pause = (ms) => new Promise((r) => setTimeout(r, ms)), agent = 'Wikivault', log = () => {} }) {
     super();
     this.dir = dir; this.registry = registry; this.fetch = fetchImpl; this.rewrite = rewrite; this.pause = pause; this.agent = agent; this.log = log;
     this.map = null; this.placesInfo = null; this.measured = null; this.job = null; this.error = null;
@@ -166,7 +170,8 @@ class MapsLibrary extends EventEmitter {
       const url = this.registry.overpass[attempt % this.registry.overpass.length];
       if (signal.aborted) throw new Error('Stopped.');
       try {
-        const res = await this.fetch(this.rewrite(url), { method: 'POST', signal, headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': this.agent }, body: `data=${encodeURIComponent(query)}` });
+        const res = await this.fetch(this.rewrite(url), { method: 'POST', signal, timeoutMs: 330000, headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': this.agent }, body: `data=${encodeURIComponent(query)}` });
+        if (!res.ok) drop(res);
         if (res.status === 429 || res.status === 504 || res.status === 503) { lastErr = new Error(`The places server is busy (it answered ${res.status}).`); await this.pause(15000 * (attempt + 1)); continue; }
         if (!res.ok) { lastErr = new Error(`The places server answered ${res.status}.`); await this.pause(5000); continue; }
         const body = await res.json();
@@ -243,6 +248,7 @@ class MapsLibrary extends EventEmitter {
     for (let i = 0; i < names.length; i++) {
       if (signal.aborted) throw new Error('Stopped.');
       const res = await this.fetch(this.rewrite(this.registry.routing.base + names[i]), { method: 'HEAD', signal, headers: { 'user-agent': this.agent } });
+      drop(res);
       if (res.status === 404) { this.progress({ done: i + 1, total: names.length }); continue; }
       if (!res.ok) throw new Error(`The routing data server answered ${res.status} for ${names[i]}.`);
       const bytes = Number(res.headers.get('content-length'));
@@ -274,13 +280,16 @@ class MapsLibrary extends EventEmitter {
       if (have > bytes) { await fsp.rm(part, { force: true }); have = 0; }
       if (have === bytes) break;
       try {
-        const res = await this.fetch(url, { signal, headers: { 'user-agent': this.agent, ...(have ? { range: `bytes=${have}-` } : {}) } });
-        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) throw Object.assign(new Error(`The routing data server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403 });
+        const res = await this.fetch(url, { signal, timeoutMs: 60000, headers: { 'user-agent': this.agent, ...(have ? { range: `bytes=${have}-` } : {}) } });
+        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) { drop(res); throw Object.assign(new Error(`The routing data server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403 }); }
         const fd = await fsp.open(part, have ? 'a' : 'w');
         try { for await (const chunk of res.body) { await fd.write(chunk); onBytes(chunk.length); if (signal.aborted) throw new Error('Stopped.'); } } finally { await fd.close(); }
       } catch (err) {
+        let now = 0;
+        try { now = (await fsp.stat(part)).size; } catch { now = 0; }
+        if (now > have) attempt = -1; // it got further: a long file may be cut many times, and each time it carries on from there
         if (signal.aborted || err.fatal || attempt >= 5) throw err;
-        await this.pause(3000 * (attempt + 1));
+        await this.pause(3000 * (attempt + 2));
       }
     }
     await fsp.rename(part, dest);

@@ -1663,6 +1663,66 @@ let mapHits = { total: 0, hits: [] };
 let mapSelected = null;    // id of the place whose details are open
 let mapPopup = null;
 let mapAsked = 0;
+// The look chosen for the map (dark or not, kinds of feature switched off), kept between runs.
+let mapLook = { dark: false, off: [] };
+try { mapLook = WikivaultMapStyle.clean(JSON.parse(localStorage.getItem('wikivault-map-look') || '{}')); } catch { /* the default look */ }
+const mapStyleFor = (key) => ({
+  version: 8,
+  glyphs: `${mapOrigin}/m/fonts/{fontstack}/{range}.pbf`,
+  sprite: `${mapOrigin}/m/sprites/${WikivaultMapStyle.sprite(mapLook)}`,
+  sources: { protomaps: { type: 'vector', url: `pmtiles://${mapOrigin}/m/map.pmtiles?v=${encodeURIComponent(key)}`, attribution: '© OpenStreetMap contributors' } },
+  layers: WikivaultMapStyle.layers(basemaps, mapLook),
+});
+
+function paintMapLook(m) {
+  const box = $('map-look');
+  box.hidden = !m.map;
+  if (!m.map) return;
+  $('map-dark').checked = mapLook.dark;
+  const groups = $('map-look-groups');
+  if (!groups.children.length) {
+    for (const g of WikivaultMapStyle.GROUPS) {
+      const label = el('label', 'map-check');
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.dataset.group = g.id;
+      input.addEventListener('change', () => { mapLook.off = [...groups.querySelectorAll('input')].filter((i) => !i.checked).map((i) => i.dataset.group); mapApplyLook(false); });
+      label.append(input, el('span', '', g.name));
+      groups.append(label);
+    }
+  }
+  for (const input of groups.querySelectorAll('input')) input.checked = !mapLook.off.includes(input.dataset.group);
+}
+
+/** Put the chosen look on the map. Switching kinds on and off touches the layers; day and night need a new style. */
+function mapApplyLook(restyle) {
+  try { localStorage.setItem('wikivault-map-look', JSON.stringify(mapLook)); } catch { /* not kept, that is all */ }
+  $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
+  if (!mapView) return;
+  if (restyle) {
+    $('map-canvas').dataset.ready = '';
+    mapView.once('style.load', () => { mapAddOverlays(mapView); $('map-canvas').dataset.ready = '1'; });
+    mapView.setStyle(mapStyleFor(mapKey), { diff: false });
+    return;
+  }
+  for (const layer of mapView.getStyle().layers) if (layer.source === 'protomaps' || layer.id === 'background') { const want = WikivaultMapStyle.shown(layer.id, mapLook.off) ? 'visible' : 'none'; if ((mapView.getLayoutProperty(layer.id, 'visibility') || 'visible') !== want) mapView.setLayoutProperty(layer.id, 'visibility', want); }
+}
+
+/** The app's own layers over the map: the route, blocked areas, the ends of the route, and places found. */
+function mapAddOverlays(map) {
+  if (map.getSource('hits')) return;
+  const dark = mapLook.dark;
+  const empty = { type: 'FeatureCollection', features: [] };
+  for (const id of ['blocks', 'route', 'ends', 'hits']) map.addSource(id, { type: 'geojson', data: empty });
+  map.addLayer({ id: 'blocks-fill', type: 'fill', source: 'blocks', paint: { 'fill-color': '#d93025', 'fill-opacity': 0.25 } });
+  map.addLayer({ id: 'blocks-edge', type: 'line', source: 'blocks', paint: { 'line-color': dark ? '#ff6b5e' : '#b3261e', 'line-width': 2, 'line-dasharray': [2, 2] } });
+  map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': dark ? '#0b0d10' : '#ffffff', 'line-width': 10 } });
+  map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': dark ? '#4da3ff' : '#1a56c4', 'line-width': 6 } });
+  map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#d93025', dark ? '#ffd84a' : '#14304d'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 2 } });
+  map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': dark ? '#ffe9a6' : '#14304d', 'text-halo-color': dark ? '#0b0d10' : '#ffffff', 'text-halo-width': 1.5 } });
+  map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e9e6f', dark ? '#f0f2f4' : '#14263b'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 3 } });
+  mapDrawHits();
+  mapDrawRoute();
+}
 
 const mapDay = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
 const mapLevelName = (m, zoom) => (m.levels.find((l) => l.zoom === zoom) || { name: `Level ${zoom}` }).name;
@@ -2060,13 +2120,7 @@ async function mapEnsure(m) {
   const b = m.map.bounds;
   const map = new maplibregl.Map({
     container: 'map-canvas', attributionControl: false, maxZoom: Math.min(18, m.map.maxZoom + 3), dragRotate: false, pitchWithRotate: false,
-    style: {
-      version: 8,
-      glyphs: `${mapOrigin}/m/fonts/{fontstack}/{range}.pbf`,
-      sprite: `${mapOrigin}/m/sprites/light`,
-      sources: { protomaps: { type: 'vector', url: `pmtiles://${mapOrigin}/m/map.pmtiles?v=${encodeURIComponent(key)}`, attribution: '© OpenStreetMap contributors' } },
-      layers: basemaps.layers('protomaps', basemaps.namedFlavor('light'), { lang: 'en' }),
-    },
+    style: mapStyleFor(key),
     bounds: [[b[0], b[1]], [b[2], b[3]]], fitBoundsOptions: { padding: 24 },
   });
   map.touchZoomRotate.disableRotation();
@@ -2074,25 +2128,12 @@ async function mapEnsure(m) {
   map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-left');
   map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
   map.on('load', () => {
-    map.addSource('hits', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#b3261e', '#14304d'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
-    map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#14304d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
-    const empty = { type: 'FeatureCollection', features: [] };
-    map.addSource('blocks', { type: 'geojson', data: empty });
-    map.addSource('route', { type: 'geojson', data: empty });
-    map.addSource('ends', { type: 'geojson', data: empty });
-    map.addLayer({ id: 'blocks-fill', type: 'fill', source: 'blocks', paint: { 'fill-color': '#b3261e', 'fill-opacity': 0.22 } }, 'hits-dot');
-    map.addLayer({ id: 'blocks-edge', type: 'line', source: 'blocks', paint: { 'line-color': '#b3261e', 'line-width': 2, 'line-dasharray': [2, 2] } }, 'hits-dot');
-    map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 9 } }, 'hits-dot');
-    map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1a56c4', 'line-width': 5 } }, 'hits-dot');
-    map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e7f5c', '#14263b'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 } });
+    mapAddOverlays(map);
     map.on('click', (e) => { mapClicked(e.lngLat); });
     map.on('click', 'hits-dot', (e) => { if (mapGo.picking) return; const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
     map.on('mouseenter', 'hits-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
     $('map-canvas').dataset.ready = '1';
-    mapDrawHits();
-    mapDrawRoute();
   });
   map.on('moveend', () => { mapFind({ moved: true }).catch(() => {}); });
   mapView = map;
@@ -2109,6 +2150,7 @@ function renderMap() {
   paintMapJob(m);
   paintMapSummary(m);
   paintMapSetup(m);
+  paintMapLook(m);
   paintMapSearch(m);
   paintMapResults();
   paintMapGo();
@@ -2122,6 +2164,8 @@ function renderMap() {
 }
 
 $('nav-map').addEventListener('click', () => { if (!golfPlaying()) showView('map'); });
+$('map-dark').addEventListener('change', () => { mapLook.dark = $('map-dark').checked; mapApplyLook(true); });
+$('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
 $('map-search').addEventListener('submit', (e) => { e.preventDefault(); guard(() => mapFind(), $('map-error')); });
 $('map-cat').addEventListener('change', () => { renderMap(); guard(() => mapFind(), $('map-error')); });
 
@@ -2300,6 +2344,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.20.0': [
+    'Map: a clearer look. Highways, main roads, streets and tracks each have their own colour and weight, woodland and water stand out, and roads grow heavier as you zoom in.',
+    'What the map shows: switch buildings, land use, water, streets, railways, borders, names and symbols on or off, and choose a dark map.',
+    'Fixed: downloading the routing data could stop with an error box. A download whose connection is closed now carries on from where it was.',
+  ],
   '0.19.0': [
     'Map: Directions. Choose a start and a destination, by name, by coordinates or by clicking the map, and get a route with turn-by-turn steps, by car, bicycle or on foot.',
     'Blocked roads and areas: mark where you cannot go and the route is worked out again around it. There is also a car setting that may use farm and forest tracks.',

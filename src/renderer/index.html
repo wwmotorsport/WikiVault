@@ -179,6 +179,11 @@
           <div id="map-job" hidden></div>
           <div id="map-summary"></div>
           <div id="map-setup" hidden></div>
+          <details class="map-look" id="map-look" hidden>
+            <summary>What the map shows</summary>
+            <label class="map-check"><input type="checkbox" id="map-dark"><span>Dark map<span class="small-print"> For a dark room or a night drive.</span></span></label>
+            <div id="map-look-groups"></div>
+          </details>
           <div class="map-tabs" id="map-tabs" role="tablist" hidden>
             <button type="button" role="tab" id="map-tab-find" aria-selected="true">Places</button>
             <button type="button" role="tab" id="map-tab-go" aria-selected="false">Directions</button>
@@ -557,6 +562,7 @@
   <script src="../vendor/maplibre/maplibre-gl-csp.js"></script>
   <script src="../vendor/pmtiles/pmtiles.js"></script>
   <script src="../vendor/basemaps/basemaps.js"></script>
+  <script src="map-style.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

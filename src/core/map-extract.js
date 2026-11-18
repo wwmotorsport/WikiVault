@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const crypto = require('node:crypto');
 const pm = require('./pmtiles');
+const { fetchLike } = require('./httpx');
 
 const BATCH_BYTES = 8 * 1024 * 1024; // one request asks for at most this much
 const GAP_BYTES = 32 * 1024;         // bytes not wanted that are cheaper to fetch than to skip
@@ -21,7 +22,7 @@ class SourceChanged extends Error {}
 
 /** Reads byte ranges of a file on a web server. */
 class RangeSource {
-  constructor(url, { fetchImpl = fetch, retries = 4, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  constructor(url, { fetchImpl = fetchLike, retries = 4, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
     this.url = url; this.fetch = fetchImpl; this.retries = retries; this.pause = pause; this.etag = null; this.bytes = 0;
   }
 

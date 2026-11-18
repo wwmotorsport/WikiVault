@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
+const { fetchLike } = require('./httpx');
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -26,7 +27,7 @@ class RouteEngine {
    * @param {string} o.scratch     a folder the engine may write to
    * @param {number} [o.idleMs]    stop after this long unused
    */
-  constructor({ java, jar, profiles, segments, scratch, idleMs = 10 * 60 * 1000, memoryMb = 1024, log = () => {}, fetchImpl = fetch }) {
+  constructor({ java, jar, profiles, segments, scratch, idleMs = 10 * 60 * 1000, memoryMb = 1024, log = () => {}, fetchImpl = fetchLike }) {
     Object.assign(this, { java, jar, profiles, segments, scratch, idleMs, memoryMb, log, fetch: fetchImpl });
     this.child = null; this.origin = null; this.starting = null; this.timer = null; this.lastError = '';
   }
@@ -68,7 +69,7 @@ class RouteEngine {
     const origin = await this.start();
     clearTimeout(this.timer);
     try {
-      const res = await this.fetch(makeUrl(origin), { signal });
+      const res = await this.fetch(makeUrl(origin), { signal, timeoutMs: 300000 });
       const text = await res.text();
       if (!res.ok) { const e = new Error(text.trim() || `The routing engine answered ${res.status}.`); e.engine = true; throw e; }
       try { return JSON.parse(text); } catch { const e = new Error(text.trim().slice(0, 300) || 'The routing engine sent nothing.'); e.engine = true; throw e; }

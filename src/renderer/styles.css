@@ -670,3 +670,10 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 .map-steps button:hover { background: #eef1f3; }
 .map-step-far { grid-column: 2; color: var(--muted); font-size: 13px; }
 .map-place-go { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* ---------- map: what the map shows ---------- */
+.map-look { margin: 0 0 16px; padding: 0 0 12px; border-bottom: 1px solid var(--rule); }
+.map-look summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.map-look summary:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+.map-look .map-check { padding: 3px 0; }
+#map-look-groups { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--rule); }
