@@ -1,0 +1,899 @@
+{
+ "version": 1,
+ "builds": {
+  "index": "https://build-metadata.protomaps.dev/builds.json",
+  "base": "https://build.protomaps.com/"
+ },
+ "overpass": [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+ ],
+ "credit": "Map and places: © OpenStreetMap contributors, under the Open Database License. Map tiles prepared by Protomaps.",
+ "regions": [
+  {
+   "id": "us48",
+   "name": "Contiguous United States",
+   "note": "The lower 48 states, with a margin over the borders and coasts.",
+   "default": true,
+   "rings": [
+    [
+     [
+      -125.2,
+      49.6
+     ],
+     [
+      -95.4,
+      49.6
+     ],
+     [
+      -94.6,
+      49.0
+     ],
+     [
+      -89.0,
+      48.6
+     ],
+     [
+      -84.5,
+      47.2
+     ],
+     [
+      -82.0,
+      45.8
+     ],
+     [
+      -81.9,
+      43.0
+     ],
+     [
+      -78.7,
+      42.6
+     ],
+     [
+      -78.6,
+      43.9
+     ],
+     [
+      -76.2,
+      44.5
+     ],
+     [
+      -74.6,
+      45.3
+     ],
+     [
+      -71.3,
+      45.6
+     ],
+     [
+      -70.1,
+      46.7
+     ],
+     [
+      -69.0,
+      47.8
+     ],
+     [
+      -67.6,
+      47.5
+     ],
+     [
+      -66.7,
+      44.6
+     ],
+     [
+      -69.4,
+      41.0
+     ],
+     [
+      -73.4,
+      39.6
+     ],
+     [
+      -75.0,
+      35.0
+     ],
+     [
+      -79.7,
+      31.8
+     ],
+     [
+      -79.6,
+      26.4
+     ],
+     [
+      -80.2,
+      24.3
+     ],
+     [
+      -82.3,
+      24.2
+     ],
+     [
+      -83.3,
+      27.4
+     ],
+     [
+      -84.3,
+      29.3
+     ],
+     [
+      -85.6,
+      29.3
+     ],
+     [
+      -88.9,
+      28.6
+     ],
+     [
+      -93.5,
+      29.2
+     ],
+     [
+      -96.9,
+      25.7
+     ],
+     [
+      -97.7,
+      25.6
+     ],
+     [
+      -99.4,
+      26.2
+     ],
+     [
+      -99.8,
+      27.5
+     ],
+     [
+      -100.6,
+      28.4
+     ],
+     [
+      -101.6,
+      29.4
+     ],
+     [
+      -102.5,
+      29.4
+     ],
+     [
+      -103.2,
+      28.8
+     ],
+     [
+      -104.7,
+      29.4
+     ],
+     [
+      -106.6,
+      31.5
+     ],
+     [
+      -108.3,
+      31.6
+     ],
+     [
+      -108.3,
+      31.1
+     ],
+     [
+      -111.1,
+      31.1
+     ],
+     [
+      -114.9,
+      32.3
+     ],
+     [
+      -117.3,
+      32.3
+     ],
+     [
+      -119.2,
+      32.3
+     ],
+     [
+      -121.3,
+      34.2
+     ],
+     [
+      -122.9,
+      37.0
+     ],
+     [
+      -124.7,
+      40.3
+     ],
+     [
+      -124.9,
+      43.0
+     ],
+     [
+      -125.2,
+      48.5
+     ]
+    ]
+   ]
+  },
+  {
+   "id": "alaska",
+   "name": "Alaska",
+   "note": "Mainland Alaska and the panhandle. The far Aleutians are left out.",
+   "rings": [
+    [
+     [
+      -170.0,
+      51.2
+     ],
+     [
+      -129.9,
+      51.2
+     ],
+     [
+      -129.9,
+      71.6
+     ],
+     [
+      -170.0,
+      71.6
+     ]
+    ]
+   ]
+  },
+  {
+   "id": "hawaii",
+   "name": "Hawaii",
+   "rings": [
+    [
+     [
+      -160.6,
+      18.7
+     ],
+     [
+      -154.6,
+      18.7
+     ],
+     [
+      -154.6,
+      22.4
+     ],
+     [
+      -160.6,
+      22.4
+     ]
+    ]
+   ]
+  },
+  {
+   "id": "pr",
+   "name": "Puerto Rico and the U.S. Virgin Islands",
+   "rings": [
+    [
+     [
+      -67.5,
+      17.5
+     ],
+     [
+      -64.4,
+      17.5
+     ],
+     [
+      -64.4,
+      18.7
+     ],
+     [
+      -67.5,
+      18.7
+     ]
+    ]
+   ]
+  },
+  {
+   "id": "canada",
+   "name": "Canada, the settled south",
+   "note": "Below 56 degrees north, which holds nearly all of Canada's roads and towns.",
+   "rings": [
+    [
+     [
+      -139.1,
+      41.6
+     ],
+     [
+      -52.5,
+      41.6
+     ],
+     [
+      -52.5,
+      56.0
+     ],
+     [
+      -139.1,
+      56.0
+     ]
+    ]
+   ]
+  },
+  {
+   "id": "mexico",
+   "name": "Mexico",
+   "rings": [
+    [
+     [
+      -117.4,
+      32.8
+     ],
+     [
+      -114.6,
+      32.9
+     ],
+     [
+      -111.0,
+      31.5
+     ],
+     [
+      -108.2,
+      31.5
+     ],
+     [
+      -106.4,
+      31.9
+     ],
+     [
+      -104.6,
+      29.6
+     ],
+     [
+      -103.2,
+      28.9
+     ],
+     [
+      -102.5,
+      29.9
+     ],
+     [
+      -101.4,
+      29.9
+     ],
+     [
+      -99.4,
+      27.6
+     ],
+     [
+      -99.0,
+      26.3
+     ],
+     [
+      -96.9,
+      26.0
+     ],
+     [
+      -97.0,
+      22.0
+     ],
+     [
+      -95.5,
+      18.6
+     ],
+     [
+      -91.0,
+      19.0
+     ],
+     [
+      -90.0,
+      21.6
+     ],
+     [
+      -86.5,
+      21.8
+     ],
+     [
+      -87.3,
+      17.7
+     ],
+     [
+      -90.9,
+      17.7
+     ],
+     [
+      -90.3,
+      16.0
+     ],
+     [
+      -92.1,
+      14.4
+     ],
+     [
+      -94.5,
+      15.8
+     ],
+     [
+      -99.0,
+      16.2
+     ],
+     [
+      -104.0,
+      18.5
+     ],
+     [
+      -105.9,
+      19.9
+     ],
+     [
+      -105.9,
+      22.4
+     ],
+     [
+      -110.3,
+      22.6
+     ],
+     [
+      -112.6,
+      24.3
+     ],
+     [
+      -115.4,
+      27.6
+     ],
+     [
+      -116.3,
+      30.1
+     ]
+    ]
+   ]
+  }
+ ],
+ "levels": [
+  {
+   "zoom": 8,
+   "name": "Highways and cities",
+   "what": "Interstates, main highways, cities and towns, large lakes and rivers. Enough to cross the country, not to find a street."
+  },
+  {
+   "zoom": 10,
+   "name": "Main roads",
+   "what": "Adds state and county highways and smaller towns."
+  },
+  {
+   "zoom": 12,
+   "name": "Most roads",
+   "what": "Adds most local roads, smaller rivers and lakes, woodland and parks."
+  },
+  {
+   "zoom": 13,
+   "name": "Every street",
+   "what": "Every street with its name, tracks and trails. The map can be zoomed in further; it only gets no more detail."
+  },
+  {
+   "zoom": 14,
+   "name": "Every street, sharper",
+   "what": "The same roads drawn more exactly, with more names of places and features."
+  },
+  {
+   "zoom": 15,
+   "name": "Everything",
+   "what": "The full map as published, building outlines included."
+  }
+ ],
+ "categories": [
+  {
+   "id": "hospital",
+   "group": "Medical",
+   "name": "Hospitals",
+   "filters": [
+    [
+     "amenity",
+     "hospital"
+    ]
+   ],
+   "note": "Check \"emergency\" in the details: not every hospital has an emergency room."
+  },
+  {
+   "id": "clinic",
+   "group": "Medical",
+   "name": "Clinics and urgent care",
+   "filters": [
+    [
+     "amenity",
+     "clinic"
+    ],
+    [
+     "healthcare",
+     "clinic"
+    ],
+    [
+     "amenity",
+     "doctors"
+    ]
+   ]
+  },
+  {
+   "id": "pharmacy",
+   "group": "Medical",
+   "name": "Pharmacies",
+   "filters": [
+    [
+     "amenity",
+     "pharmacy"
+    ]
+   ]
+  },
+  {
+   "id": "medical_supply",
+   "group": "Medical",
+   "name": "Medical supply shops",
+   "filters": [
+    [
+     "shop",
+     "medical_supply"
+    ]
+   ]
+  },
+  {
+   "id": "veterinary",
+   "group": "Medical",
+   "name": "Veterinary clinics",
+   "filters": [
+    [
+     "amenity",
+     "veterinary"
+    ]
+   ]
+  },
+  {
+   "id": "fire",
+   "group": "Emergency services",
+   "name": "Fire stations",
+   "filters": [
+    [
+     "amenity",
+     "fire_station"
+    ]
+   ]
+  },
+  {
+   "id": "police",
+   "group": "Emergency services",
+   "name": "Police and sheriff",
+   "filters": [
+    [
+     "amenity",
+     "police"
+    ]
+   ]
+  },
+  {
+   "id": "ambulance",
+   "group": "Emergency services",
+   "name": "Ambulance stations",
+   "filters": [
+    [
+     "emergency",
+     "ambulance_station"
+    ]
+   ]
+  },
+  {
+   "id": "water_works",
+   "group": "Water",
+   "name": "Water treatment works",
+   "filters": [
+    [
+     "man_made",
+     "water_works"
+    ]
+   ]
+  },
+  {
+   "id": "wastewater",
+   "group": "Water",
+   "name": "Wastewater plants",
+   "filters": [
+    [
+     "man_made",
+     "wastewater_plant"
+    ]
+   ]
+  },
+  {
+   "id": "water_tower",
+   "group": "Water",
+   "name": "Water towers",
+   "filters": [
+    [
+     "man_made",
+     "water_tower"
+    ]
+   ]
+  },
+  {
+   "id": "drinking_water",
+   "group": "Water",
+   "name": "Drinking water points",
+   "filters": [
+    [
+     "amenity",
+     "drinking_water"
+    ],
+    [
+     "amenity",
+     "water_point"
+    ]
+   ]
+  },
+  {
+   "id": "spring",
+   "group": "Water",
+   "name": "Springs and wells",
+   "filters": [
+    [
+     "natural",
+     "spring"
+    ],
+    [
+     "man_made",
+     "water_well"
+    ]
+   ],
+   "note": "As mapped by volunteers. Treat any water before drinking it."
+  },
+  {
+   "id": "power_plant",
+   "group": "Power and fuel",
+   "name": "Power plants",
+   "filters": [
+    [
+     "power",
+     "plant"
+    ]
+   ]
+  },
+  {
+   "id": "substation",
+   "group": "Power and fuel",
+   "name": "Power substations",
+   "filters": [
+    [
+     "power",
+     "substation"
+    ]
+   ]
+  },
+  {
+   "id": "fuel",
+   "group": "Power and fuel",
+   "name": "Fuel stations",
+   "filters": [
+    [
+     "amenity",
+     "fuel"
+    ]
+   ]
+  },
+  {
+   "id": "propane",
+   "group": "Power and fuel",
+   "name": "Bottled gas and propane",
+   "filters": [
+    [
+     "shop",
+     "gas"
+    ]
+   ]
+  },
+  {
+   "id": "supermarket",
+   "group": "Food",
+   "name": "Supermarkets and grocery",
+   "filters": [
+    [
+     "shop",
+     "supermarket"
+    ],
+    [
+     "shop",
+     "greengrocer"
+    ]
+   ]
+  },
+  {
+   "id": "wholesale",
+   "group": "Food",
+   "name": "Wholesale and warehouse clubs",
+   "filters": [
+    [
+     "shop",
+     "wholesale"
+    ]
+   ]
+  },
+  {
+   "id": "food_bank",
+   "group": "Food",
+   "name": "Food banks",
+   "filters": [
+    [
+     "amenity",
+     "food_bank"
+    ],
+    [
+     "social_facility",
+     "food_bank"
+    ]
+   ]
+  },
+  {
+   "id": "department",
+   "group": "Supplies",
+   "name": "Department and general stores",
+   "filters": [
+    [
+     "shop",
+     "department_store"
+    ],
+    [
+     "shop",
+     "general"
+    ]
+   ]
+  },
+  {
+   "id": "hardware",
+   "group": "Supplies",
+   "name": "Hardware and building supply",
+   "filters": [
+    [
+     "shop",
+     "hardware"
+    ],
+    [
+     "shop",
+     "doityourself"
+    ],
+    [
+     "shop",
+     "trade"
+    ]
+   ]
+  },
+  {
+   "id": "farm_supply",
+   "group": "Supplies",
+   "name": "Farm supply",
+   "filters": [
+    [
+     "shop",
+     "agrarian"
+    ]
+   ]
+  },
+  {
+   "id": "outdoor",
+   "group": "Supplies",
+   "name": "Outdoor and sporting goods",
+   "filters": [
+    [
+     "shop",
+     "outdoor"
+    ],
+    [
+     "shop",
+     "sports"
+    ]
+   ]
+  },
+  {
+   "id": "weapons",
+   "group": "Supplies",
+   "name": "Gun and hunting shops",
+   "filters": [
+    [
+     "shop",
+     "weapons"
+    ],
+    [
+     "shop",
+     "hunting"
+    ]
+   ]
+  },
+  {
+   "id": "airfield",
+   "group": "Travel and shelter",
+   "name": "Airports and airfields",
+   "filters": [
+    [
+     "aeroway",
+     "aerodrome"
+    ]
+   ]
+  },
+  {
+   "id": "rest_area",
+   "group": "Travel and shelter",
+   "name": "Rest areas",
+   "filters": [
+    [
+     "highway",
+     "rest_area"
+    ],
+    [
+     "highway",
+     "services"
+    ]
+   ]
+  },
+  {
+   "id": "campsite",
+   "group": "Travel and shelter",
+   "name": "Campsites",
+   "filters": [
+    [
+     "tourism",
+     "camp_site"
+    ]
+   ]
+  },
+  {
+   "id": "ranger",
+   "group": "Travel and shelter",
+   "name": "Ranger stations",
+   "filters": [
+    [
+     "amenity",
+     "ranger_station"
+    ]
+   ]
+  },
+  {
+   "id": "military",
+   "group": "Government",
+   "name": "Military sites",
+   "filters": [
+    [
+     "military",
+     "base"
+    ],
+    [
+     "landuse",
+     "military"
+    ]
+   ],
+   "note": "Only sites with a name are kept."
+  },
+  {
+   "id": "townhall",
+   "group": "Government",
+   "name": "Town halls and courthouses",
+   "filters": [
+    [
+     "amenity",
+     "townhall"
+    ],
+    [
+     "amenity",
+     "courthouse"
+    ]
+   ]
+  },
+  {
+   "id": "town",
+   "group": "Places",
+   "name": "Cities, towns and villages",
+   "filters": [
+    [
+     "place",
+     "city"
+    ],
+    [
+     "place",
+     "town"
+    ],
+    [
+     "place",
+     "village"
+    ]
+   ]
+  }
+ ]
+}

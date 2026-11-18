@@ -16,6 +16,14 @@ out += `Press Start 2P (font, unmodified; used in the wiki golf game)\n\n${fs.re
 
 out += `PDF.js 3.11.174 (unmodified; reads the text of the school books)\nhttps://github.com/mozilla/pdf.js\n\n${fs.readFileSync(path.join(root, 'src/vendor/pdfjs/LICENSE'), 'utf8').trim()}\n\n`;
 
+for (const [name, url, file] of [
+  ['MapLibre GL JS 5.24.1 (as published, less its source-map pointer; draws the map)', 'https://github.com/maplibre/maplibre-gl-js', 'src/vendor/maplibre/LICENSE.txt'],
+  ['PMTiles 4.5.0 (as published, less its source-map pointer; reads the map file)', 'https://github.com/protomaps/PMTiles', 'src/vendor/pmtiles/LICENSE'],
+  ['Protomaps Basemaps 5.7.2 (as published, less its source-map pointer; the look of the map)', 'https://github.com/protomaps/basemaps', 'src/vendor/basemaps/LICENSE.md'],
+  ['Noto Sans, Latin ranges, as map glyphs', 'https://github.com/protomaps/basemaps-assets', 'assets/maps/fonts/OFL.txt'],
+  ['Map icons, derived from Mapzen icons', 'https://github.com/protomaps/basemaps-assets', 'assets/maps/sprites/LICENSE.md'],
+]) out += `${name}\n${url}\n\n${fs.readFileSync(path.join(root, file), 'utf8').trim()}\n\n`;
+
 const packages = Object.entries(lock.packages).filter(([dir, p]) => dir && !p.dev).sort(([a], [b]) => a.localeCompare(b));
 for (const [dir, p] of packages) {
   const name = dir.replace(/^node_modules\//, '');
@@ -33,10 +41,11 @@ out += [
   ['Kiwix tools (kiwix-serve)', 'The reader and search engine. GNU General Public License v3. Downloaded from download.kiwix.org. Source: https://github.com/kiwix/kiwix-tools'],
   ['Wikipedia edition (ZIM file)', 'Text is available under the Creative Commons Attribution-ShareAlike 4.0 licence (and, mostly, the GNU Free Documentation License); images and other media carry their own licences, stated on each file\'s page. Packaged and published by Kiwix / openZIM. Each article in the app links to itself as the source.'],
   ['Wikibooks and Wikiversity editions (ZIM files)', 'Text under the Creative Commons Attribution-ShareAlike licence; media under their own licences. Packaged and published by Kiwix / openZIM. Downloaded only if you add them.'],
+  ['The map and the places on it', 'Map data and places © OpenStreetMap contributors, under the Open Database License (https://www.openstreetmap.org/copyright). The map file is cut from the Protomaps world basemap (https://protomaps.com), which is built from OpenStreetMap and Natural Earth. Places are asked for through the Overpass API. Both are downloaded only if you ask for them.'],
   ['School materials for Grade 5 (PDF files)', 'Published by the Core Knowledge Foundation and downloaded from coreknowledge.org only if you ask for them. Core Knowledge Language Arts, History and Geography, and Science are under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 licence. Core Knowledge Mathematics is based on IM K-5 Math by Illustrative Mathematics, which is under the Creative Commons Attribution 4.0 licence. The files are used unchanged; each states its own terms. They may not be sold.'],
   ['Microsoft Foundry Local', 'The program that runs AI models. Installed with winget from Microsoft under Microsoft\'s licence terms, only if you agree.'],
   ['AI models', 'Downloaded by Foundry Local from Microsoft\'s model catalogue. Each model has its own licence, set by its publisher and shown in that catalogue.'],
 ].map(([name, text]) => `${name}\n  ${text}\n`).join('\n');
-out += `\n${line}\nNAMES\n${line}\n\nWikipedia is a trademark of the Wikimedia Foundation. Kiwix, Microsoft, Foundry, IBM Plex, Core Knowledge and Illustrative Mathematics are names or trademarks of their owners. Wikivault is not affiliated with, endorsed by or sponsored by any of them.\n`;
+out += `\n${line}\nNAMES\n${line}\n\nWikipedia is a trademark of the Wikimedia Foundation. Kiwix, Microsoft, Foundry, IBM Plex, Core Knowledge, Illustrative Mathematics, OpenStreetMap, Protomaps and MapLibre are names or trademarks of their owners. Wikivault is not affiliated with, endorsed by or sponsored by any of them.\n`;
 fs.writeFileSync(path.join(root, 'THIRD-PARTY-NOTICES.txt'), out.replace(/\r\n/g, '\n'));
 console.log(`THIRD-PARTY-NOTICES.txt: ${packages.length} packages, ${out.length} characters`);

@@ -31,6 +31,7 @@ const { tourPlan } = require('../core/tour');
 const http = require('node:http');
 const schoolCore = require('../core/school');
 const { SchoolLibrary } = require('../core/school-library');
+const { MapsLibrary } = require('../core/maps-library');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
@@ -359,6 +360,7 @@ async function partitionInfo() {
     otherAllowance += 2 * 1.15 * Math.max(have, extraLatest[id]?.bytes || lib.approxBytes);
   }
   if (schoolBytes() > 0) { otherBytes += schoolBytes(); otherAllowance += schoolBytes(); }
+  if (mapsBytes() > 0) { otherBytes += mapsBytes(); otherAllowance += mapsBytes(); }
   const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin, otherBytes, otherAllowance };
   const plans = { staged: sizePlan({ ...base, editions: 1 }), selfContained: sizePlan({ ...base, editions: 2 }) };
   return { driveLetter, analysis, edition, plans, stagingDir: defaultStagingDir() };
@@ -398,6 +400,7 @@ async function getState() {
     activeLibrary: curLibId(),
     golf: golfState(),
     school: school ? { ...school.status(), dir: school.dir } : null,
+    maps: maps ? { ...maps.status(), dir: maps.dir, origin: schoolServer ? schoolServer.origin : null } : null,
     golfClub: golfClub(),
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
@@ -532,6 +535,7 @@ async function initLibrary() {
     .filter((id) => fs.existsSync(path.join(extraDir(id), 'state.json')))
     .map((id) => ensureExtra(id).catch((err) => log(`${id}: ${err.message}`))));
   await initSchool().catch((err) => log(`school: ${err.stack || err.message}`));
+  await initMaps().catch((err) => log(`maps: ${err.stack || err.message}`));
 }
 
 /** Stop every extra library's engine and updater, leaving its files alone. */
@@ -663,13 +667,29 @@ function stopIndexer() { try { indexer?.kill(); } catch { /* already gone */ } i
 function startSchoolServer() {
   if (schoolServer) return Promise.resolve(schoolServer);
   const server = http.createServer((req, res) => {
-    const m = /^\/f\/([a-z0-9-]+)\.pdf$/.exec(new URL(req.url, 'http://x').pathname);
+    const pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const m = /^\/f\/([a-z0-9-]+)\.pdf$/.exec(pathname);
     const f = m && school?.fileById(m[1]);
-    const file = f && school.have.has(f.id) ? school.pathOf(f) : null;
+    let file = f && school.have.has(f.id) ? school.pathOf(f) : null;
+    let type = 'application/pdf';
+    // The map view runs in the app's own window, which is not this server's origin.
+    const open = pathname.startsWith('/m/') ? { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'range', 'access-control-expose-headers': 'content-range, content-length, etag' } : {};
+    if (pathname.startsWith('/m/')) {
+      if (req.method === 'OPTIONS') { res.writeHead(204, open).end(); return; }
+      const font = /^\/m\/fonts\/([A-Za-z ]+)\/(\d+-\d+)\.pbf$/.exec(pathname);
+      const sprite = /^\/m\/sprites\/([a-z]+(?:@2x)?\.(?:json|png))$/.exec(pathname);
+      if (pathname === '/m/map.pmtiles' && maps?.map) { file = maps.mapFile; type = 'application/octet-stream'; }
+      else if (font) {
+        file = path.join(MAP_ASSETS, 'fonts', font[1], `${font[2]}.pbf`); type = 'application/x-protobuf';
+        // Only Latin letters are packed with the app. Any other range is answered with "no glyphs", which the map accepts.
+        if (!fs.existsSync(file)) { res.writeHead(200, { ...open, 'content-type': type, 'content-length': 0 }).end(); return; }
+      } else if (sprite) { file = path.join(MAP_ASSETS, 'sprites', sprite[1]); type = sprite[1].endsWith('.json') ? 'application/json' : 'image/png'; }
+      else file = null;
+    }
     let size = 0;
     try { size = file ? fs.statSync(file).size : 0; } catch { size = 0; }
-    if (!size || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not here'); return; }
-    const head = { 'content-type': 'application/pdf', 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    if (!size || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404, { ...open, 'content-type': 'text/plain' }).end('Not here'); return; }
+    const head = { ...open, 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
     const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
     let start = 0;
     let end = size - 1;
@@ -686,6 +706,24 @@ function startSchoolServer() {
     server.listen(0, '127.0.0.1', () => { schoolServer = { origin: `http://127.0.0.1:${server.address().port}`, server }; resolve(schoolServer); });
   });
 }
+
+let maps = null;
+const MAP_ASSETS = path.join(__dirname, '..', '..', 'assets', 'maps');
+async function initMaps() {
+  if (maps) { maps.cancel(); maps.removeAllListeners(); }
+  // Tests fetch from a stand-in server instead of the map and places servers.
+  const base = process.env.WIKIVAULT_MAPS_BASE;
+  maps = new MapsLibrary({
+    dir: path.join(settings.dataDir, 'maps'), log, agent: `Wikivault/${app.getVersion()} (offline map for personal use)`,
+    rewrite: (u) => (base ? base + new URL(u).pathname : u),
+    ...(base ? { pause: () => new Promise((r) => setTimeout(r, 20)) } : {}),
+  });
+  let last = 0;
+  maps.on('changed', () => pushState());
+  maps.on('progress', () => { const now = Date.now(); if (now - last > 400) { last = now; pushState(); } });
+  await maps.init();
+}
+const mapsBytes = () => (maps ? maps.status().bytes : 0);
 
 async function initSchool() {
   if (school) { school.cancel(); school.removeAllListeners(); }
@@ -752,10 +790,15 @@ function silenceSpellCheck(ses) {
 }
 
 function lockAppSession() {
-  // The app's own pages are local files; they have no business on the network.
+  // The app's own pages are local files; they have no business on the network. The one exception is
+  // the map, its fonts and its icons, which the map view reads from the app's own local server.
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] },
-    (_details, done) => done({ cancel: true }),
+    (details, done) => {
+      let ok = false;
+      try { const u = new URL(details.url); ok = Boolean(schoolServer) && u.origin === schoolServer.origin && u.pathname.startsWith('/m/'); } catch { ok = false; }
+      done({ cancel: !ok });
+    },
   );
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
   silenceSpellCheck(session.defaultSession);
@@ -1295,9 +1338,12 @@ async function moveLibrary(toDir, kind = 'move') {
   // Wikibooks and Wikiversity go wherever Wikipedia goes.
   const carried = [...extras].filter(([, x]) => x.manager.snapshot().active).map(([id, x]) => ({ id, x, name: LIBRARIES[id].name, bytes: x.manager.snapshot().active.bytes }));
   if (school?.status().job) throw new Error('The school files are being downloaded or read. Let that finish or cancel it under School, then try again.');
+  if (maps?.status().job) throw new Error('The map or its places are being downloaded. Let that finish or stop it under Map, then try again.');
   const oldSchool = path.join(oldDir, 'school');
   const hasSchool = fs.existsSync(oldSchool);
-  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0) + schoolBytes();
+  const oldMaps = path.join(oldDir, 'maps');
+  const hasMaps = fs.existsSync(oldMaps);
+  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0) + schoolBytes() + mapsBytes();
   const room = await freeAt(toDir);
   const already = fs.existsSync(path.join(toDir, 'zim')) ? (await fsp.readdir(path.join(toDir, 'zim')).catch(() => [])).some((n) => n.endsWith('.copying')) : false;
   if (room != null && !already && room < allBytes + 2 * 2 ** 30) {
@@ -1332,6 +1378,13 @@ async function moveLibrary(toDir, kind = 'move') {
         throw new Error(`School files: ${err.message}`);
       }
     }
+    if (hasMaps) {
+      setMaintenance({ kind, step: 'Copying the map and its places', done: null, total: null, error: null });
+      try { await fsp.cp(oldMaps, path.join(toDir, 'maps'), { recursive: true, force: true }); } catch (err) {
+        await fsp.rm(path.join(toDir, 'maps'), { recursive: true, force: true }).catch(() => {});
+        throw new Error(`Map files: ${err.message}`);
+      }
+    }
     setMaintenance({ kind, step: 'Copying Wikipedia', done: 0, total: editions.snapshot().active.bytes, error: null });
     const res = await copyLibrary({
       manager: editions, toDir,
@@ -1355,6 +1408,7 @@ async function moveLibrary(toDir, kind = 'move') {
 
     setMaintenance({ step: 'Removing the old copy', done: null });
     if (hasSchool) await fsp.rm(oldSchool, { recursive: true, force: true }).catch((err) => log(`old school folder: ${err.message}`));
+    if (hasMaps) await fsp.rm(oldMaps, { recursive: true, force: true }).catch((err) => log(`old maps folder: ${err.message}`));
     for (const id of Object.keys(LIBRARIES)) await removeLibraryFiles(path.join(oldDir, 'more', id), { log });
     await fsp.rmdir(path.join(oldDir, 'more')).catch(() => {});
     await removeLibraryFiles(oldDir, { log });
@@ -1520,6 +1574,20 @@ function registerIpc() {
     pushState();
     return { homeUrl: cur().homeUrl() };
   });
+  const inMaps = (fn) => (arg) => { if (!maps) throw new Error('Set up the library first.'); return fn(arg || {}); };
+  const mapRegions = (a) => (Array.isArray(a.regions) ? a.regions.map(String) : []);
+  const mapJob = (name, p) => { p.then((r) => log(`maps: ${name} ${r ? 'finished' : 'stopped'}`)).catch((err) => log(`maps: ${name}: ${err.message}`)); return true; };
+  handle('maps:measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('measure', maps.measure(mapRegions(a))); }));
+  handle('maps:download', inMaps(async (a) => {
+    if (!editions.snapshot().active) throw new Error('Set up Wikipedia first. The map is kept in the same library.');
+    if (maps.status().job) throw new Error('Something is already being fetched for the map.');
+    const free = await freeAt(settings.dataDir);
+    return mapJob('map', maps.downloadMap(mapRegions(a), Number(a.zoom), { free }));
+  }));
+  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a))); }));
+  handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
+  handle('maps:search', inMaps((a) => maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, limit: Number(a.limit) || 50 })));
+  handle('maps:origin', inMaps(async () => (await startSchoolServer()).origin));
   const inSchool = (fn) => (arg) => { if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
   handle('school:overview', inSchool(() => school.overview()));
   handle('school:week', inSchool(({ number }) => school.week(Number(number) || school.currentWeek())));
@@ -1826,6 +1894,7 @@ if (!app.requestSingleInstanceLock()) {
       for (const ac of asks.values()) ac.abort('quit');
       speedAbort?.abort();
       school?.cancel();
+      maps?.cancel();
       stopIndexer();
       const release = llm.releaseMemory({ stopService: true, also: ourModelIds() }).catch(() => {});
       Promise.race([release, new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit());

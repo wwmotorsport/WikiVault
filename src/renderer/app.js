@@ -65,11 +65,11 @@ function showView(next) {
   if (view === next) return;
   if (view && view !== 'setup') prevView = view;
   view = next;
-  for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school']) $(`view-${v}`).hidden = v !== next;
+  for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school', 'map']) $(`view-${v}`).hidden = v !== next;
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
   if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
   if (next === 'golf' || state?.golf) renderGolf();
-  if (state) renderSchool();
+  if (state) { renderSchool(); renderMap(); }
   updateNav();
 }
 
@@ -78,7 +78,7 @@ function updateNav() {
   let fwd = false;
   if (view === 'reader' && readerReady) {
     try { back = reader.canGoBack(); fwd = reader.canGoForward(); } catch { /* not attached yet */ }
-  } else if ((view === 'results' || view === 'library' || view === 'school') && prevView) back = true;
+  } else if ((view === 'results' || view === 'library' || view === 'school' || view === 'map') && prevView) back = true;
   else if (view === 'golf' && !state?.golf && prevView && prevView !== 'golf') back = true;
   $('nav-back').disabled = !back;
   $('nav-forward').disabled = !fwd;
@@ -1651,6 +1651,289 @@ $('sch-search').addEventListener('submit', (e) => {
   guard(async () => { schHits = { q, hits: await api.schoolSearch(q) }; await schoolLoad(true); }, $('sch-error'));
 });
 
+// ------------------------------------------------------------ map
+// An offline map (MapLibre drawing a PMTiles file served by the app itself) and places to find on it.
+
+let mapView = null;        // the MapLibre map, made the first time the view is opened with a map on disk
+let mapKey = '';           // the map file that view was made for
+let mapOrigin = null;      // the app's own local server
+let mapProtocol = null;
+let mapSetupOpen = false;
+let mapHits = { total: 0, hits: [] };
+let mapSelected = null;    // id of the place whose details are open
+let mapPopup = null;
+let mapAsked = 0;
+
+const mapDay = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
+const mapLevelName = (m, zoom) => (m.levels.find((l) => l.zoom === zoom) || { name: `Level ${zoom}` }).name;
+const mapRegionNames = (m, ids) => m.regions.filter((r) => ids.includes(r.id)).map((r) => r.name).join(', ');
+function mapRegionsPicked(m) {
+  const boxes = [...document.querySelectorAll('#map-setup input[name="map-region"]')];
+  if (boxes.length) return boxes.filter((b) => b.checked).map((b) => b.value);
+  return m.map ? m.map.regions : m.regions.filter((r) => r.default).map((r) => r.id);
+}
+
+function paintMapJob(m) {
+  const box = $('map-job');
+  box.hidden = !m.job;
+  if (!m.job) { box.replaceChildren(); return; }
+  const j = m.job;
+  let title = ''; let detail = ''; let value = null; let max = null;
+  if (j.kind === 'measure') { title = 'Measuring the map'; detail = `Reading the index of the world map: ${bytes(j.indexBytes || 0)} so far. No map is downloaded yet.`; }
+  if (j.kind === 'map') {
+    title = j.stage === 'check' ? 'Checking the map' : j.stage === 'tiles' ? 'Downloading the map' : 'Working out which parts of the world map are needed';
+    if (j.stage === 'tiles' && j.total) { value = j.downloaded || 0; max = j.total; detail = `${bytes(j.downloaded || 0)} of ${bytes(j.total)}`; } else if (j.stage === 'index') detail = `${bytes(j.indexBytes || 0)} of the index read.`;
+  }
+  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `Area ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. ${(j.found || 0).toLocaleString()} places so far. The server is free and shared, so this is done slowly.`; }
+  const bar = document.createElement('progress');
+  if (max) { bar.max = max; bar.value = value; }
+  const stop = el('button', 'btn small', 'Stop');
+  stop.type = 'button'; stop.id = 'map-stop';
+  stop.addEventListener('click', () => guard(() => api.mapsCancel(), $('map-error')));
+  box.replaceChildren(el('p', 'map-job-title', title), bar, el('p', 'small-print', detail), stop);
+}
+
+function paintMapSummary(m) {
+  const box = $('map-summary');
+  const lines = [];
+  if (m.map) lines.push(el('p', '', `${mapLevelName(m, m.map.maxZoom)}. ${mapRegionNames(m, m.map.regions)}. ${bytes(m.map.bytes)}, from the world map built on ${mapDay(m.map.built)}.`));
+  else lines.push(el('p', '', 'No map is on this computer yet. Choose what to cover, see how big each level of detail would be, and then download.'));
+  if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
+  else lines.push(el('p', '', 'No places have been fetched yet. They can be fetched with or without the map.'));
+  const b = el('button', 'btn small', mapSetupOpen ? 'Close' : m.map || m.places ? 'Change or update' : 'Set up the map');
+  b.type = 'button'; b.id = 'map-setup-toggle';
+  b.setAttribute('aria-expanded', String(mapSetupOpen));
+  b.addEventListener('click', () => { mapSetupOpen = !mapSetupOpen; renderMap(); });
+  box.replaceChildren(...lines, b);
+}
+
+function paintMapSetup(m) {
+  const box = $('map-setup');
+  box.hidden = !mapSetupOpen;
+  if (!mapSetupOpen) { box.replaceChildren(); return; }
+  const picked = mapRegionsPicked(m);
+  const busy = Boolean(m.job);
+  const regions = el('fieldset', 'map-field');
+  regions.append(el('legend', '', 'Cover'));
+  for (const r of m.regions) {
+    const label = el('label', 'map-check');
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.name = 'map-region'; input.value = r.id; input.checked = picked.includes(r.id); input.disabled = busy;
+    input.addEventListener('change', () => renderMap());
+    const text = el('span', '', r.name);
+    if (r.note) text.append(el('span', 'small-print', ` ${r.note}`));
+    label.append(input, text);
+    regions.append(label);
+  }
+  const measured = m.measured && m.measured.regions.join() === picked.join() ? m.measured : null;
+  const measure = el('button', measured ? 'btn small' : 'btn primary', measured ? 'Measure again' : 'Measure the sizes');
+  measure.type = 'button'; measure.id = 'map-measure'; measure.disabled = busy || !picked.length;
+  measure.addEventListener('click', () => guard(() => api.mapsMeasure(picked), $('map-error')));
+  const parts = [regions];
+  if (measured) {
+    const levels = el('fieldset', 'map-field');
+    levels.append(el('legend', '', 'Detail'));
+    const current = document.querySelector('#map-setup input[name="map-level"]:checked')?.value;
+    for (const l of measured.levels) {
+      const label = el('label', 'map-level');
+      const input = document.createElement('input');
+      input.type = 'radio'; input.name = 'map-level'; input.value = String(l.zoom); input.disabled = busy;
+      input.checked = current ? current === String(l.zoom) : m.map ? m.map.maxZoom === l.zoom : false;
+      input.addEventListener('change', () => renderMap());
+      const text = el('span', 'map-level-text');
+      text.append(el('b', '', l.name), el('span', 'map-level-size', bytes(l.bytes)), el('span', 'small-print', l.what));
+      label.append(input, text);
+      levels.append(label);
+    }
+    const chosen = Number(document.querySelector('#map-setup input[name="map-level"]:checked')?.value ?? (m.map ? m.map.maxZoom : NaN));
+    const level = measured.levels.find((l) => l.zoom === chosen);
+    const get = el('button', 'btn primary', level ? `Download this map, ${bytes(level.bytes)}` : 'Choose a level of detail');
+    get.type = 'button'; get.id = 'map-download'; get.disabled = busy || !level;
+    get.addEventListener('click', () => guard(() => api.mapsDownload(picked, chosen), $('map-error')));
+    parts.push(levels, el('p', 'small-print', `Sizes are for the world map built on ${mapDay(measured.build.uploaded)}. ${m.map ? 'The map you have stays in use until the new one is complete.' : ''}`), get, measure);
+  } else {
+    parts.push(el('p', 'small-print', 'Measuring reads the index of the world map (tens of megabytes) and lists what each level of detail would take. Nothing large is downloaded until you choose.'), measure);
+  }
+  const placesBox = el('fieldset', 'map-field');
+  placesBox.append(el('legend', '', 'Places'));
+  placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above. Fetching them takes a while and a few hundred megabytes at most.'));
+  const getPlaces = el('button', m.places ? 'btn small' : 'btn primary', m.places ? 'Update the places' : 'Fetch the places');
+  getPlaces.type = 'button'; getPlaces.id = 'map-places'; getPlaces.disabled = busy || !picked.length;
+  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked), $('map-error')));
+  placesBox.append(getPlaces);
+  parts.push(placesBox);
+  // Keep the boxes that are ticked: build the new content first, then swap.
+  box.replaceChildren(...parts);
+}
+
+function paintMapSearch(m) {
+  const form = $('map-search');
+  form.hidden = !m.places;
+  if (!m.places) return;
+  const sel = $('map-cat');
+  const key = m.categories.map((c) => `${c.id}:${c.count}`).join();
+  if (sel.dataset.key !== key) {
+    const was = sel.value;
+    sel.replaceChildren(Object.assign(document.createElement('option'), { value: '', textContent: 'Any kind' }));
+    for (const group of [...new Set(m.categories.map((c) => c.group))]) {
+      const og = document.createElement('optgroup'); og.label = group;
+      for (const c of m.categories.filter((x) => x.group === group && x.count)) og.append(Object.assign(document.createElement('option'), { value: c.id, textContent: `${c.name} (${c.count.toLocaleString()})` }));
+      if (og.children.length) sel.append(og);
+    }
+    sel.value = was; if (sel.value !== was) sel.value = '';
+    sel.dataset.key = key;
+  }
+  const cat = m.categories.find((c) => c.id === sel.value);
+  $('map-cat-note').hidden = !(cat && cat.note);
+  $('map-cat-note').textContent = cat && cat.note ? cat.note : '';
+}
+
+function mapDetails(h) {
+  const box = el('div', 'map-place');
+  box.append(el('p', 'map-place-kind', h.kind || ''), el('h3', '', h.n || 'No name recorded'));
+  const row = (label, value) => { if (!value) return; const p = el('p', ''); p.append(el('span', 'map-place-label', `${label} `), value); box.append(p); };
+  row('Address', h.d); row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
+  const words = { emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
+  for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
+  row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
+  if (h.km != null) row('From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
+  return box;
+}
+
+function mapDrawHits() {
+  if (!mapView || !mapView.getSource('hits')) return;
+  mapView.getSource('hits').setData({ type: 'FeatureCollection', features: mapHits.hits.map((h) => ({ type: 'Feature', id: undefined, properties: { i: h.i, n: h.n || '', sel: h.i === mapSelected ? 1 : 0 }, geometry: { type: 'Point', coordinates: [h.o, h.a] } })) });
+}
+
+function mapSelect(id, { fly = true } = {}) {
+  const h = mapHits.hits.find((x) => x.i === id);
+  if (!h) return;
+  mapSelected = id;
+  paintMapResults();
+  mapDrawHits();
+  if (!mapView) return;
+  if (mapPopup) mapPopup.remove();
+  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '300px', offset: 10 }).setLngLat([h.o, h.a]).setDOMContent(mapDetails(h)).addTo(mapView);
+  mapPopup.on('close', () => { if (mapSelected === id) { mapSelected = null; paintMapResults(); mapDrawHits(); } });
+  if (fly) mapView.easeTo({ center: [h.o, h.a], zoom: Math.min(mapView.getMaxZoom(), Math.max(mapView.getZoom(), h.c === 'town' ? 10 : 13)), duration: 600 });
+}
+
+function paintMapResults() {
+  const box = $('map-results');
+  if (!state?.maps?.places || !mapAsked) { box.replaceChildren(); return; }
+  if (!mapHits.hits.length) { box.replaceChildren(el('p', 'small-print', 'Nothing found. Try fewer words, or another kind of place.')); return; }
+  const head = el('p', 'small-print', mapHits.total > mapHits.hits.length ? `Showing ${mapHits.hits.length} of ${mapHits.total.toLocaleString()}.` : `${mapHits.total.toLocaleString()} found.`);
+  const list = el('ul', 'map-hits');
+  for (const h of mapHits.hits.slice(0, 60)) {
+    const li = el('li', h.i === mapSelected ? 'on' : '');
+    const b = el('button', '', '');
+    b.type = 'button';
+    b.append(el('span', 'map-hit-name', h.n || 'No name recorded'), el('span', 'map-hit-kind', [h.kind, h.km != null ? `${(h.km * 0.621371).toFixed(1)} mi` : ''].filter(Boolean).join(', ')));
+    if (h.d) b.append(el('span', 'map-hit-addr', h.d));
+    b.addEventListener('click', () => mapSelect(h.i));
+    li.append(b);
+    if (h.i === mapSelected && !mapView) li.append(mapDetails(h));
+    list.append(li);
+  }
+  box.replaceChildren(head, list);
+}
+
+/** Ask for places: by words, or, with a kind chosen and no words, those in view and nearest the middle. */
+async function mapFind({ moved = false } = {}) {
+  const q = $('map-q').value.trim();
+  const cat = $('map-cat').value;
+  if (!q && !cat) { mapAsked = 0; mapHits = { total: 0, hits: [] }; paintMapResults(); mapDrawHits(); return; }
+  if (moved && q) return; // moving the map only refreshes a browse by kind
+  const ask = ++mapAsked;
+  const o = { q, categories: cat ? [cat] : null, limit: q ? 60 : 400 };
+  if (mapView) {
+    const c = mapView.getCenter();
+    if (!q) { o.near = [c.lng, c.lat]; const b = mapView.getBounds(); o.box = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; }
+  }
+  const r = await api.mapsSearch(o);
+  if (ask !== mapAsked) return;
+  mapHits = r;
+  if (!r.hits.some((h) => h.i === mapSelected)) { mapSelected = null; if (mapPopup) { mapPopup.remove(); mapPopup = null; } }
+  paintMapResults();
+  mapDrawHits();
+  if (!moved && q && r.hits.length) mapSelect(r.hits[0].i);
+}
+
+async function mapEnsure(m) {
+  const empty = $('map-empty');
+  empty.hidden = Boolean(m.map);
+  if (!m.map) {
+    empty.textContent = m.job && m.job.kind === 'map' ? 'The map is on its way.' : 'The map will be drawn here once it has been downloaded.';
+    if (mapView) { mapView.remove(); mapView = null; mapKey = ''; }
+    return;
+  }
+  const key = `${m.map.date}|${m.map.bytes}`;
+  if (mapView && mapKey === key) { mapView.resize(); return; }
+  if (mapKey === `making|${key}`) return;
+  mapKey = `making|${key}`;
+  if (!mapOrigin) mapOrigin = await api.mapsOrigin();
+  if (mapView) { mapView.remove(); mapView = null; }
+  if (!mapProtocol) {
+    mapProtocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', mapProtocol.tile);
+    maplibregl.setWorkerUrl('../vendor/maplibre/maplibre-gl-csp-worker.js');
+  }
+  const b = m.map.bounds;
+  const map = new maplibregl.Map({
+    container: 'map-canvas', attributionControl: false, maxZoom: Math.min(18, m.map.maxZoom + 3), dragRotate: false, pitchWithRotate: false,
+    style: {
+      version: 8,
+      glyphs: `${mapOrigin}/m/fonts/{fontstack}/{range}.pbf`,
+      sprite: `${mapOrigin}/m/sprites/light`,
+      sources: { protomaps: { type: 'vector', url: `pmtiles://${mapOrigin}/m/map.pmtiles?v=${encodeURIComponent(key)}`, attribution: '© OpenStreetMap contributors' } },
+      layers: basemaps.layers('protomaps', basemaps.namedFlavor('light'), { lang: 'en' }),
+    },
+    bounds: [[b[0], b[1]], [b[2], b[3]]], fitBoundsOptions: { padding: 24 },
+  });
+  map.touchZoomRotate.disableRotation();
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-left');
+  map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
+  map.on('load', () => {
+    map.addSource('hits', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#b3261e', '#14304d'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+    map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': '#14304d', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
+    map.on('click', 'hits-dot', (e) => { const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
+    map.on('mouseenter', 'hits-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
+    $('map-canvas').dataset.ready = '1';
+    mapDrawHits();
+  });
+  map.on('moveend', () => { mapFind({ moved: true }).catch(() => {}); });
+  mapView = map;
+  mapKey = key;
+}
+
+function renderMap() {
+  const m = state?.maps;
+  $('nav-map').disabled = !m || golfPlaying();
+  $('nav-map').setAttribute('aria-pressed', String(view === 'map'));
+  if (!m || view !== 'map') return;
+  $('map-credit').textContent = m.credit;
+  if (m.error) { $('map-error').textContent = m.error; $('map-error').hidden = false; }
+  paintMapJob(m);
+  paintMapSummary(m);
+  paintMapSetup(m);
+  paintMapSearch(m);
+  paintMapResults();
+  mapEnsure(m).catch((err) => {
+    mapKey = '';
+    // MapLibre reports a missing graphics context as a long technical record; say it in words.
+    const webgl = /webgl/i.test(String(err && err.message));
+    $('map-error').textContent = webgl ? 'The map could not be drawn because this computer\'s graphics (WebGL) did not start. Places can still be searched. Updating the graphics driver, or turning off Remote Desktop if it is in use, usually fixes it.' : `The map could not be drawn: ${err.message}`;
+    $('map-error').hidden = false;
+  });
+}
+
+$('nav-map').addEventListener('click', () => { if (!golfPlaying()) showView('map'); });
+$('map-search').addEventListener('submit', (e) => { e.preventDefault(); guard(() => mapFind(), $('map-error')); });
+$('map-cat').addEventListener('change', () => { renderMap(); guard(() => mapFind(), $('map-error')); });
+
 // ------------------------------------------------------------ guided lessons
 // A day of the plan as steps to click through. The steps sit beside the book, which turns to the
 // page of each step. The steps come from the teacher guide's own headings (see school-outline.js).
@@ -1817,6 +2100,7 @@ const TOUR_STOPS = [
   [['nav-home'], 'Home', 'The front page of the library that is open.'],
   [['nav-golf'], 'Wiki golf', 'A game for one to six players: get from one article to another using only the links in between.'],
   [['nav-school'], 'School', 'A year of lessons laid out week by week, with the teacher guides, student books and tests to go with them.'],
+  [['nav-map'], 'Map', 'An offline map of the regions you choose, and hospitals, water, fuel, food and other places to find on it.'],
   [['nav-random'], 'Random article', 'Opens an article picked at random.'],
   [['lib-select'], 'Library list', 'Switch between Wikipedia and the other libraries you have downloaded.'],
   [['search'], 'Search', 'Titles appear as you type. Press Enter to search the full text of every article. Ctrl+K jumps here.'],
@@ -1825,6 +2109,11 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.18.0': [
+    'Map, a new section: an offline map cut from OpenStreetMap for the regions you choose. The app measures how big each level of detail would be before anything is downloaded.',
+    'Places: hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, searchable by name, kind and distance.',
+    'Directions, address search and sending maps to a phone are not in this version yet.',
+  ],
   '0.17.0': [
     'School: Start lesson. Every day of the plan can now be stepped through, one part of the lesson at a time, with the book open beside the steps at the right page.',
     'The steps, their times and their pages are read from the real teacher guides, and each lesson shows its name in the week.',
@@ -2460,7 +2749,7 @@ function renderGolf() {
   const g = state?.golf || null;
   const playing = golfPlaying();
   document.body.classList.toggle('golf-playing', playing);
-  for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
+  for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'nav-map', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
   $('nav-golf').setAttribute('aria-pressed', String(Boolean(g) || view === 'golf'));
 
   const seen = g ? `${g.holeNumber}:${g.player}:${g.phase}` : null;
@@ -2723,6 +3012,7 @@ function render() {
   renderLibraries();
   renderGolf();
   renderSchool();
+  renderMap();
   maybeTour();
   const e = state.edition;
   const active = e?.active;

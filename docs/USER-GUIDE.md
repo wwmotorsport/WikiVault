@@ -159,6 +159,31 @@ These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving
 
 **Links between projects.** Pages often link to a sister project, such as a Wikiversity lesson pointing at a Wikipedia article. When that project is downloaded and has the page, the link opens in the offline copy and the open library switches with it. When it is not downloaded, or does not have that page, the notice that normally offers to open the website says which.
 
+## Map
+
+The folded-map button in the top bar opens an offline map. The tools are on the left and the map is on the right. This version has the map and the places on it. Directions, address search and sending maps to a phone are not in yet.
+
+**Setting it up.** Press *Set up the map*.
+
+1. Under *Cover*, tick the regions you want. The contiguous United States is ticked to start with.
+2. Press *Measure the sizes*. The map is cut from a world map of about 140 GB that is rebuilt every day from OpenStreetMap. Measuring reads that file's index, which is tens of megabytes, and lists what each level of detail would take for the regions you ticked. Nothing large is downloaded.
+3. Under *Detail*, pick a level. *Highways and cities* is enough to cross the country. *Every street* has every street with its name, and tracks and trails. *Everything* adds building outlines. The size beside each is what it will take on disk.
+4. Press *Download this map*. Only the parts of the world map you chose are fetched. It can be stopped and carried on later.
+
+To change the regions or the detail, or to get a newer map, press *Change or update* and do the same again. The map you have stays in use until the new one is complete.
+
+**Places.** In the same panel, *Fetch the places* asks OpenStreetMap for the places in the ticked regions: hospitals, clinics and pharmacies; fire, police and ambulance stations; water and wastewater works, water towers, drinking water, springs and wells; power plants and substations; fuel; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; and cities, towns and villages. The server that answers is free and shared, so the app asks slowly, one area at a time. Places can be fetched with or without the map.
+
+**Finding a place.** Type a name, a street or a town and press *Find*. The best match opens on the map. Or choose a *Kind of place* and leave the box empty: the map then shows the places of that kind in view, and the list has them nearest the middle of the map first, with the distance. Move the map and the list follows.
+
+Click a place for what is recorded about it: address, telephone, hours, who runs it, its position, and details that matter for its kind, such as whether a hospital has an emergency room or a fuel station sells diesel.
+
+**What to keep in mind.** The places are what volunteers have mapped. Hospitals, fuel and shops in towns are well covered; the countryside is thinner, and a place can have closed since it was mapped. A shop being on the map says nothing about what it has in stock. Treat water from any spring or well before drinking it. There is no layer for public and private land yet.
+
+**Where it is kept.** `<library>\maps\map.pmtiles` is the map, `maps\places\` the places. They move with Wikipedia when the library is moved, count toward the size of a dedicated partition, and are removed by the uninstaller if you ask it to remove your data.
+
+**Credit.** Map data and places are © OpenStreetMap contributors, under the Open Database License. The map file is cut from the Protomaps basemap. Wikivault is not affiliated with either.
+
 ## School: Grade 5
 
 The open-book button in the top bar opens a full year of Grade 5, arranged as 36 weeks of five days in two semesters. The lessons are the Core Knowledge Foundation's free curriculum, used as published:
@@ -277,7 +302,7 @@ Use *Settings > Apps > Installed apps > Wikivault > Uninstall*, or `Uninstall Wi
 
 - asks a running copy to close, which also stops the reader engine;
 - removes the program files, shortcuts and the start-with-Windows entry;
-- asks whether to also remove the library and settings. If you say yes it deletes the app's own files only: editions, partial downloads and the state file in the library folder, the school books with their index and your progress, the staging folder's files, and `%APPDATA%\Wikivault` (settings, log, reader engine, caches). Anything else you put in the library folder is left alone;
+- asks whether to also remove the library and settings. If you say yes it deletes the app's own files only: editions, partial downloads and the state file in the library folder, the map and its places, the school books with their index and your progress, the staging folder's files, and `%APPDATA%\Wikivault` (settings, log, reader engine, caches). Anything else you put in the library folder is left alone;
 - if a Wikivault partition exists, tells you before it starts and lets you cancel to remove the partition from inside the app first. The uninstaller never touches partitions.
 
 - if Wikivault was what installed Foundry Local, asks whether to remove that too (default: keep, since other programs may use it). If Foundry Local was already on the PC it is left alone without asking; remove it yourself with `winget uninstall Microsoft.FoundryLocal`.
@@ -421,6 +446,7 @@ When no article contains every word, the search is retried without filler words 
 | Edition state | `<library>\state.json` |
 | Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
+| The map and its places | `<library>\maps\` (`map.pmtiles`, `places\`) |
 | School books, their text index and your progress | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |
 | Wiki golf players and records | `%APPDATA%\Wikivault\golf.json` |
 

@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -12,15 +12,19 @@
     "test": "node --test test/*.test.js",
     "dist": "node scripts/make-notices.js && electron-builder --win nsis --x64",
     "dist:dir": "electron-builder --win dir --x64",
-    "notices": "node scripts/make-notices.js"
+    "notices": "node scripts/make-notices.js",
+    "vendor-maps": "node scripts/vendor-maps.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
     "node-html-parser": "^7.0.1"
   },
   "devDependencies": {
+    "@protomaps/basemaps": "^5.7.2",
     "electron": "^45.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "maplibre-gl": "^5.24.1",
+    "pmtiles": "^4.5.0"
   },
   "build": {
     "appId": "local.wikivault.app",

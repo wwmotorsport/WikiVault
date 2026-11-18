@@ -2,6 +2,24 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.18.0 (2026-11-18)
+
+Map, a new section (the folded-map button in the top bar). This is the first of four stages: the map and the places on it. Directions, address search, updates on a schedule and sending maps to a phone come later and are not in this version.
+
+- An offline map for the regions you tick: the contiguous United States, Alaska, Hawaii, Puerto Rico and the U.S. Virgin Islands, southern Canada, Mexico. It shows roads, towns, water, woodland and open land, and it is drawn by the app itself from one file in the library.
+- Measure before you download. The map is cut from the Protomaps world basemap, a file of about 140 GB built daily from OpenStreetMap. The app reads only that file's index, lists what each level of detail would take for your regions (from "highways and cities" to "everything"), and downloads nothing large until you pick one. Then it fetches just those parts of the world file.
+- A map download that is stopped or interrupted carries on where it was. A new map replaces the one in use only when it is complete and has been checked.
+- Places, fetched from OpenStreetMap: hospitals, clinics, pharmacies, medical supply, veterinary; fire, police and ambulance stations; water and wastewater works, water towers, drinking water points, springs and wells; power plants, substations, fuel and bottled gas; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; cities, towns and villages.
+- Find a place by name, street or town, or pick a kind of place and see those in view, nearest the middle of the map first. A place opens with what OpenStreetMap records for it: address, telephone, hours, who runs it, and details such as whether a hospital has an emergency room.
+- The map and places live in the library folder under `maps\`. They move with Wikipedia, count toward the size of a dedicated partition, and are removed by the uninstaller when you choose to remove your data.
+- The app's own window may now read from the app's local address, and only its map paths; everything else stays blocked as before.
+- MapLibre GL JS, PMTiles and the Protomaps basemap style (all BSD 3-Clause), Latin ranges of Noto Sans (OFL) and a small icon sheet (MIT) are included.
+- The tour has a stop for Map.
+
+Not tested, because the build environment cannot reach them: the Protomaps build server and the OpenStreetMap places servers. Measuring, cutting, resuming, drawing and searching were tested against stand-ins that hold real vector tiles and answer the way those servers do, and the cut file was read back with the PMTiles project's own reader. The real sizes, the real speed and the real number of places will be known when it first runs on a real connection. Drawing was tested with software graphics, not a graphics card.
+
+Limits to know. Places are what volunteers have mapped: good for hospitals, fuel and shops in towns, thinner in the countryside, and never a list of what is in stock. There is no layer for public and private land yet. Updating is by hand: Map, Change or update.
+
 ## 0.17.0 (2026-11-17)
 
 - Guided lessons. Every day of the School plan has a **Start lesson** button. It opens the lesson as steps beside the book: get ready, each part of the lesson in order with its time, then check the work and finish. Next and Back move through the steps, and the book turns to the page of each one. Any step can be picked from the list. A step with a time has a timer. Buttons switch the book between the teacher guide, the student pages, the reader and the answer key. Finishing ticks the lesson in the plan and offers the next lesson of that day.

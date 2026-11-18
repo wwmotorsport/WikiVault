@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src http://127.0.0.1:*; worker-src 'self' blob:; child-src 'self' blob:">
   <title>Wikivault</title>
+  <link rel="stylesheet" href="../vendor/maplibre/maplibre-gl.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -23,6 +24,9 @@
       </button>
       <button class="icon-btn" id="nav-school" title="School: a year of lessons, week by week" aria-label="School" aria-pressed="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 5.500C8 4 5.500 3.800 3 4.200v10.600c2.500-.400 5-.200 7 1.300 2-1.500 4.500-1.700 7-1.300V4.200c-2.500-.400-5-.200-7 1.300ZM10 5.500V16"/></svg>
+      </button>
+      <button class="icon-btn" id="nav-map" title="Map: offline map and places" aria-label="Map" aria-pressed="false">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.500 7.500 4l5 1.500L17 4v10.500L12.500 16l-5-1.500L3 16ZM7.500 4v10.500M12.500 5.500V16"/></svg>
       </button>
       <button class="icon-btn" id="nav-random" title="Open a random article" aria-label="Open a random article">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h3.2c2.6 0 3.9 8 6.6 8H17M3 14h3.2c1 0 1.8-1.200 2.500-2.700M17 6h-4.200c-1 0-1.800 1.100-2.500 2.600M14.500 3.500 17 6l-2.500 2.500M14.500 11.500 17 14l-2.500 2.500"/></svg>
@@ -165,6 +169,34 @@
       </section>
 
       <!-- Library: edition, updates, answers -->
+      <section class="view mapview" id="view-map" hidden>
+        <aside class="map-side" id="map-side" aria-label="Map tools">
+          <header>
+            <h1 class="display">Map</h1>
+            <p class="small-print" id="map-credit"></p>
+          </header>
+          <p class="error" id="map-error" hidden></p>
+          <div id="map-job" hidden></div>
+          <div id="map-summary"></div>
+          <div id="map-setup" hidden></div>
+          <form id="map-search" class="map-search" hidden>
+            <label for="map-q">Find a place or a town</label>
+            <div class="map-search-row">
+              <input id="map-q" type="search" placeholder="Name, street or town" autocomplete="off" spellcheck="false">
+              <button class="btn primary" type="submit">Find</button>
+            </div>
+            <label for="map-cat">Kind of place</label>
+            <select id="map-cat"></select>
+            <p class="small-print" id="map-cat-note" hidden></p>
+          </form>
+          <div id="map-results" aria-live="polite"></div>
+        </aside>
+        <div class="map-stage">
+          <div id="map-canvas"></div>
+          <div class="map-empty" id="map-empty" hidden></div>
+        </div>
+      </section>
+
       <section class="view pad" id="view-school" hidden>
         <div class="school">
           <header class="sch-head">
@@ -476,6 +508,9 @@
     </div>
   </dialog>
 
+  <script src="../vendor/maplibre/maplibre-gl-csp.js"></script>
+  <script src="../vendor/pmtiles/pmtiles.js"></script>
+  <script src="../vendor/basemaps/basemaps.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
