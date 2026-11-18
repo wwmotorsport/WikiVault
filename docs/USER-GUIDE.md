@@ -241,6 +241,18 @@ The receiver is only read, never written to. A receiver that shows up in Windows
 
 **Saved: the address book.** The *Saved* tab keeps people and places: a name, an address, telephone numbers and notes. An entry's address is looked up in the app's own address data to place it on the map, with the same *Approximate* marking as any address; one that cannot be found can be placed by clicking the map. Saved entries are found by name in the Places box and as the start or end of a route, ahead of everything else, and any place on the map can be saved from its pop-up.
 
+**Pins.** Open an entry with its *Edit* button and choose *Pin this place as*: Home, Work, School, Meeting point or Other, with a name of your own if you like ("Lake cabin"). Pinned places are listed in their own group above everything else, by kind, and are drawn larger on the map. Several places can share a kind.
+
+**Relationships.** In the same form, *Relationship* sets a group (Family, Friends, Work, Neighbors, Doctors and care, Other) and *Who they are to you* the tie itself: mother, wife, father-in-law, or any wording of your own. A known tie fills in its group. The relationship belongs to the person, so a contact with a home and a work address carries it on both.
+
+Pins and relationships are your own marks. They are kept in this app only and are never sent to a contacts account. Setting them on a contact that came from Google or iCloud leaves it in step with the account, and they stay when the account is read again, also when the address has changed there. Changing the name, address, telephone or notes is different: that makes the entry yours, and reading the account again then leaves it alone.
+
+**Narrowing the list.** Under the filter box are two lists. The first shows everything, only entries with an address, only those with a place on the map, or only those with no address (a telephone number alone). The second shows one relationship group, or those with none set. The filter box also matches relationships, so typing *mother* or *family* works. The choices are remembered. The pinned group stays in view whatever is chosen.
+
+**Directions to here, directions from here.** Every saved entry with a place on the map has these two buttons under it, and so does the card of any place, address or saved entry on the map. Clicking a bare spot of the map opens a small card for that spot with the same buttons (and *Save to the address book*); a click while a card is open only closes it. Either button sets that end of the trip and asks for the other: choose it from the list, where your pins come first and the GPS position is offered when there is one, type a name, an address or a place and press *Get directions*, or press *Pick the spot on the map* and click. The route is then drawn without another press.
+
+Everyday words are understood wherever a relationship is searched for, in the Places box and in Ask: *mom*, *mum* and *mother* are the same tie, as are *grandma* and *grandmother*, and *mother in laws* is read as *mother-in-law*.
+
 *Contacts accounts* keeps a copy of your contacts on this computer and reads them again by itself, once a day unless you choose otherwise, so the addresses are there when the network is not. It only reads; nothing in your account is changed.
 
 - **Google**, the simple way: your Google address and an *app password*, made at myaccount.google.com/apppasswords once 2-Step Verification is on. It can be withdrawn there at any time. Google's own documentation says its contacts server wants the full sign-in, and yet it has gone on accepting app passwords; if yours is refused, use the other way.
@@ -500,6 +512,22 @@ Other options in the same section:
 - **Another model server on this laptop**: any OpenAI-compatible endpoint (Ollama, LM Studio, AMD Lemonade Server, llama.cpp).
 - **Reading budget**: how much article text the model is given per question. Smaller is faster; NPU builds of small models also have short context windows, so "Medium" is the default.
 - **Answers off**: Ask then shows the best-matching passages with no model involved.
+
+### Asking for directions and saved places
+
+Ask also understands requests that are for the map, and carries them out there instead of searching the articles:
+
+- "Please give me directions from my house to my mother-in-law's house"
+- "Take me to work", "Walk me to the meeting point", "Route from 350 5th Ave, New York NY to Brooklyn by bike"
+- "Where does my brother live?", "Show me Dave Park on the map", "What is my wife's work address?"
+
+Each place named is looked for in this order: your pins ("my house", "home", "work", "the office", "school", "the meeting point", or a pin's own name), your relationships ("my mother-in-law", "mom's house", "my wife's work"), the names of saved people and places, and then the map's addresses, places and towns. "Here" and "my location" mean the GPS position. When no start is given the route starts at the GPS position, or at the place pinned as Home when there is no receiver.
+
+The map then opens on the Directions tab with both ends filled in and the route drawn, as if you had typed them there; blocked areas already marked are kept clear of. The Ask panel says how it read the request ("Understood as: ...") and gives the distance and time. When a place cannot be found it says which one and why, for instance that a contact has no address or that nobody is marked as your sister yet.
+
+This part does not use the model. It works by rule, at once, and before answers are set up. When the wording is loose ("I need to be driving over to see Rosa, what is the way to go?") and answers are on, the model is asked to pick out the places.
+
+Wording that could be either kind of question, such as "Where is Jordan?" or "How far is it from the Earth to the Moon?", goes to the map only when a place it names is one of your own pins, relationships or contacts. To be sure of the map, say *directions*, *route*, *take me to* or *on the map*. A map answer always has a *Search the articles instead* button.
 
 ### Follow-up questions
 

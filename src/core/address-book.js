@@ -5,13 +5,18 @@
 // address: a contact with a home and a work address becomes two entries, and a contact with no address is
 // kept for its telephone number. Each address is looked up in the app's own address data to get a position,
 // so it can be shown on the map and driven to with no connection.
+// An entry can be pinned (Home, Work, School, Meeting point, or a name of the user's own) and its person
+// given a relationship: a group (Family, Friends...) and a tie (mother, wife, father-in-law...). These are the
+// user's own marks. They are kept in this app only, and reading a contacts account again leaves them in place.
 // Kept as one JSON file in the app's own data folder, not in the library. No Electron, no network.
 
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const rel = require('./relations');
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const oneLine = (s) => String(s || '').replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
+const whoOf = (c) => crypto.createHash('sha1').update(String(c.uid || fold(c.name))).digest('hex').slice(0, 12);
 const keyOf = (c, address) => crypto.createHash('sha1').update(`${c.uid || fold(c.name)}|${fold(oneLine(address))}`).digest('hex').slice(0, 16);
 
 class AddressBook {
@@ -26,7 +31,7 @@ class AddressBook {
 
   summary() {
     const withAddress = this.entries.filter((e) => e.address).length;
-    return { count: this.entries.length, withAddress, located: this.entries.filter((e) => e.lat != null).length, approximate: this.entries.filter((e) => e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual').length, sources: this.sources };
+    return { count: this.entries.length, withAddress, pinned: this.entries.filter((e) => e.pin).length, related: this.entries.filter((e) => e.group || e.tie).length, located: this.entries.filter((e) => e.lat != null).length, approximate: this.entries.filter((e) => e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual').length, sources: this.sources };
   }
   list() { return this.entries.slice().sort((a, b) => fold(a.name).localeCompare(fold(b.name)) || fold(a.label).localeCompare(fold(b.label))); }
   get(id) { return this.entries.find((e) => e.id === id) || null; }
@@ -39,19 +44,43 @@ class AddressBook {
     return e;
   }
 
-  /** Add an entry, or change one when `id` is given. A position given with it is kept as placed by hand. */
-  put({ id = null, name, label = '', address = '', phones = '', email = '', org = '', note = '', lat = null, lon = null }) {
-    name = String(name || '').trim().slice(0, 200);
-    if (!name) throw new Error('Give the entry a name.');
-    const fields = { name, label: String(label || '').trim().slice(0, 40), address: String(address || '').trim().slice(0, 500), phones: String(phones || '').trim().slice(0, 300), email: String(email || '').trim().slice(0, 200), org: String(org || '').trim().slice(0, 200), note: String(note || '').trim().slice(0, 2000) };
+  /** The user's marks, tidied: { pin, pinName, group, tie }. A known tie brings its group when none was given. */
+  static marks({ pin = '', pinName = '', group = '', tie = '' } = {}) {
+    pin = rel.PINS.some((p) => p.id === pin) ? pin : '';
+    tie = rel.tieOf(tie);
+    group = rel.GROUPS.some((g) => g.id === group) ? group : '';
+    if (!group && tie) group = rel.groupOfTie(tie);
+    return { pin, pinName: pin ? String(pinName || '').trim().slice(0, 40) : '', group, tie };
+  }
+  /** Everything kept about the same person: an account's contact with two addresses is two entries. */
+  samePerson(e) { return e.who ? this.entries.filter((x) => x.who === e.who && x.src === e.src) : [e]; }
+
+  /**
+   * Add an entry, or change one when `id` is given. A position given with it is kept as placed by hand.
+   * Changing what an account's entry says (name, address, telephone...) makes it the user's own, which a later
+   * sync leaves alone. Pinning it or giving it a relationship does not: it stays in step with the account.
+   */
+  put({ id = null, name, label, address, phones, email, org, note, lat = null, lon = null, pin, pinName, group, tie }) {
     let e = id ? this.get(id) : null;
     if (id && !e) throw new Error('That entry is no longer there.');
-    const moved = !e || e.address !== fields.address;
-    if (!e) { e = { id: `b${this.next++}`, src: 'own' }; this.entries.push(e); }
-    Object.assign(e, fields, { src: 'own' }); // an entry changed by hand is the user's own from then on: a later sync leaves it alone
+    const text = (v, old, max) => (v === undefined ? (old || '') : String(v || '').trim().slice(0, max));
+    const old = e || {};
+    const fields = { name: text(name, old.name, 200), label: text(label, old.label, 40), address: text(address, old.address, 500), phones: text(phones, old.phones, 300), email: text(email, old.email, 200), org: text(org, old.org, 200), note: text(note, old.note, 2000) };
+    if (!fields.name) throw new Error('Give the entry a name.');
     const here = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)) && lat !== null && lon !== null;
+    const moved = !e || String(e.address || '').replace(/\r\n?/g, '\n').trim().slice(0, 500) !== fields.address.replace(/\r\n?/g, '\n');
+    const same = (a, b) => String(a || '').replace(/\r\n?/g, '\n').trim() === String(b || '').replace(/\r\n?/g, '\n').trim();
+    const limit = { name: 200, label: 40, address: 500, phones: 300, email: 200, org: 200, note: 2000 };
+    const changed = !e || Object.keys(fields).some((k) => !same(String(e[k] || '').trim().slice(0, limit[k]), fields[k])) || (here && (Number(lat) !== e.lat || Number(lon) !== e.lon));
+    if (!e) { e = { id: `b${this.next++}`, src: 'own' }; this.entries.push(e); }
+    if (changed) Object.assign(e, fields, { src: 'own' });
     if (here) Object.assign(e, { lat: Number(lat), lon: Number(lon), how: 'manual', why: '', fixed: true });
     else if (moved) { e.fixed = false; this.place(e); }
+    if ([pin, pinName, group, tie].some((v) => v !== undefined)) {
+      const m = AddressBook.marks({ pin: pin === undefined ? e.pin : pin, pinName: pinName === undefined ? e.pinName : pinName, group: group === undefined ? e.group : group, tie: tie === undefined ? e.tie : tie });
+      Object.assign(e, { pin: m.pin, pinName: m.pinName });
+      for (const x of this.samePerson(e)) Object.assign(x, { group: m.group, tie: m.tie }); // the relationship is the person's, the pin is the address's
+    }
     this.save();
     return e;
   }
@@ -64,6 +93,9 @@ class AddressBook {
    */
   importContacts(contacts, source, info = {}) {
     const before = new Map(this.entries.filter((e) => e.src === source).map((e) => [e.key, e]));
+    // The user's marks are carried over when an address changes in the account, which gives the entry a new key.
+    const people = new Map();
+    for (const e of before.values()) { const w = e.who; if (!w) continue; if (!people.has(w)) people.set(w, []); people.get(w).push(e); }
     const own = new Set(this.entries.filter((e) => e.src === 'own' && e.key).map((e) => e.key));
     const fresh = []; const seen = new Set();
     for (const c of contacts) {
@@ -76,12 +108,25 @@ class AddressBook {
         if (seen.has(key) || own.has(key)) continue;
         seen.add(key);
         const old = before.get(key);
+        const who = whoOf(c);
         const e = old || { id: `b${this.next++}`, src: source, key };
+        if (!old) {
+          // Not seen before under this key: the same person's earlier entries say who they are to the user, and
+          // an earlier entry with the same label (or the only one) hands on its pin.
+          const was = people.get(who) || [];
+          const kin = was.find((x) => x.group || x.tie);
+          if (kin) Object.assign(e, { group: kin.group || '', tie: kin.tie || '' });
+          const gone = was.filter((x) => x.pin && !contacts.some((cc) => whoOf(cc) === who && (cc.addresses || []).some((aa) => keyOf(cc, String(aa.text || '').trim()) === x.key)));
+          const from = gone.find((x) => fold(x.label) === fold(a.label)) || (gone.length === 1 && places.length === 1 ? gone[0] : null);
+          if (from && !from.handed) { from.handed = true; Object.assign(e, { pin: from.pin, pinName: from.pinName || '' }); }
+        }
+        e.who = who;
         Object.assign(e, { name: String(c.name || '').slice(0, 200) || 'No name', label: String(a.label || '').slice(0, 40), phones, email: (c.emails || [])[0] || '', org: c.org || '', note: c.note || '' });
         if (!old || old.address !== address || old.lat == null) { e.address = address; this.place(e); }
         fresh.push(e);
       }
     }
+    for (const e of before.values()) delete e.handed;
     const removed = [...before.keys()].filter((k) => !seen.has(k)).length;
     this.entries = this.entries.filter((e) => e.src !== source).concat(fresh);
     this.sources[source] = { ...(this.sources[source] || {}), ...info, date: new Date().toISOString(), contacts: contacts.length, entries: fresh.length, error: null };
@@ -105,19 +150,36 @@ class AddressBook {
     return { found, ...this.summary() };
   }
 
-  /** Entries matching typed words, by name, address, label or organisation. Those with a position come first. */
+  /** Pinned entries of one kind ('home', 'work'...), or those whose own pin name is the words given. Placed ones first. */
+  pinned(kind, named = '') {
+    const want = fold(named).trim();
+    return this.list().filter((e) => e.pin && (want ? fold(e.pinName) === want : e.pin === kind)).sort((a, b) => (a.lat == null) - (b.lat == null));
+  }
+  /** Entries of the people with one of these ties, e.g. ['mother-in-law']. Placed ones first. */
+  related(ties) {
+    const want = new Set(ties);
+    return this.list().filter((e) => e.tie && want.has(e.tie)).sort((a, b) => (a.lat == null) - (b.lat == null));
+  }
+
+  /**
+   * Entries matching typed words, by name, address, label, organisation, relationship or pin. "mom" finds the
+   * person marked as mother, and "family" everyone in that group. Those with a position come first.
+   */
   search(q, limit = 8) {
     const words = fold(q).split(/[^a-z0-9]+/).filter(Boolean);
     if (!words.length) return [];
+    const ties = new Set(rel.tiesMeant(q));
+    const group = rel.groupMeant(q);
     const out = [];
     for (const e of this.entries) {
-      const hay = fold(`${e.name} ${e.label} ${e.org} ${e.address}`);
-      if (!words.every((w) => hay.includes(w))) continue;
+      const kin = (e.tie && ties.has(e.tie)) || (group && e.group === group);
+      const hay = fold(`${e.name} ${e.label} ${e.org} ${e.address} ${e.tie || ''} ${rel.groupName(e.group)} ${e.pin ? `${rel.pinName(e.pin)} ${e.pinName || ''}` : ''}`);
+      if (!kin && !words.every((w) => hay.includes(w))) continue;
       const name = fold(e.name);
-      out.push({ e, score: (name.startsWith(words[0]) ? 0 : 2) + (words.every((w) => name.includes(w)) ? 0 : 1) + (e.lat == null ? 4 : 0) });
+      out.push({ e, score: (kin ? -2 : 0) + (e.pin ? -1 : 0) + (name.startsWith(words[0]) ? 0 : 2) + (words.every((w) => name.includes(w)) ? 0 : 1) + (e.lat == null ? 6 : 0) });
     }
     return out.sort((a, b) => a.score - b.score || fold(a.e.name).localeCompare(fold(b.e.name))).slice(0, limit).map((x) => x.e);
   }
 }
 
-module.exports = { AddressBook, oneLine };
+module.exports = { AddressBook, oneLine, fold };

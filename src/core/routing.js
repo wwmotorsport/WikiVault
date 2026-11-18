@@ -85,6 +85,7 @@ const ORDINALS = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 's
  */
 function parseRoute(geojson, nameAt = () => '') {
   const f = geojson && geojson.features && geojson.features[0];
+  if (f && f.geometry && Array.isArray(f.geometry.coordinates) && f.geometry.coordinates.length === 1) throw new Error('The start and the destination come out at the same point on the roads, so there is no route to draw between them.');
   if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates) || f.geometry.coordinates.length < 2) throw new Error('The routing engine sent something that is not a route.');
   const coords = f.geometry.coordinates.map((c) => [c[0], c[1]]);
   const p = f.properties || {};

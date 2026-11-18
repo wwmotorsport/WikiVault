@@ -2,6 +2,20 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.24.0 (2026-11-18)
+
+Pins, relationships, and directions by asking.
+
+- **Ask understands requests for the map.** "Directions from my house to my mother-in-law's house", "take me to work", "where does Dave live" are recognised, the places are found among your pins, relationships and contacts and then in the map's addresses and places, and the map opens with the route drawn or the place shown. With no start given, the route starts at the GPS position or at Home. What cannot be found is explained. Recognition is by rule and needs no model; loose wording is put to the model when answers are on. Questions that could be for the articles go to the map only when a place they name is one of your own, and every map answer offers *Search the articles instead*.
+- **Pinned places.** A saved entry can be pinned as Home, Work, School, Meeting point or Other, with a name of your own. Pins are listed in their own group above the saved list and are drawn larger on the map.
+- **Relationships.** A person can be given a group (Family, Friends, Work, Neighbors, Doctors and care, Other) and a tie (mother, wife, father-in-law, or your own wording). The Saved filter, the Places box and Ask all find people by it, and everyday words such as "mom" and "grandma" are understood.
+- **Directions to here, directions from here.** On every saved entry, on the card of any place on the map, and on a bare spot of the map when it is clicked. The other end is then asked for: from your pins and saved list, the GPS position, typed, or picked on the map. Before, these buttons only filled in one end.
+- **Filters on the Saved list**: with an address, with a place on the map, or with a telephone number only; and by relationship group. A count says how many are shown, and each row has an *Edit* button.
+- Pins and relationships are kept in this app only. Setting them on a Google or iCloud contact leaves it in step with the account, and they survive the account being read again, also when its address changed.
+- Fixed: the card of a saved entry opened from the Saved list closed by itself as soon as the map finished moving to it, unless a search was in progress.
+- Fixed: saving an entry from its form no longer clears the e-mail address and organisation that came with a contact.
+- Not yet tried on Windows with real contacts: the new parts were tested with stand-in data and the built-in test roads.
+
 ## 0.23.1 (2026-11-18)
 
 - Google contacts can be connected with an address and an app password, the same way as iCloud, with no Google Cloud project. It reads Google's contacts (CardDAV) server. Google documents that server as needing the full sign-in but has gone on accepting app passwords; this was written from that reported behaviour and tested against a stand-in server, not against Google.

@@ -3,8 +3,13 @@
 // Shares the page with app.js and uses its helpers ($, el, state, api, mapGo, mapView...).
 
 const bookUi = { data: null, stamp: '', editing: null, picking: false, busy: false };
+const BOOK_PINS = [['home', 'Home'], ['work', 'Work'], ['school', 'School'], ['meet', 'Meeting point'], ['other', 'Other']];
+const BOOK_GROUPS = { family: 'Family', friends: 'Friends', work: 'Work', neighbors: 'Neighbors', care: 'Doctors and care', other: 'Other' };
+const BOOK_TIES = ['wife', 'husband', 'partner', 'mother', 'father', 'son', 'daughter', 'brother', 'sister', 'grandmother', 'grandfather', 'aunt', 'uncle', 'cousin', 'niece', 'nephew', 'mother-in-law', 'father-in-law', 'brother-in-law', 'sister-in-law', 'son-in-law', 'daughter-in-law', 'stepmother', 'stepfather', 'friend', 'best friend', 'neighbor', 'boss', 'colleague', 'doctor', 'dentist', 'vet', 'babysitter', 'teacher', 'pastor'];
+const bookRel = (e) => [BOOK_GROUPS[e.group] || '', e.tie || ''].filter(Boolean).join(': ');
+const bookKeep = (key, value) => { try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch { /* not kept, that is all */ } return null; };
 const bookLine = (s) => String(s || '').replace(/\s*\n\s*/g, ', ');
-const bookStamp = () => { const b = state?.book; return b ? `${b.count}:${b.located}:${Object.values(b.sources || {}).map((s) => s.date || '').join()}` : ''; };
+const bookStamp = () => { const b = state?.book; return b ? `${b.count}:${b.located}:${b.pinned}:${b.related}:${Object.values(b.sources || {}).map((s) => s.date || '').join()}` : ''; };
 
 async function bookLoad() {
   try { bookUi.data = await api.bookList(); bookUi.stamp = bookStamp(); } catch { bookUi.data = { entries: [] }; }
@@ -26,27 +31,79 @@ function paintBook() {
   for (const [name, s] of Object.entries(b.sources || {})) if (s.error) lines.push(`${name === 'google' ? 'Google' : name === 'icloud' ? 'iCloud' : 'The file'}: ${s.error}`);
   $('book-status').textContent = lines.join(' ');
   if (mapGo.tab !== 'book' || !bookUi.data) return;
-  const q = $('book-q').value.trim().toLowerCase();
-  const shown = bookUi.data.entries.filter((e) => !q || `${e.name} ${e.label} ${e.address} ${e.org}`.toLowerCase().includes(q)).slice(0, 300);
-  $('book-list').replaceChildren(...shown.map((e) => {
-    const li = el('li');
-    const btn = el('button', 'map-hit');
-    btn.type = 'button';
-    btn.append(el('span', 'map-hit-name', e.label ? `${e.name} (${e.label})` : e.name), el('span', 'map-hit-kind', e.src === 'google' ? 'Google' : e.src === 'icloud' ? 'iCloud' : e.src === 'file' ? 'Imported' : 'Yours'));
-    if (e.address) btn.append(el('span', 'map-hit-addr', bookLine(e.address)));
-    if (e.phones) btn.append(el('span', 'map-hit-addr', e.phones));
-    if (e.address && e.lat == null) btn.append(el('span', 'map-hit-approx', 'Not on the map yet'));
-    else if (e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual') btn.append(el('span', 'map-hit-approx', e.how === 'town' ? 'Approximate: the town only' : 'Approximate position'));
-    btn.addEventListener('click', () => bookShow(e));
-    li.append(btn);
-    return li;
+  const all = bookUi.data.entries;
+  // Pinned places first, in their own group, by kind. The filters below do not hide them.
+  const pins = all.filter((e) => e.pin);
+  $('book-pins').hidden = !pins.length;
+  $('book-all-title').hidden = !pins.length;
+  $('book-pin-list').replaceChildren(...BOOK_PINS.flatMap(([id, name]) => {
+    const of = pins.filter((e) => e.pin === id);
+    if (!of.length) return [];
+    const ul = el('ul', 'book-hits book-pin-list');
+    ul.dataset.pin = id;
+    ul.append(...of.map((e) => bookRow(e, true)));
+    return [el('p', 'book-pin-kind', name), ul];
   }));
+  const q = $('book-q').value.trim().toLowerCase();
+  const show = $('book-show').value; const group = $('book-group').value;
+  const words = q.split(/\s+/).filter(Boolean);
+  const match = all.filter((e) => {
+    if (show === 'address' && !e.address) return false;
+    if (show === 'map' && e.lat == null) return false;
+    if (show === 'none' && e.address) return false;
+    if (group === 'unset' ? (e.group || e.tie) : group !== 'all' && e.group !== group) return false;
+    if (!words.length) return true;
+    const hay = `${e.name} ${e.label} ${e.address} ${e.org} ${bookRel(e)} ${e.pin ? `${e.pinName || ''} ${(BOOK_PINS.find((p) => p[0] === e.pin) || [])[1] || ''}` : ''}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const shown = match.slice(0, 300);
+  const narrowed = Boolean(q) || show !== 'all' || group !== 'all';
+  $('book-count').hidden = !all.length;
+  $('book-count').textContent = !match.length ? 'Nothing saved fits that.' : `${narrowed ? `${match.length.toLocaleString()} of ${all.length.toLocaleString()} shown` : `${all.length.toLocaleString()} saved`}${match.length > shown.length ? `, the first ${shown.length} listed. Type a name to narrow it down.` : '.'}`;
+  $('book-list').replaceChildren(...shown.map((e) => bookRow(e, false)));
+}
+
+/** One entry as a row: the entry itself, which shows it on the map, and a button to change it. */
+function bookRow(e, pinned) {
+  const li = el('li', 'book-row');
+  const btn = el('button', 'map-hit');
+  btn.type = 'button';
+  const name = e.label ? `${e.name} (${e.label})` : e.name;
+  btn.append(el('span', 'map-hit-name', pinned && e.pinName ? `${e.pinName}: ${name}` : name), el('span', 'map-hit-kind', e.src === 'google' ? 'Google' : e.src === 'icloud' ? 'iCloud' : e.src === 'file' ? 'Imported' : 'Yours'));
+  if (bookRel(e)) btn.append(el('span', 'book-rel', bookRel(e)));
+  if (e.address) btn.append(el('span', 'map-hit-addr', bookLine(e.address)));
+  if (e.phones) btn.append(el('span', 'map-hit-addr', e.phones));
+  if (e.address && e.lat == null) btn.append(el('span', 'map-hit-approx', 'Not on the map yet'));
+  else if (e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual') btn.append(el('span', 'map-hit-approx', e.how === 'town' ? 'Approximate: the town only' : 'Approximate position'));
+  btn.addEventListener('click', () => bookShow(e));
+  const acts = el('div', 'book-row-acts');
+  if (e.lat != null && state?.maps?.routing) {
+    for (const [which, label] of [['to', 'Directions to here'], ['from', 'Directions from here']]) {
+      const go = el('button', `btn small book-row-${which}`, label);
+      go.type = 'button';
+      go.setAttribute('aria-label', `Directions ${which} ${name}`);
+      go.addEventListener('click', () => tripStart(which, mapPointOf(bookHitOf(e))));
+      acts.append(go);
+    }
+  }
+  const edit = el('button', 'btn small book-row-edit', 'Edit');
+  edit.type = 'button';
+  edit.setAttribute('aria-label', `Edit ${name}: pin it, set the relationship, or change it`);
+  edit.addEventListener('click', () => bookEdit(e.id));
+  acts.append(edit);
+  li.append(btn, acts);
+  return li;
+}
+
+/** A saved entry as the map knows a found place. */
+function bookHitOf(e) {
+  return { c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: bookLine(e.address), p: e.phones, kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why };
 }
 
 /** Show an entry on the map if it has a place, and open it for editing if not. */
 function bookShow(e) {
   if (e.lat == null || !mapView) { bookEdit(e.id); return; }
-  const hit = { c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: bookLine(e.address), p: e.phones, kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why };
+  const hit = bookHitOf(e);
   if (mapPopup) mapPopup.remove();
   mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px', offset: 10 }).setLngLat([e.lon, e.lat]).setDOMContent(mapDetails(hit)).addTo(mapView);
   mapView.easeTo({ center: [e.lon, e.lat], zoom: Math.max(mapView.getZoom(), Math.min(14, mapView.getMaxZoom())), duration: 600 });
@@ -55,14 +112,14 @@ function bookShow(e) {
 function bookOverlay(map) {
   if (map.getSource('book')) return;
   map.addSource('book', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-  map.addLayer({ id: 'book-dot', type: 'circle', source: 'book', minzoom: 7, paint: { 'circle-radius': 6, 'circle-color': '#8e24aa', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+  map.addLayer({ id: 'book-dot', type: 'circle', source: 'book', minzoom: 7, paint: { 'circle-radius': ['case', ['get', 'pin'], 8, 6], 'circle-color': ['case', ['get', 'pin'], '#e65100', '#8e24aa'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'book-name', type: 'symbol', source: 'book', minzoom: 11, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': mapLook.dark ? '#e7c6f2' : '#5b1670', 'text-halo-color': mapLook.dark ? '#14181d' : '#fff', 'text-halo-width': 1.5 } });
   if (!map.bookWired) { map.bookWired = true; map.on('click', 'book-dot', (ev) => { const id = ev.features[0] && ev.features[0].properties.id; const e = bookUi.data && bookUi.data.entries.find((x) => x.id === id); if (e && !mapGo.picking && !bookUi.picking) { ev.preventDefault(); bookShow(e); } }); }
   if (!bookUi.data) bookLoad(); else bookDraw();
 }
 function bookDraw() {
   if (typeof mapView === 'undefined' || !mapView || !mapView.getSource('book') || !bookUi.data) return;
-  mapView.getSource('book').setData({ type: 'FeatureCollection', features: bookUi.data.entries.filter((e) => e.lat != null).map((e) => ({ type: 'Feature', properties: { id: e.id, n: e.name }, geometry: { type: 'Point', coordinates: [e.lon, e.lat] } })) });
+  mapView.getSource('book').setData({ type: 'FeatureCollection', features: bookUi.data.entries.filter((e) => e.lat != null).map((e) => ({ type: 'Feature', properties: { id: e.id, n: e.pin && e.pinName ? e.pinName : e.name, pin: Boolean(e.pin) }, geometry: { type: 'Point', coordinates: [e.lon, e.lat] } })) });
 }
 
 /** Open the form for an entry, or for a new one started from `seed`. */
@@ -73,6 +130,9 @@ function bookEdit(id, seed = null) {
   bookUi.editing = { id: e ? e.id : null, lat: v.lat ?? null, lon: v.lon ?? null, placed: Boolean(seed && seed.lat != null) || (e && e.how === 'manual') };
   $('book-edit-title').textContent = e ? 'Change a saved entry' : 'Save a person or place';
   $('book-name').value = v.name || ''; $('book-label').value = v.label || ''; $('book-address').value = v.address || ''; $('book-phones').value = v.phones || ''; $('book-note').value = v.note || '';
+  $('book-fav').value = v.pin || ''; $('book-fav-name').value = v.pinName || ''; $('book-rel-group').value = v.group || ''; $('book-rel-tie').value = v.tie || '';
+  $('book-fav-name-row').hidden = !$('book-fav').value;
+  if (!$('book-ties').children.length) $('book-ties').append(...BOOK_TIES.map((t) => Object.assign(document.createElement('option'), { value: t })));
   $('book-delete').hidden = !e;
   $('book-edit-error').hidden = true;
   bookWhere(e);
@@ -85,18 +145,24 @@ function bookWhere(e) {
   if (ed.placed && ed.lat != null) text = `Placed by hand at ${Number(ed.lat).toFixed(5)}, ${Number(ed.lon).toFixed(5)}. It stays there whatever the address says.`;
   else if (e && e.lat != null) text = e.how === 'exact' ? 'Found in the address data.' : e.why || 'Placed approximately from the address.';
   else if (e && e.address) text = state?.book?.addressData ? 'This address was not found in the address data. You can place it on the map by hand.' : 'There is no address data yet, so it has no place on the map. Fetch the addresses, or place it by hand.';
-  if (e && (e.src === 'google' || e.src === 'icloud')) text += ` It came from ${e.src === 'google' ? 'Google' : 'iCloud'}: once you change it here it is yours, and reading the account again leaves it alone.`;
+  if (e && (e.src === 'google' || e.src === 'icloud')) text += ` It came from ${e.src === 'google' ? 'Google' : 'iCloud'}. Pinning it or setting the relationship keeps it in step with the account. Changing the name, address, telephone or notes makes it yours, and reading the account again then leaves it alone.`;
   $('book-where').textContent = text;
 }
 
 $('book-add').addEventListener('click', () => bookEdit(null, {}));
 $('book-q').addEventListener('input', () => paintBook());
+for (const id of ['book-show', 'book-group']) {
+  const kept = bookKeep(`wikivault.${id}`);
+  if (kept && [...$(id).options].some((o) => o.value === kept)) $(id).value = kept;
+  $(id).addEventListener('change', () => { bookKeep(`wikivault.${id}`, $(id).value); paintBook(); });
+}
+$('book-fav').addEventListener('change', () => { $('book-fav-name-row').hidden = !$('book-fav').value; });
 $('book-cancel').addEventListener('click', () => { bookUi.editing = null; $('book-edit').close(); });
 $('book-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const ed = bookUi.editing;
   try {
-    await api.bookPut({ id: ed.id, name: $('book-name').value, label: $('book-label').value, address: $('book-address').value, phones: $('book-phones').value, note: $('book-note').value, ...(ed.placed && ed.lat != null ? { lat: ed.lat, lon: ed.lon } : {}) });
+    await api.bookPut({ id: ed.id, name: $('book-name').value, label: $('book-label').value, address: $('book-address').value, phones: $('book-phones').value, note: $('book-note').value, pin: $('book-fav').value, pinName: $('book-fav-name').value, group: $('book-rel-group').value, tie: $('book-rel-tie').value, ...(ed.placed && ed.lat != null ? { lat: ed.lat, lon: ed.lon } : {}) });
     bookUi.editing = null;
     $('book-edit').close();
     await bookLoad();
@@ -113,7 +179,7 @@ $('book-delete').addEventListener('click', async () => {
 $('book-pin').addEventListener('click', () => {
   if (!mapView) { $('book-edit-error').textContent = 'Download a map first, to have something to click on.'; $('book-edit-error').hidden = false; return; }
   bookUi.picking = true;
-  bookUi.kept = { name: $('book-name').value, label: $('book-label').value, address: $('book-address').value, phones: $('book-phones').value, note: $('book-note').value };
+  bookUi.kept = { name: $('book-name').value, label: $('book-label').value, address: $('book-address').value, phones: $('book-phones').value, note: $('book-note').value, fav: $('book-fav').value, 'fav-name': $('book-fav-name').value, 'rel-group': $('book-rel-group').value, 'rel-tie': $('book-rel-tie').value };
   $('book-edit').close();
   mapView.getCanvas().style.cursor = 'crosshair';
   $('map-error').textContent = 'Click the map where this entry belongs.'; $('map-error').hidden = false;

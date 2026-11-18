@@ -39,6 +39,8 @@ const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText } = require('../core/httpx');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
+const relations = require('../core/relations');
+const mapAsk = require('../core/map-ask');
 const vcard = require('../core/vcard');
 const contactsSync = require('../core/contacts-sync');
 const { PartitionTool, SimulatedPartitionTool, sizePlan, capPlan, FALLBACK_EDITION_BYTES, GB } = require('../core/partition');
@@ -1705,7 +1707,7 @@ async function contactsDue() {
 function bookHits(q) {
   if (!book) return [];
   return book.search(q, 6).filter((e) => e.lat != null).map((e) => ({
-    c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: 'Saved',
+    c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: [e.pin ? `Pinned as ${e.pinName || relations.pinName(e.pin)}` : 'Saved', e.tie || relations.groupName(e.group)].filter(Boolean).join(', '),
     how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why || '',
   }));
 }
@@ -2016,8 +2018,9 @@ function registerIpc() {
   handle('search:suggest', ({ term }) => (cur()?.running ? cur().suggest(term, 8) : []));
   handle('search:query', ({ q, start = 0 }) => (cur()?.running ? smartSearch(cur(), q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
 
-  handle('ask:start', ({ question, pinnedUrl, retry }) => {
-    if (!cur()?.running) throw new Error('There is no edition on this laptop yet.');
+  handle('ask:start', ({ question, pinnedUrl, retry, here, around, articles }) => {
+    const mapsReady = Boolean(maps || (book && book.entries.length));
+    if (!cur()?.running && !mapsReady) throw new Error('There is no edition on this laptop yet.');
     // Asking the same question again once answers are set up: forget the passages-only attempt,
     // so the question is not mistaken for a follow-up to itself.
     if (retry && conversation.at(-1)?.question === question) conversation.pop();
@@ -2029,6 +2032,25 @@ function registerIpc() {
     (async () => {
       let model = null;
       let modelNote = null;
+      // Let the caller have the id of this question before anything is said about it: a map request is answered at once.
+      await new Promise((r) => setImmediate(r));
+      // A request about the map (directions, where someone lives) is carried out on the map, not answered from the articles.
+      if (!articles && !pinnedUrl && mapsReady) {
+        const spot = (p) => (p && Number.isFinite(Number(p.lon)) && Number.isFinite(Number(p.lat)) ? { lon: Number(p.lon), lat: Number(p.lat), label: String(p.label || 'My position').slice(0, 80) } : null);
+        const centre = Array.isArray(around) && around.length === 2 && around.every((v) => Number.isFinite(Number(v))) ? around.map(Number) : null;
+        const plan = await mapAsk.understand(String(question || ''), {
+          book, here: spot(here), signal: ac.signal, onStatus: (text) => emit('status', { text }),
+          search: (q) => { try { return maps ? maps.search({ q, limit: 1, around: centre }).hits[0] || null : null; } catch { return null; } },
+          model: settings.ai.enabled ? async () => { emit('status', { text: 'Getting the local model ready' }); await llm.prepare({ signal: ac.signal, onStatus: (text) => emit('status', { text }) }); pushState(); return llm; } : null,
+        });
+        if (plan) {
+          log(`ask: map request (${plan.kind}${plan.error ? ', not carried out' : ''})`);
+          emit('understood', { text: plan.said });
+          emit('map', { plan: { ...plan, routing: Boolean(maps && maps.routing), hasMap: Boolean(maps && maps.status().map) } });
+          return;
+        }
+      }
+      if (!cur()?.running) throw new Error('There is no edition on this laptop yet, so only requests about the map and your saved places can be answered.');
       if (settings.ai.enabled) {
         try {
           emit('status', { text: 'Getting the local model ready' });

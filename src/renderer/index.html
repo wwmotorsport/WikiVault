@@ -278,8 +278,34 @@
               <button type="button" class="btn small primary" id="book-add">Add a person or place</button>
               <button type="button" class="btn small" id="book-accounts">Contacts accounts</button>
             </div>
+            <section id="book-pins" aria-labelledby="book-pins-title" hidden>
+              <h3 class="book-head" id="book-pins-title">Pinned</h3>
+              <div id="book-pin-list"></div>
+            </section>
+            <h3 class="book-head" id="book-all-title">Everyone and everything saved</h3>
             <label class="visually-hidden" for="book-q">Filter the saved list</label>
-            <input type="search" id="book-q" placeholder="Filter by name or address" autocomplete="off">
+            <input type="search" id="book-q" placeholder="Filter by name, address or relationship" autocomplete="off">
+            <div class="book-filters">
+              <label class="visually-hidden" for="book-show">Show entries by address</label>
+              <select id="book-show">
+                <option value="all">All entries</option>
+                <option value="address">With an address</option>
+                <option value="map">With a place on the map</option>
+                <option value="none">No address (telephone only)</option>
+              </select>
+              <label class="visually-hidden" for="book-group">Show entries by relationship</label>
+              <select id="book-group">
+                <option value="all">Any relationship</option>
+                <option value="family">Family</option>
+                <option value="friends">Friends</option>
+                <option value="work">Work</option>
+                <option value="neighbors">Neighbors</option>
+                <option value="care">Doctors and care</option>
+                <option value="other">Other</option>
+                <option value="unset">No relationship set</option>
+              </select>
+            </div>
+            <p class="small-print" id="book-count"></p>
             <ul class="book-hits" id="book-list"></ul>
           </div>
         </aside>
@@ -509,7 +535,7 @@
           <h2>Ask this edition</h2>
           <button class="btn small" id="ask-new" hidden>New conversation</button>
         </div>
-        <p id="ask-sub">Answers are written on this laptop from articles in the offline copy.</p>
+        <p id="ask-sub">Answers are written on this laptop from articles in the offline copy. Ask for directions or where someone lives, and the map answers instead.</p>
       </div>
       <div class="ask-thread" id="ask-thread">
         <div class="ask-empty" id="ask-empty">
@@ -517,6 +543,9 @@
           <button class="example">Why is the sky blue?</button>
           <button class="example">What caused the Chernobyl disaster?</button>
           <button class="example">How does a differential work in a car?</button>
+          <p>Or something for the map and your saved places:</p>
+          <button class="example">Directions from my house to work</button>
+          <button class="example">Where does my mother live?</button>
         </div>
       </div>
       <form class="ask-form" id="ask-form">
@@ -599,6 +628,32 @@
       <div class="field"><label class="field-label" for="book-address">Address</label><textarea id="book-address" rows="3" maxlength="500"></textarea></div>
       <div class="field"><label class="field-label" for="book-phones">Telephone</label><input type="text" id="book-phones" maxlength="300" autocomplete="off"></div>
       <div class="field"><label class="field-label" for="book-note">Notes</label><textarea id="book-note" rows="3" maxlength="2000"></textarea></div>
+      <div class="field-pair">
+        <div class="field"><label class="field-label" for="book-fav">Pin this place as</label>
+          <select id="book-fav">
+            <option value="">Not pinned</option>
+            <option value="home">Home</option>
+            <option value="work">Work</option>
+            <option value="school">School</option>
+            <option value="meet">Meeting point</option>
+            <option value="other">Other</option>
+          </select></div>
+        <div class="field" id="book-fav-name-row"><label class="field-label" for="book-fav-name">Your own name for the pin (optional)</label><input type="text" id="book-fav-name" maxlength="40" autocomplete="off" placeholder="Lake cabin, Dad's shop..."></div>
+      </div>
+      <div class="field-pair">
+        <div class="field"><label class="field-label" for="book-rel-group">Relationship</label>
+          <select id="book-rel-group">
+            <option value="">None</option>
+            <option value="family">Family</option>
+            <option value="friends">Friends</option>
+            <option value="work">Work</option>
+            <option value="neighbors">Neighbors</option>
+            <option value="care">Doctors and care</option>
+            <option value="other">Other</option>
+          </select></div>
+        <div class="field"><label class="field-label" for="book-rel-tie">Who they are to you</label><input type="text" id="book-rel-tie" maxlength="40" autocomplete="off" list="book-ties" placeholder="mother, wife, father-in-law..."><datalist id="book-ties"></datalist></div>
+      </div>
+      <p class="small-print">Pins and relationships are kept in this app only. They can be asked for by name: "directions from my house to my mother-in-law's house".</p>
       <p class="small-print" id="book-where"></p>
       <p class="error" id="book-edit-error" hidden></p>
       <div class="actions">
@@ -606,6 +661,22 @@
         <button type="button" class="btn" id="book-pin">Place it on the map</button>
         <button type="button" class="btn danger" id="book-delete" hidden>Delete</button>
         <button type="submit" class="btn primary" id="book-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="trip" aria-labelledby="trip-title">
+    <h2 id="trip-title">Directions</h2>
+    <p id="trip-sub"></p>
+    <form id="trip-form" method="dialog">
+      <div class="field"><label class="field-label" for="trip-q">The other end of the trip</label><input type="search" id="trip-q" autocomplete="off" spellcheck="false" placeholder="A name, an address or a place"></div>
+      <ul class="book-hits" id="trip-list"></ul>
+      <p class="small-print" id="trip-none" hidden></p>
+      <p class="error" id="trip-error" hidden></p>
+      <div class="actions">
+        <button type="button" class="btn" id="trip-cancel">Cancel</button>
+        <button type="button" class="btn" id="trip-pick">Pick the spot on the map</button>
+        <button type="submit" class="btn primary" id="trip-go">Get directions</button>
       </div>
     </form>
   </dialog>
@@ -714,6 +785,8 @@
   <script src="app.js"></script>
   <script src="gps.js"></script>
   <script src="book.js"></script>
+  <script src="trip.js"></script>
+  <script src="askmap.js"></script>
   <script src="hub.js"></script>
 </body>
 </html>

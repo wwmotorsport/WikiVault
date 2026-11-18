@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('api', {
   suggest: (term) => call('search:suggest', { term }),
   search: (q, start) => call('search:query', { q, start }),
 
-  ask: (question, pinnedUrl, retry) => call('ask:start', { question, pinnedUrl, retry: Boolean(retry) }),
+  ask: (question, pinnedUrl, retry, more = {}) => call('ask:start', { question, pinnedUrl, retry: Boolean(retry), ...more }),
   cancelAsk: (id) => call('ask:cancel', { id }),
   resetAsk: () => call('ask:reset'),
 

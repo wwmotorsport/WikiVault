@@ -2065,14 +2065,14 @@ function mapDetails(h) {
     for (const [which, label] of [['from', 'Directions from here'], ['to', 'Directions to here']]) {
       const b = el('button', 'btn small', label);
       b.type = 'button';
-      b.addEventListener('click', () => { mapGo.tab = 'go'; mapSetPoint(which, mapPointOf(h)); if (mapPopup) mapPopup.remove(); });
+      b.addEventListener('click', () => tripStart(which, mapPointOf(h)));
       go.append(b);
     }
     box.append(go);
   }
   const keep = el('button', 'btn small', h.c === 'saved' ? 'Edit' : 'Save to the address book');
   keep.type = 'button';
-  keep.addEventListener('click', () => { if (mapPopup) mapPopup.remove(); if (h.c === 'saved') bookEdit(h.i.replace(/^bk/, '')); else bookEdit(null, { name: h.c === 'address' ? '' : h.n || '', address: h.c === 'address' ? h.n : h.d || '', phones: h.p || '', lat: h.a, lon: h.o }); });
+  keep.addEventListener('click', () => { if (mapPopup) mapPopup.remove(); if (h.c === 'saved') bookEdit(h.i.replace(/^bk/, '')); else bookEdit(null, { name: h.c === 'address' || h.c === 'spot' ? '' : h.n || '', address: h.c === 'address' ? h.n : h.d || '', phones: h.p || '', lat: h.a, lon: h.o }); });
   box.append(keep);
   return box;
 }
@@ -2120,6 +2120,7 @@ function paintMapResults() {
 async function mapFind({ moved = false } = {}) {
   const q = $('map-q').value.trim();
   const cat = $('map-cat').value;
+  if (!q && !cat && moved) return; // nothing is being searched for: a card open on the map (a saved entry, a clicked spot) stays when the map moves
   if (!q && !cat) { mapAsked = 0; mapHits = { total: 0, hits: [] }; mapSelected = null; if (mapPopup) { mapPopup.remove(); mapPopup = null; } paintMapResults(); mapDrawHits(); return; }
   if (moved && q) return; // moving the map only refreshes a browse by kind
   const ask = ++mapAsked;
@@ -2156,6 +2157,7 @@ function mapSetPoint(which, point) {
 /** What was typed, as a point: coordinates, the point already chosen, or the best match among the places and towns. */
 /** A found place or address as an end of a route. An address that was not found exactly carries the reason, to warn with. */
 function mapPointOf(h, typed = '') {
+  if (h.c === 'spot') return mapSpot(h.o, h.a);
   if (h.c === 'address') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.d } : {}) };
   if (h.c === 'saved') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.why || 'Its address was not found exactly in the address data.' } : {}) };
   return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || typed || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` };
@@ -2287,7 +2289,7 @@ function mapClicked(lngLat) {
     mapGo.blocks.push({ lon: lngLat.lng, lat: lngLat.lat, radius: Number($('map-block-size').value) });
     paintMapGo(); mapDrawRoute();
     if (mapGo.route) guard(() => mapRoute({ again: true }), $('map-error'));
-  } else mapSetPoint(what, mapSpot(lngLat.lng, lngLat.lat));
+  } else { mapSetPoint(what, mapSpot(lngLat.lng, lngLat.lat)); tripPicked(); }
   return true;
 }
 
@@ -2336,7 +2338,10 @@ async function mapEnsure(m) {
   map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
   map.on('load', () => {
     mapAddOverlays(map);
-    map.on('click', (e) => { mapClicked(e.lngLat); });
+    // A click that only closes an open card does not open another.
+    let hadPopup = false;
+    map.on('mousedown', () => { hadPopup = Boolean(mapPopup && mapPopup.isOpen()); });
+    map.on('click', (e) => { if (!mapClicked(e.lngLat)) tripSpot(map, e, hadPopup); });
     map.on('click', 'hits-dot', (e) => { if (mapGo.picking) return; const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
     map.on('mouseenter', 'hits-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
@@ -2551,6 +2556,12 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.24.0': [
+    'Ask understands requests for the map: "directions from my house to my mother-in-law\'s house", "take me to work", "where does Dave live".',
+    'Saved places can be pinned as Home, Work, School or a meeting point, and people given a relationship. Both can be searched and asked for.',
+    'The Saved list can be narrowed to entries with an address, and by relationship.',
+    '"Directions to here" and "Directions from here" on any saved entry, place or spot clicked on the map, then choose the other end from your list.',
+  ],
   '0.23.1': [
     'Google contacts can be connected with an app password, as with iCloud. No Google Cloud project is needed.',
   ],
@@ -3348,7 +3359,7 @@ function setAsking(id) {
   $('ask-send').classList.toggle('primary', !id);
 }
 
-async function ask(question, retry = false) {
+async function ask(question, retry = false, articles = false) {
   if (activeAsk || !question) return;
   $('ask-empty')?.remove();
   $('ask-new').hidden = false;
@@ -3360,21 +3371,27 @@ async function ask(question, retry = false) {
   box.append(el('p', 'qa-q', question), status, answer);
   thread.append(box);
   thread.scrollTop = thread.scrollHeight;
-  const entry = { box, status, answer, text: '', passages: [] };
+  const entry = { box, status, answer, text: '', passages: [], question };
   try {
     const pinned = !$('ask-pin-row').hidden && $('ask-pin').checked ? currentUrl : null;
-    const id = await api.ask(question, pinned, retry);
+    // Where the computer is and what the map is showing, for requests about the map ("directions to work").
+    const id = await api.ask(question, pinned, retry, { articles, here: typeof gpsPoint === 'function' ? gpsPoint() : null, around: mapView ? [mapView.getCenter().lng, mapView.getCenter().lat] : null });
     entries.set(id, entry);
     setAsking(id);
+    // A request for the map is answered at once, and its answer can arrive before the number of the question does.
+    const waiting = askEarly.get(id) || [];
+    askEarly.clear();
+    for (const ev of waiting) onAsk(ev);
   } catch (err) {
     status.remove();
     box.append(el('p', 'qa-note', err.message));
   }
 }
 
-api.onAskEvent((ev) => {
+const askEarly = new Map();
+function onAsk(ev) {
   const entry = entries.get(ev.id);
-  if (!entry) return;
+  if (!entry) { if (!askEarly.has(ev.id)) askEarly.set(ev.id, []); if (askEarly.get(ev.id).length < 50 && askEarly.size < 8) askEarly.get(ev.id).push(ev); return; }
   const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
   let showTop = false; // keep the start of this turn in view, for a note the person needs to see
   const finish = () => { entry.status.remove(); entries.delete(ev.id); if (activeAsk === ev.id) setAsking(null); };
@@ -3382,6 +3399,7 @@ api.onAskEvent((ev) => {
   if (ev.type === 'status') entry.status.lastChild.textContent = ev.text;
   else if (ev.type === 'understood') entry.box.firstChild.after(el('p', 'qa-understood', `Understood as: ${ev.text}`));
   else if (ev.type === 'sources') entry.passages = ev.passages;
+  else if (ev.type === 'map') { finish(); askMap(entry, ev.plan, entry.question).catch((err) => entry.box.append(el('p', 'qa-note', err.message))); }
   else if (ev.type === 'token') {
     entry.text += ev.text;
     entry.status.lastChild.textContent = 'Writing the answer';
@@ -3440,7 +3458,8 @@ api.onAskEvent((ev) => {
   }
   if (showTop) thread.scrollTop = Math.max(0, entry.box.offsetTop - thread.offsetTop - 8);
   else if (nearBottom) thread.scrollTop = thread.scrollHeight;
-});
+}
+api.onAskEvent(onAsk);
 
 $('ask-form').addEventListener('submit', (e) => {
   e.preventDefault();
