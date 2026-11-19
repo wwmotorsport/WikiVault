@@ -763,3 +763,69 @@ dialog #trip-list li { margin-bottom: 0; }
 .search { min-width: 110px; }
 @media (max-width: 1180px) { .search kbd { display: none; } .bar { gap: 8px; } }
 @media (max-width: 1060px) { #edition-stamp { display: none; } .bar-btn { padding: 0 10px; } .icon-btn { width: 30px; } }
+
+/* ---- 0.25.0: Setup page: two columns of sizes, what a row is doing, and the room on the disk */
+.hub-size { width: 104px; text-align: right; }
+.hub-size.hub-need { width: 132px; }
+.hub-size-off { font-style: italic; opacity: .8; }
+.hub-cols, .hub-sums { display: flex; align-items: baseline; gap: 10px; padding: 0 14px 0 19px; font-size: 13px; color: var(--muted); }
+.hub-cols { margin: 18px 0 -10px; }
+.hub-cols > span:first-child, .hub-sums-name { flex: 1 1 auto; min-width: 0; }
+.hub-cols .hub-col, .hub-sums .hub-col { flex: none; width: 104px; text-align: right; }
+.hub-cols .hub-col:nth-child(2), .hub-sums .hub-col:nth-child(2) { width: 132px; }
+.hub-sums { margin: -6px 0 18px; padding-top: 10px; padding-bottom: 10px; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 15px; }
+.hub-sums-name .small-print { margin-left: 10px; font-weight: 400; }
+.hub-prog { margin: 8px 0 2px; }
+.hub-prog-row { display: flex; align-items: center; gap: 12px; }
+.hub-prog progress { display: block; flex: 1 1 auto; min-width: 0; height: 10px; }
+.hub-prog-rate:empty { display: none; }
+.hub-prog-text { margin: 6px 0 0; font-size: 14px; }
+.hub-prog-rate { flex: none; min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; font-size: 14px; }
+.hub-disk { margin: 0 0 16px; }
+.hub-disk-title { margin: 0 0 8px; padding: 0; border: 0; font: 600 16px/1.3 var(--ui); }
+.hub-drive { margin: 0 0 14px; }
+.hub-drive-name { margin: 0 0 6px; font-size: 14px; }
+.hub-bar { display: flex; height: 22px; border-radius: 5px; overflow: hidden; border: 1px solid #9aa7b4; background: #eef2f5; }
+.hub-seg { display: block; flex: 0 0 0; min-width: 3px; }
+.hub-seg + .hub-seg { border-left: 1px solid rgba(255, 255, 255, .7); }
+.hub-seg-other { background: #7d8b99; }
+.hub-seg-app { background: #1f6fb2; }
+.hub-seg-add { background: #e6a23c; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.35) 0 6px, transparent 6px 12px); }
+.hub-seg-over { background: #c4412c; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.35) 0 6px, transparent 6px 12px); }
+.hub-seg-free { background: #eef2f5; }
+.hub-legend { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 4px 18px; font-size: 13px; }
+.hub-key { display: flex; align-items: center; gap: 8px; margin: 0; }
+.hub-swatch { flex: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid #9aa7b4; }
+.hub-key-name { flex: 1 1 auto; }
+.hub-key-size { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+.hub-key-over .hub-key-size { color: var(--bad); }
+#hub-room { width: min(34rem, 92vw); }
+
+/* ---- 0.25.0: a guide for every page. On a page of the app the card sits in the corner, clear of what it points at. */
+#tour.side .tour-card { left: auto; right: 20px; top: auto; bottom: 20px; transform: none; width: min(340px, calc(100vw - 40px)); max-height: calc(100vh - 100px); padding: 18px 20px 10px; }
+#tour.side .tour-card ol li { padding: 5px 4px; font-size: 14px; }
+.tour-where { margin: 0 0 2px; }
+.tour-card .actions { flex-wrap: wrap; }
+.tour-pin.corner::before { display: none; }
+#nav-help { font-weight: 700; font-size: 16px; }
+
+/* ---- 0.25.0: the key on the map, and the same pictures beside the switches */
+.map-stage { position: relative; }
+.map-key { position: absolute; left: 10px; bottom: 44px; z-index: 2; max-width: 216px; max-height: calc(100% - 120px); overflow: auto; padding: 6px 9px; border-radius: 6px; background: rgba(255, 255, 255, .93); color: #14263b; border: 1px solid #b9c6d2; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); font-size: 11.5px; line-height: 1.2; }
+.map-key.dark { background: rgba(22, 28, 36, .93); color: #e6eaee; border-color: #3a4552; }
+.map-key-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.map-key-toggle { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; text-decoration: underline; cursor: pointer; }
+.map-key ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.map-key-row { display: grid; grid-template-columns: 26px 1fr; gap: 7px; align-items: center; margin: 0; padding: 1px 0; }
+.map-key-row.map-key-mine:first-of-type, .map-key-row:not(.map-key-mine) + .map-key-mine { margin-top: 5px; padding-top: 6px; border-top: 1px solid rgba(128, 140, 152, .5); }
+.map-key-mark { justify-self: center; display: block; }
+.map-key-sign { height: 16px; width: auto; }
+.map-key svg.map-key-mark { width: 26px; height: 12px; }
+.map-key-dot { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); box-sizing: border-box; }
+#map-look-groups .map-check { grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; }
+#map-look-groups .map-check input { margin-top: 0; }
+.map-look-marks { display: flex; align-items: center; gap: 5px; padding: 2px 5px; border-radius: 4px; background: #f4f1e8; }
+#map-look-groups.dark .map-look-marks { background: #1c2026; }
+.map-look-marks:empty { display: none; }
+.map-look-mark { display: flex; align-items: center; }
+.map-look-mark .map-key-sign { height: 16px; }

@@ -48,6 +48,7 @@
       <button class="bar-btn" id="toggle-ask" aria-pressed="false">Ask</button>
       <button class="bar-btn" id="open-hub" title="Setup and downloads: everything the app can fetch, in one place">Setup<span class="hub-badge" id="hub-badge" hidden></span></button>
       <button class="bar-btn" id="open-library">Library</button>
+      <button class="icon-btn" id="nav-help" title="How this page works" aria-label="How this page works">?</button>
     </div>
   </header>
 
@@ -176,7 +177,14 @@
             <h1 class="display" id="hub-title">Setup and downloads</h1>
             <p class="lead" id="hub-lead"></p>
             <div class="hub-note" id="hub-new" hidden><b id="hub-new-title"></b><ul id="hub-new-list"></ul></div>
+            <div class="hub-cols" id="hub-cols" aria-hidden="true"><span></span><span class="hub-col">Still to download</span><span class="hub-col">Downloaded</span></div>
             <ol class="hub-steps" id="hub-steps"></ol>
+            <div class="hub-sums" id="hub-sums">
+              <span class="hub-sums-name">In all<span class="small-print" id="hub-sum-note"></span></span>
+              <span class="hub-col" id="hub-sum-need" title="Still to download, for everything ticked"></span>
+              <span class="hub-col" id="hub-sum-have" title="Downloaded so far"></span>
+            </div>
+            <section class="hub-disk" id="hub-disk" aria-label="Room on the disk" hidden></section>
             <div class="hub-total" id="hub-total"></div>
             <p class="error" id="hub-error" hidden></p>
             <div class="actions">
@@ -318,6 +326,10 @@
         <div class="map-stage">
           <div class="map-guide" id="map-guide" hidden><b id="map-guide-next"></b><span id="map-guide-rest"></span></div>
           <div id="map-canvas"></div>
+          <aside class="map-key" id="map-key" aria-label="What the map's lines and colours stand for" hidden>
+            <div class="map-key-head"><b id="map-key-title">Key</b><button type="button" class="map-key-toggle" id="map-key-toggle" aria-expanded="true" aria-controls="map-key-list">Hide</button></div>
+            <ul id="map-key-list"></ul>
+          </aside>
           <div class="map-empty" id="map-empty" hidden></div>
         </div>
       </section>
@@ -581,15 +593,18 @@
   <dialog id="tour" aria-labelledby="tour-title">
     <div id="tour-pins" aria-hidden="true"></div>
     <div class="tour-card">
+      <p class="small-print tour-where" id="tour-where"></p>
       <h2 id="tour-title">A quick look around</h2>
       <div id="tour-new" hidden>
         <p class="tour-new-title" id="tour-new-title"></p>
         <ul id="tour-new-list"></ul>
       </div>
-      <p class="small-print">The numbers match the buttons along the top of the window.</p>
+      <p class="small-print" id="tour-lead">The numbers match the buttons along the top of the window.</p>
       <ol id="tour-list"></ol>
       <div class="actions">
-        <button class="btn primary" id="tour-ok" type="button">Got it</button>
+        <button class="btn primary" id="tour-next" type="button">Walk me through the next page</button>
+        <button class="btn" id="tour-ok" type="button">Got it</button>
+        <button class="btn" id="tour-prev" type="button" hidden>Back</button>
         <button class="btn" id="tour-never" type="button">Don't show again</button>
       </div>
       <p class="small-print" id="tour-foot"></p>
@@ -669,6 +684,22 @@
         <button type="submit" class="btn primary" id="book-save">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="hub-room" aria-labelledby="hub-room-title">
+    <h2 id="hub-room-title">There is not enough room for all of it</h2>
+    <p id="hub-room-text"></p>
+    <ul>
+      <li>Untick something, or choose fewer regions or less map detail, and the sums change as you do.</li>
+      <li id="hub-room-opt-part">Make the library's partition larger.</li>
+      <li>Add storage: move the library to a larger drive from the Library page.</li>
+    </ul>
+    <p class="small-print">Downloading anyway fetches what fits, in the order of the page, and stops with an error when the room runs out.</p>
+    <div class="actions">
+      <button type="button" class="btn" id="hub-room-go">Download anyway</button>
+      <button type="button" class="btn" id="hub-room-part" hidden>Make the partition larger</button>
+      <button type="button" class="btn primary" id="hub-room-back">Change what is ticked</button>
+    </div>
   </dialog>
 
   <dialog id="trip" aria-labelledby="trip-title">
@@ -792,6 +823,7 @@
   <script src="../vendor/pmtiles/pmtiles.js"></script>
   <script src="../vendor/basemaps/basemaps.js"></script>
   <script src="map-style.js"></script>
+  <script src="hub-calc.js"></script>
   <script src="nmea.js"></script>
   <script src="guide.js"></script>
   <script src="app.js"></script>

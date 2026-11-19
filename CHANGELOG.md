@@ -2,6 +2,19 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.25.0 (2026-11-19)
+
+The Setup page shows sizes, progress and room; a guide for every page; a key on the map.
+
+- **Setup: two columns of sizes.** Each row shows what is still to download as it is ticked now, and what it already has on the disk. The columns are added up under the list. Sizes that have to be asked for are worked out by the page itself, when it opens and when the choice changes.
+- **Setup: progress where you are.** A row that is downloading shows a bar, what is being fetched and how far it has got, the speed, and about how long is left. Before, the detail was only on the page the download belonged to.
+- **Setup: room on the disk.** A bar of the whole drive: everything else on it, what Wikivault has downloaded, what the ticked rows will add, and what stays free, with the sizes written under it. A library with its own partition is shown apart from the drive it was cut from.
+- **Setup: a warning before starting.** When what is ticked needs more than is free, the page says by how much and *Download everything ticked* asks first: change what is ticked, make the partition larger, add storage, or download anyway.
+- **A guide for every page.** The tour's first page now includes the Setup button, and *Walk me through the next page* goes on through Setup, Ask, Map, School, Wiki golf and Library, opening each and pointing at its parts. A new **?** button at the end of the top bar opens the guide for the page you are on.
+- **Map: a key.** A small key on the map says what each line and colour stands for. It lists only what is switched on under *What the map shows*, and adds the route, saved places, places found and blocked areas while they are on the map. The same pictures are beside each switch.
+- **Map: road numbers as road signs.** Interstates have the red, white and blue shield, US highways the white shield, and other numbered roads a plain white sign.
+- Not yet seen on the real computer: checked with stand-in data, where downloads take seconds, so the speed and the time left have only been seen briefly.
+
 ## 0.24.2 (2026-11-18)
 
 From a first test of the app on a real computer, with real contacts.

@@ -1815,6 +1815,100 @@ const mapStyleFor = (key) => ({
   layers: WikivaultMapStyle.layers(basemaps, mapLook),
 });
 
+/**
+ * A road-number sign as a small picture. `kind` is 'i' (Interstate), 'us' (US highway) or 'st' (the rest),
+ * `chars` how many characters it has to hold. With `text`, the number is drawn on it (for the key); the map
+ * writes the number itself. Returns a canvas at twice the size it is shown at.
+ */
+function mapShieldCanvas(kind, chars, text = '') {
+  const sign = WikivaultMapStyle.SHIELDS[kind] || WikivaultMapStyle.SHIELDS.st;
+  const n = Math.max(1, Math.min(5, chars || 1));
+  const w = (n <= 2 ? 20 : 20 + (n - 2) * 6) * 2; const h = 20 * 2;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const x0 = 2; const y0 = 2; const x1 = w - 2; const y1 = h - 2; const mid = w / 2;
+  g.lineJoin = 'round';
+  if (kind === 'st') {
+    const r = Math.min(13, (y1 - y0) / 2);
+    g.beginPath(); g.roundRect(x0, y0, x1 - x0, y1 - y0, r);
+  } else {
+    // A shield: a flat top with small shoulders, sides that curve in to a point at the foot.
+    g.beginPath();
+    g.moveTo(x0, y0 + 3); g.quadraticCurveTo(mid * 0.5, y0 + 5, mid, y0); g.quadraticCurveTo(mid * 1.5, y0 + 5, x1, y0 + 3);
+    g.bezierCurveTo(x1 + 1, y0 + (y1 - y0) * 0.55, x1 - (x1 - mid) * 0.35, y1 - 5, mid, y1);
+    g.bezierCurveTo(x0 + (mid - x0) * 0.35, y1 - 5, x0 - 1, y0 + (y1 - y0) * 0.55, x0, y0 + 3);
+    g.closePath();
+  }
+  g.fillStyle = sign.fill; g.fill();
+  if (sign.top) { g.save(); g.clip(); g.fillStyle = sign.top; g.fillRect(0, 0, w, y0 + 10); g.restore(); }
+  g.lineWidth = kind === 'i' ? 2.5 : 2.5; g.strokeStyle = sign.edge; g.stroke();
+  if (kind === 'i') { g.lineWidth = 1; g.strokeStyle = 'rgba(0, 0, 0, .45)'; g.stroke(); }
+  if (text) { g.fillStyle = sign.text; g.font = `700 ${n > 3 ? 17 : 20}px "Noto Sans", "Segoe UI", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, mid, h / 2 + (kind === 'i' ? 3 : 1)); }
+  return c;
+}
+/** Give the map a sign it has asked for and does not have yet. */
+function mapShieldMissing(map, id) {
+  const m = /^wv-shield-(i|us|st)-(\d+)$/.exec(id);
+  if (!m || map.hasImage(id)) return;
+  const c = mapShieldCanvas(m[1], Number(m[2]));
+  map.addImage(id, c.getContext('2d').getImageData(0, 0, c.width, c.height), { pixelRatio: 2 });
+}
+
+/** One entry of the key as a small picture: a line, a dashed line, a patch of colour, or a road sign. */
+function mapKeyMark(k) {
+  if (k.draw === 'shield') {
+    const c = mapShieldCanvas(k.shield, k.text.length, k.text);
+    const img = el('img', 'map-key-mark map-key-sign');
+    img.src = c.toDataURL(); img.alt = ''; img.width = c.width / 2; img.height = c.height / 2;
+    return img;
+  }
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'map-key-mark'); svg.setAttribute('viewBox', '0 0 30 14'); svg.setAttribute('width', '30'); svg.setAttribute('height', '14'); svg.setAttribute('aria-hidden', 'true');
+  const add = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const [a, v] of Object.entries(attrs)) n.setAttribute(a, String(v)); svg.append(n); };
+  if (k.draw === 'fill') add('rect', { x: 2, y: 1.5, width: 26, height: 11, rx: 2, fill: k.color, stroke: k.edge, 'stroke-width': 1 });
+  else {
+    if (k.edge) add('line', { x1: 1, y1: 7, x2: 29, y2: 7, stroke: k.edge, 'stroke-width': k.width + 2, 'stroke-linecap': 'round' });
+    add('line', { x1: 1, y1: 7, x2: 29, y2: 7, stroke: k.color, 'stroke-width': k.width, 'stroke-linecap': k.draw === 'dash' ? 'butt' : 'round', ...(k.draw === 'dash' ? { 'stroke-dasharray': '6 3' } : {}) });
+  }
+  return svg;
+}
+
+/**
+ * The key on the map: what each line and colour stands for, for what is switched on just now, and for the
+ * app's own marks that are on the map at the moment (a route, saved places, places found, blocked areas).
+ */
+function paintMapKey() {
+  const box = $('map-key');
+  if (!box) return;
+  const m = state && state.maps;
+  box.hidden = !(m && m.map);
+  if (box.hidden) return;
+  const dark = mapLook.dark;
+  box.classList.toggle('dark', dark);
+  // While the map is waiting for a click, the key folds away so that it is never what is clicked.
+  const open = mapKeyOpen() && !mapGo.picking && !(typeof bookUi === 'object' && bookUi.picking);
+  $('map-key-toggle').setAttribute('aria-expanded', String(open));
+  $('map-key-toggle').textContent = open ? 'Hide' : 'Key';
+  $('map-key-title').hidden = !open;
+  $('map-key-list').hidden = !open;
+  if (!open) return;
+  const dot = (color, ring, big) => { const s = el('span', 'map-key-mark map-key-dot'); Object.assign(s.style, { background: color, borderColor: ring, width: `${big ? 14 : 11}px`, height: `${big ? 14 : 11}px` }); return s; };
+  const ring = dark ? '#0b0d10' : '#ffffff';
+  const mine = [];
+  if (mapGo.route) mine.push(['Your route', mapKeyMark({ draw: 'line', color: dark ? '#4da3ff' : '#1a56c4', edge: ring, width: 4 })]);
+  if (mapGo.route || mapGo.from || mapGo.to) mine.push(['Start', dot('#1e9e6f', ring, true)], ['Destination', dot(dark ? '#f0f2f4' : '#14263b', ring, true)]);
+  const saved = (bookUi.data && bookUi.data.entries) || [];
+  if (saved.some((e) => e.lat != null && e.pin)) mine.push(['Pinned place', dot('#e65100', '#ffffff', true)]);
+  if (saved.some((e) => e.lat != null && !e.pin)) mine.push(['Saved place', dot('#8e24aa', '#ffffff')]);
+  if (mapHits.hits && mapHits.hits.length) mine.push(['Place found', dot(dark ? '#ffd84a' : '#14304d', ring)], ['The one chosen', dot('#d93025', ring, true)]);
+  if (mapGo.blocks && mapGo.blocks.length) mine.push(['Blocked road or area', mapKeyMark({ draw: 'fill', color: 'rgba(217, 48, 37, .35)', edge: dark ? '#ff6b5e' : '#b3261e' })]);
+  if (typeof gpsPoint === 'function' && gpsPoint()) mine.push(['Where you are', dot('#1a73e8', '#ffffff', true)]);
+  const row = (name, mark) => { const li = el('li', 'map-key-row'); li.append(mark, el('span', '', name)); return li; };
+  $('map-key-list').replaceChildren(...WikivaultMapStyle.legend(mapLook).map((k) => { const li = row(k.name, mapKeyMark(k)); li.dataset.key = k.id; return li; }), ...mine.map(([name, mark]) => { const li = row(name, mark); li.classList.add('map-key-mine'); return li; }));
+}
+const mapKeyOpen = () => { try { return localStorage.getItem('wikivault-map-key') !== 'closed'; } catch { return true; } };
+
 function paintMapLook(m) {
   const box = $('map-look');
   box.hidden = !m.map;
@@ -1827,17 +1921,28 @@ function paintMapLook(m) {
       const input = document.createElement('input');
       input.type = 'checkbox'; input.dataset.group = g.id;
       input.addEventListener('change', () => { mapLook.off = [...groups.querySelectorAll('input')].filter((i) => !i.checked).map((i) => i.dataset.group); mapApplyLook(false); });
-      label.append(input, el('span', '', g.name));
+      const text = el('span', 'map-look-name', g.name);
+      label.append(input, text, el('span', 'map-look-marks'));
       groups.append(label);
     }
+    groups.dataset.dark = '';
   }
   for (const input of groups.querySelectorAll('input')) input.checked = !mapLook.off.includes(input.dataset.group);
+  // Beside each switch, the lines and colours it turns on and off, as they are drawn in the look chosen.
+  if (groups.dataset.dark !== String(mapLook.dark)) {
+    groups.dataset.dark = String(mapLook.dark);
+    const key = WikivaultMapStyle.legend(mapLook, true);
+    for (const label of groups.children) label.querySelector('.map-look-marks').replaceChildren(...key.filter((k) => k.group === label.querySelector('input').dataset.group).map((k) => { const mark = mapKeyMark(k); const wrap = el('span', 'map-look-mark'); wrap.title = k.name; wrap.append(mark); return wrap; }));
+    groups.classList.toggle('dark', mapLook.dark);
+  }
+  paintMapKey();
 }
 
 /** Put the chosen look on the map. Switching kinds on and off touches the layers; day and night need a new style. */
 function mapApplyLook(restyle) {
   try { localStorage.setItem('wikivault-map-look', JSON.stringify(mapLook)); } catch { /* not kept, that is all */ }
   $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
+  if (state && state.maps) paintMapLook(state.maps);
   if (!mapView) return;
   if (restyle) {
     $('map-canvas').dataset.ready = '';
@@ -1876,11 +1981,8 @@ function mapRegionsPicked(m) {
   return m.map ? m.map.regions : m.regions.filter((r) => r.default).map((r) => r.id);
 }
 
-function paintMapJob(m) {
-  const box = $('map-job');
-  box.hidden = !m.job;
-  if (!m.job) { box.replaceChildren(); return; }
-  const j = m.job;
+/** What a map job is doing: { title, detail, value, max, bytesNow }. `bytesNow` is set when the progress is counted in bytes. */
+function mapJobView(j) {
   let title = ''; let detail = ''; let value = null; let max = null;
   if (j.kind === 'measure') { title = 'Measuring the map'; detail = `Reading the index of the world map: ${bytes(j.indexBytes || 0)} so far. No map is downloaded yet.`; }
   if (j.kind === 'map') {
@@ -1900,6 +2002,15 @@ function paintMapJob(m) {
     else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
   }
   if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: pieces are asked for two at a time and kept as they arrive, so a run that stops carries on from here.`; }
+  const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
+  return { title, detail, value, max, bytesNow: inBytes && max ? j.downloaded || 0 : null };
+}
+
+function paintMapJob(m) {
+  const box = $('map-job');
+  box.hidden = !m.job;
+  if (!m.job) { box.replaceChildren(); return; }
+  const { title, detail, value, max } = mapJobView(m.job);
   const bar = document.createElement('progress');
   if (max) { bar.max = max; bar.value = value; }
   const stop = el('button', 'btn small', 'Stop');
@@ -2085,6 +2196,7 @@ function mapDetails(h) {
 }
 
 function mapDrawHits() {
+  paintMapKey();
   if (!mapView || !mapView.getSource('hits')) return;
   mapView.getSource('hits').setData({ type: 'FeatureCollection', features: mapHits.hits.map((h) => ({ type: 'Feature', id: undefined, properties: { i: h.i, n: h.n || '', sel: h.i === mapSelected ? 1 : 0 }, geometry: { type: 'Point', coordinates: [h.o, h.a] } })) });
 }
@@ -2217,6 +2329,7 @@ function mapCircle(lon, lat, radius) {
 
 function mapDrawRoute() {
   gpsRouteChanged();
+  paintMapKey();
   if (!mapView || !mapView.getSource('route')) return;
   const r = mapGo.route;
   mapView.getSource('route').setData({ type: 'FeatureCollection', features: r ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } }] : [] });
@@ -2256,6 +2369,7 @@ function paintMapGo() {
   note.hidden = !mapGo.picking;
   note.textContent = mapGo.picking === 'block' ? 'Click the map where the way is blocked. Press Escape to leave it.' : mapGo.picking ? `Click the map to set the ${mapGo.picking === 'from' ? 'start' : 'destination'}. Press Escape to leave it.` : '';
   $('map-canvas').classList.toggle('picking', Boolean(mapGo.picking));
+  paintMapKey();
   for (const w of ['from', 'to']) $(`map-${w}-pick`).setAttribute('aria-pressed', String(mapGo.picking === w));
   $('map-block-add').setAttribute('aria-pressed', String(mapGo.picking === 'block'));
   $('map-block-add').disabled = !mapView;
@@ -2351,6 +2465,7 @@ async function mapEnsure(m) {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 140 }), 'bottom-left');
   map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
+  map.on('styleimagemissing', (e) => mapShieldMissing(map, e.id));
   map.on('load', () => {
     mapAddOverlays(map);
     // A click that only closes an open card does not open another.
@@ -2392,6 +2507,7 @@ function renderMap() {
 
 $('nav-map').addEventListener('click', () => { if (!golfPlaying()) showView('map'); });
 $('map-dark').addEventListener('change', () => { mapLook.dark = $('map-dark').checked; mapApplyLook(true); });
+$('map-key-toggle').addEventListener('click', () => { try { localStorage.setItem('wikivault-map-key', mapKeyOpen() ? 'closed' : 'open'); } catch { /* not kept, that is all */ } paintMapKey(); });
 $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
 $('map-search').addEventListener('submit', (e) => { e.preventDefault(); guard(() => mapFind(), $('map-error')); });
 $('map-cat').addEventListener('change', () => { renderMap(); guard(() => mapFind(), $('map-error')); });
@@ -2567,10 +2683,18 @@ const TOUR_STOPS = [
   [['lib-select'], 'Library list', 'Switch between Wikipedia and the other libraries you have downloaded.'],
   [['search'], 'Search', 'Titles appear as you type. Press Enter to search the full text of every article. Ctrl+K jumps here.'],
   [['edition-stamp'], 'Edition', 'Which edition is on this computer. Press it for updates and storage.'],
-  [['toggle-ask'], 'Ask', 'Type a question in plain words. The answer is written on this computer and links to the articles it came from.'],
+  [['toggle-ask'], 'Ask', 'Type a question in plain words. The answer is written on this computer and links to the articles it came from. Ask for directions or where someone lives and the map answers.'],
+  [['open-hub'], 'Setup', 'Everything the app can download or set up, on one page: what is done, what is left, how big it is, and one button to fetch the rest. The number is how many things are still to do.'],
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
+  [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.25.0': [
+    'Setup page: each row shows how much is still to download and how much is here, with the sums and a bar of the room on the disk.',
+    'A row that is downloading shows its progress, speed and time left on the Setup page itself.',
+    'A guide for every page: press ? at the top, or "Walk me through the next page" in the tour.',
+    'Map: a key of what the lines and colours mean, and road numbers drawn as road signs.',
+  ],
   '0.24.2': [
     'Fixes from a first live test: the Setup page, contact addresses with no house number or ZIP code, sources under answers, a narrow window, and directions wording.',
     'Map page: the list of what is on the computer folds into one line, and the side panel is wider.',
@@ -2634,66 +2758,198 @@ const WHATS_NEW = {
     'How much of Wikipedia is kept can be changed at any time under Library.',
   ],
 };
+// One walk-through for each page of the app. The first is the row of buttons along the top; "the next page" then
+// goes through the rest in turn, opening each page and pointing at its parts. A stop names what it points at by id,
+// or by a selector when the part has none; stops whose part is not on the screen just now are left out.
+const TOUR_PAGES = [
+  { id: 'top', name: 'The buttons along the top', title: 'A quick look around', lead: 'The numbers match the buttons along the top of the window.', stops: TOUR_STOPS },
+  { id: 'hub', name: 'Setup', title: 'Setup and downloads', view: 'hub',
+    lead: 'One page for everything the app can fetch. Point at a line below to see the part it is about.',
+    stops: [
+      [['#hub-steps .hub-step .hub-chip'], 'What each row says', 'Done is in place and is left alone. To do is ticked and not here yet. Update means a newer one is out. Working is being fetched now. Not chosen is not ticked.'],
+      [['#hub-steps .hub-tick'], 'Include', 'Tick what you want and untick what you do not. The map row also has the regions and how much detail to keep. The sums below follow what is ticked.'],
+      [['hub-cols'], 'Two columns of sizes', 'On the left, how much is still to download for each row as it is ticked now. On the right, how much of it is on the disk already. Sizes that need asking for are worked out by themselves, which takes a connection and a minute or two.'],
+      [['#hub-steps .hub-prog'], 'A row that is downloading', 'Shows a bar, what is being fetched, the speed, and about how long is left. There is no need to go to the page it belongs to.'],
+      [['hub-sums'], 'In all', 'The two columns added up: everything still to download, and everything downloaded so far.'],
+      [['hub-disk'], 'Room on the disk', 'The whole drive as a bar: what else is on it, what Wikivault has downloaded, what the ticked rows will add, and what stays free. A library with a partition of its own is shown apart from the drive it was cut from.'],
+      [['hub-sizes'], 'Work out the sizes', 'Asks again for any size that is missing. Nothing is downloaded by this.'],
+      [['hub-go'], 'Download everything ticked', 'Fetches every row that is ticked and not done, one after another, and carries on if the app is closed and opened. If it will not fit, you are told first.'],
+    ] },
+  { id: 'ask', name: 'Ask', title: 'Ask', view: null, open: () => { if ($('ask').hidden && !$('toggle-ask').disabled) $('toggle-ask').click(); }, when: () => !$('toggle-ask').disabled,
+    lead: 'Questions in plain words, answered on this computer.',
+    stops: [
+      [['ask-input'], 'Your question', 'Type it and press Enter. Shift+Enter starts a new line. A follow-up question uses what was said before.'],
+      [['#ask-thread .example'], 'Two kinds of question', 'One for the library: the answer is written from the articles, with numbered sources you can open. One for the map: "directions from my house to work", "where does my mother live". Those are carried out on the map at once.'],
+      [['ask-new'], 'New conversation', 'Forgets what was said and starts afresh.'],
+      [['ask-pin-row'], 'About the open article', 'Ticked, the question is answered from the article you are reading.'],
+    ] },
+  { id: 'map', name: 'Map', title: 'Map', view: 'map',
+    lead: 'An offline map, places, directions and your saved addresses.',
+    stops: [
+      [['map-about'], 'What is on this computer', 'One line for the map, places, addresses and directions that have been fetched. Open it for the detail.'],
+      [['map-setup-toggle'], 'Change or update', 'Choose regions and detail and fetch the map, the places, the addresses and the routing data. The Setup page does the same with everything else.'],
+      [['map-look'], 'What the map shows', 'Switch buildings, woodland, water, streets, names and symbols on or off, and choose the dark map.'],
+      [['map-tab-find'], 'Places', 'Find a place by name or kind, a town, or a street address. An address the data does not have is placed as near as can be told, and marked approximate.'],
+      [['map-tab-go'], 'Directions', 'A start and a destination, by car, bicycle or on foot, with the turns listed. Mark roads and areas as blocked and the route goes round them. A USB GPS receiver leads you turn by turn.'],
+      [['map-tab-book'], 'Saved', 'Your address book: people and places, with a copy of your Google or iCloud contacts. Pin Home and Work, set who people are to you, and narrow the list.'],
+      [['map-canvas'], 'The map itself', 'Drag to move, roll the wheel to zoom. Press a place for its card. Press a bare spot for directions to or from it, or to save it.'],
+    ] },
+  { id: 'school', name: 'School', title: 'School', view: 'school', when: () => Boolean(state.school),
+    lead: 'A year of lessons, with the books that go with them.',
+    stops: [
+      [['sch-tab-week'], 'The week', 'What this week covers and each day\'s lessons. Start a lesson to step through it with the book open beside it, and tick it when it is done.'],
+      [['sch-tab-year'], 'The year', 'All the weeks, and how far along you are.'],
+      [['sch-tab-books'], 'Books and supplies', 'Every teacher guide, student book and test, the few things that have to be bought, and a place to add PDFs of your own.'],
+      [['sch-search'], 'Search the school books', 'Finds a word or phrase in every book.'],
+      [['sch-files'], 'The books on this computer', 'Says whether all the books are here. Missing ones are fetched from here or from the Setup page.'],
+    ] },
+  { id: 'golf', name: 'Wiki golf', title: 'Wiki golf', view: 'golf', when: () => Boolean(state.edition && state.edition.active) && !golfPlaying(),
+    lead: 'Get from one article to another using only the links in between. Fewest clicks wins the hole.',
+    stops: [
+      [['#golf-card .g8-player', '#golf-card .g8-choices'], 'Who is playing', 'Press each player in the order they will tee off, up to six. New players choose a name and a character, and their records are kept.'],
+      [['#golf-card .g8-box:nth-of-type(2)'], 'The round', 'How many holes, how long they are, and whether handicaps are used.'],
+      [['golf-scene'], 'The course', 'During a round the page is the game: read the article, follow a link, and try to reach the target in par.'],
+    ] },
+  { id: 'library', name: 'Library', title: 'Library', view: 'library',
+    lead: 'The edition on this computer, where it is kept, and the settings.',
+    stops: [
+      [['lib-facts'], 'The edition', 'Which Wikipedia is here, how big it is, whether it matched its published checksum, and the folder. Move the library from here.'],
+      [['lib-partition'], 'Partition', 'Give the library a partition of its own, change its size, or put it back in an ordinary folder.'],
+      [['lib-update-status', 'lib-update-actions'], 'Updates', 'Check for a newer edition now, fetch new ones automatically, start with Windows, and how many connections a download uses.'],
+      [['lib-flavour-set'], 'How much of Wikipedia', 'Everything with pictures, without pictures, or a smaller selection. Changing it downloads the other kind.'],
+      [['more-libs'], 'More libraries', 'Wikibooks, Wikiversity and others, each fetched and opened like Wikipedia.'],
+      [['ai-status', 'ai-enabled'], 'Answers', 'The model that writes answers: on or off, tuned to this computer, and which model on which part of it.'],
+      [['about-tour'], 'About', 'The version, the licences, and this guide.'],
+    ] },
+];
 let tourOpened = false;   // opened by itself already in this run
 let tourManual = false;
-const tourVisible = (id) => { const n = $(id); return Boolean(n) && !n.hidden && n.getClientRects().length > 0; };
+let tourPage = 0;
+const tourNode = (ref) => (/^[#.]/.test(ref) ? document.querySelector(ref) : $(ref));
+const tourVisible = (ref) => { const n = tourNode(ref); return Boolean(n) && !n.hidden && n.getClientRects().length > 0; };
+const tourPages = () => TOUR_PAGES.filter((p) => !p.when || p.when());
 
+// The part of a node that can be seen: what its scrolling parents leave of it, or nothing when it is scrolled away.
+function tourSeen(node) {
+  const r = node.getBoundingClientRect();
+  let left = r.left; let right = r.right; let top = r.top; let bottom = r.bottom;
+  for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if (o !== 'auto' && o !== 'scroll' && o !== 'hidden') continue;
+    const b = p.getBoundingClientRect();
+    left = Math.max(left, b.left); right = Math.min(right, b.right); top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom);
+  }
+  return bottom - top < 6 || right - left < 6 ? null : { left, right, top, bottom };
+}
 function tourPlace() {
   const pins = $('tour-pins');
   const items = [...$('tour-list').children];
   pins.replaceChildren();
+  const H = window.innerHeight; const W = window.innerWidth;
   items.forEach((li, i) => {
-    const ids = li.dataset.ids.split(',').filter(tourVisible);
-    if (!ids.length) return;
-    const rects = ids.map((id) => $(id).getBoundingClientRect());
-    const left = Math.min(...rects.map((r) => r.left)); const right = Math.max(...rects.map((r) => r.right));
-    const top = Math.min(...rects.map((r) => r.top)); const bottom = Math.max(...rects.map((r) => r.bottom));
+    const refs = li.dataset.ids.split('|').filter(tourVisible);
+    const light = (on) => { for (const n of [li, ...pins.querySelectorAll(`[data-stop="${i}"]`)]) n.classList.toggle('lit', on); };
+    // Pointing at a line brings its part of the page into view, when the page is longer than the window.
+    li.onmouseenter = () => {
+      const n = refs.length ? tourNode(refs[0]) : null;
+      if (n) { const r = n.getBoundingClientRect(); if (!tourSeen(n) || r.bottom < 70 || r.top > H - 40) { n.scrollIntoView({ block: 'center' }); tourPlace(); $('tour-list').children[i]?.classList.add('lit'); pins.querySelectorAll(`[data-stop="${i}"]`).forEach((x) => x.classList.add('lit')); return; } }
+      light(true);
+    };
+    li.onmouseleave = () => light(false);
+    if (!refs.length) return;
+    const rects = refs.map((ref) => tourSeen(tourNode(ref))).filter(Boolean);
+    if (!rects.length) return; // scrolled out of sight for now
+    const left = Math.max(2, Math.min(...rects.map((r) => r.left))); const right = Math.min(W - 2, Math.max(...rects.map((r) => r.right)));
+    const top = Math.max(2, Math.min(...rects.map((r) => r.top))); const bottom = Math.min(H - 2, Math.max(...rects.map((r) => r.bottom)));
+    if (bottom - top < 6 || right - left < 6) return; // off the screen for now
     const ring = el('div', 'tour-ring');
     Object.assign(ring.style, { left: `${left - 4}px`, top: `${top - 4}px`, width: `${right - left + 8}px`, height: `${bottom - top + 8}px` });
     const pin = el('div', 'tour-pin', String(i + 1));
-    Object.assign(pin.style, { left: `${(left + right) / 2}px`, top: `${bottom + 14}px` });
+    // Along the top bar: under the button, on a stem. On a page: at the left edge of the part, where it covers
+    // neither the part nor the one below it.
+    const small = bottom - top < 90 && bottom + 46 < H;
+    if ($('tour').classList.contains('side')) { pin.classList.add('corner'); Object.assign(pin.style, { left: `${Math.max(16, left - 20)}px`, top: `${(bottom - top < 90 ? (top + bottom) / 2 : top + 18) - 14}px` }); }
+    else if (small) Object.assign(pin.style, { left: `${(left + right) / 2}px`, top: `${bottom + 14}px` });
+    else { pin.classList.add('corner'); Object.assign(pin.style, { left: `${left + 12}px`, top: `${top - 12}px` }); }
+    ring.dataset.stop = String(i); pin.dataset.stop = String(i);
     pins.append(ring, pin);
-    const light = (on) => { for (const n of [ring, pin, li]) n.classList.toggle('lit', on); };
-    li.onmouseenter = () => light(true);
-    li.onmouseleave = () => light(false);
   });
 }
 
-function openTour({ manual = false } = {}) {
-  const dlg = $('tour');
-  if (dlg.open) return;
-  tourManual = manual;
-  const stops = TOUR_STOPS.filter(([ids]) => ids.some(tourVisible));
+/** Draw the card for one page of the guide. */
+function tourShow() {
+  const pages = tourPages();
+  tourPage = Math.max(0, Math.min(tourPage, pages.length - 1));
+  const page = pages[tourPage];
+  const stops = page.stops.filter(([ids]) => ids.some(tourVisible));
+  $('tour-title').textContent = page.title;
+  $('tour-lead').textContent = stops.length ? page.lead : `${page.lead} There is nothing on this page to point at yet.`;
+  $('tour-where').textContent = pages.length > 1 ? `Page ${tourPage + 1} of ${pages.length}` : '';
   $('tour-list').replaceChildren(...stops.map(([ids, name, about], i) => {
     const li = el('li');
-    li.dataset.ids = ids.join(',');
+    li.dataset.ids = ids.join('|');
     const text = el('span');
     text.append(el('b', '', name), `. ${about}`);
     li.append(el('span', 'tour-num', String(i + 1)), text);
     return li;
   }));
-  const fresh = !manual && state.tour?.whatsNew ? WHATS_NEW[state.version] : null;
+  const fresh = page.id === 'top' && !tourManual && state.tour?.whatsNew ? WHATS_NEW[state.version] : null;
   $('tour-new').hidden = !fresh;
   if (fresh) {
     $('tour-new-title').textContent = `New in version ${state.version}`;
     $('tour-new-list').replaceChildren(...fresh.map((line) => el('li', '', line)));
   }
-  $('tour-never').hidden = manual;
-  $('tour-foot').textContent = manual ? '' : 'It opens at each start until you choose "Don\'t show again", and once after each update. It is always under Library, About.';
-  dlg.showModal();
+  $('tour').classList.toggle('side', page.id !== 'top');
+  const next = pages[tourPage + 1]; const prev = pages[tourPage - 1];
+  $('tour-next').hidden = !next; $('tour-prev').hidden = !prev;
+  if (next) $('tour-next').textContent = `Walk me through the next page: ${next.name}`;
+  if (prev) $('tour-prev').textContent = `Back to ${prev.name}`;
+  $('tour-never').hidden = tourManual;
+  $('tour-foot').textContent = tourManual ? 'The ? button at the top opens this guide for the page you are on.' : 'It opens at each start until you choose "Don\'t show again", and once after each update. The ? button at the top opens it for the page you are on.';
   tourPlace();
-  $('tour-ok').focus();
+}
+
+/** Go to another page of the guide: open that page of the app, let it draw, and point at its parts. */
+function tourTo(index) {
+  const pages = tourPages();
+  tourPage = Math.max(0, Math.min(index, pages.length - 1));
+  const page = pages[tourPage];
+  if (page.view && view !== page.view) { showView(page.view); render(); if (page.view === 'map' && typeof bookLoad === 'function' && mapGo.tab === 'book') bookLoad(); }
+  if (page.open) page.open();
+  $(`view-${page.view || view}`)?.scrollTo?.(0, 0);
+  tourShow();
+  // Start at the top of the page: whatever scrolls around the first part goes back to its beginning.
+  const first = $('tour-list').firstElementChild && tourNode($('tour-list').firstElementChild.dataset.ids.split('|').find(tourVisible) || '');
+  for (let p = first && first.parentElement; p && p !== document.body; p = p.parentElement) if (p.scrollTop) p.scrollTop = 0;
+  tourPlace();
+  // The page draws in steps (lists arrive, the map loads): place the pins again once it has settled.
+  for (const ms of [120, 500, 1200]) setTimeout(() => { if ($('tour').open && tourPages()[tourPage] === page) tourShow(); }, ms);
+  ($('tour-next').hidden ? $('tour-ok') : $('tour-next')).focus();
+}
+
+function openTour({ manual = false, page = 'top' } = {}) {
+  const dlg = $('tour');
+  if (dlg.open) return;
+  tourManual = manual;
+  dlg.showModal();
+  tourTo(Math.max(0, tourPages().findIndex((p) => p.id === page)));
+  if (page === 'top') $('tour-ok').focus();
 }
 function closeTour(hide) {
   const dlg = $('tour');
   if (dlg.open) dlg.close();
   if (!tourManual) api.tourDone(hide).catch(() => {});
 }
+/** The guide's page for what is on the screen now. */
+function tourPageNow() { return view === 'hub' ? 'hub' : view === 'map' ? 'map' : view === 'school' ? 'school' : view === 'golf' ? 'golf' : view === 'library' ? 'library' : !$('ask').hidden ? 'ask' : 'top'; }
 $('tour-ok').addEventListener('click', () => closeTour(undefined));
 $('tour-never').addEventListener('click', () => closeTour(true));
+$('tour-next').addEventListener('click', () => tourTo(tourPage + 1));
+$('tour-prev').addEventListener('click', () => tourTo(tourPage - 1));
 $('tour').addEventListener('cancel', (e) => { e.preventDefault(); closeTour(undefined); });
 window.addEventListener('resize', () => { if ($('tour').open) tourPlace(); });
 $('about-tour').addEventListener('click', () => openTour({ manual: true }));
+$('nav-help').addEventListener('click', () => openTour({ manual: true, page: tourPageNow() }));
 $('about-tour-auto').addEventListener('change', (e) => api.tourDone(!e.target.checked).catch(() => {}));
 
 /** Open the tour by itself once the main window is in use: agreement accepted, a library open, nothing else in front. */
@@ -3252,7 +3508,7 @@ function renderGolf() {
   const g = state?.golf || null;
   const playing = golfPlaying();
   document.body.classList.toggle('golf-playing', playing);
-  for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'nav-map', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
+  for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'nav-map', 'lib-select', 'toggle-ask', 'open-library', 'open-hub', 'nav-help', 'edition-stamp', 'ask']) $(id).inert = playing;
   $('nav-golf').setAttribute('aria-pressed', String(view === 'golf'));
   // A round left in progress is marked with a dot, and said, without looking like the page that is open.
   $('nav-golf').classList.toggle('has-round', Boolean(g) && view !== 'golf');

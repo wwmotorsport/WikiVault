@@ -66,7 +66,15 @@ Each row says where it stands:
 - **Working**, **Failed** (with the reason), or **Not chosen**.
 - **New** marks what has been added since the version you last had.
 
-Tick what you want. For the map, tick the areas and choose how much detail to keep. **Work out the sizes** reads only summaries and fills in how big each ticked thing is; the line under the list adds them up and sets the total against the free space on the library's drive. **Download everything ticked** then fetches them one after another: school books, map, directions, places, addresses, the slow places last, and the other libraries once Wikipedia is there. The offline answers set themselves up alongside, and are then tuned to this computer by timing the models that suit it. You can leave the page and use the app meanwhile. If the app is closed part-way, it carries on when it is opened again. One thing failing does not stop the rest.
+Tick what you want. For the map, tick the areas and choose how much detail to keep.
+
+**Sizes.** Two columns run down the right of the rows. *Still to download* is what each row will fetch as it is ticked now; it changes as you tick, untick, add a region or choose less detail. *Downloaded* is what that row already has on the disk. A row that is not ticked shows its size in italics, "if ticked". Under the list, **In all** adds up each column. Sizes that have to be asked for (the map, the directions, the addresses and places, the other libraries) are worked out by the page itself when it is opened and when the choice changes; this reads only summaries, takes a minute or two, and needs a connection. **Work out the sizes** asks again if that failed.
+
+**Room on the disk.** A bar shows the whole of the drive the library is on: grey for everything else on it, blue for what Wikivault has downloaded, striped amber for what the ticked rows will add, and white for what stays free. The sizes are written under it. When the library has a partition of its own, that partition is the first bar and the drive it was cut from is a second one below. If what is ticked will not fit, the part to be added turns red, the page says by how much, and **Download everything ticked** asks first: change what is ticked, make the partition larger, add storage, or download anyway.
+
+**Download everything ticked** fetches the rows one after another: school books, map, directions, places, addresses, the slow places last, and the other libraries once Wikipedia is there. The offline answers set themselves up alongside, and are then tuned to this computer by timing the models that suit it.
+
+**While it downloads**, the row at work shows a progress bar, a line saying what is being fetched and how far it has got, the speed, and about how long is left, so there is no need to go to the page it belongs to. Speeds are in megabytes a second. A step that is not a download, such as sorting the addresses or checking a file, has a bar and no speed. You can leave the page and use the app meanwhile. If the app is closed part-way, it carries on when it is opened again. One thing failing does not stop the rest.
 
 The page opens by itself the first time the app is run, and once after each update, with what is new at the top. **I'll do this later** closes it. On a new installation the first row, *Where the library lives, and Wikipedia*, leads to the first-run page described next; the other rows can be fetched as soon as the library has a home, while Wikipedia is still downloading.
 
@@ -206,7 +214,11 @@ The folded-map button in the top bar opens an offline map. The tools are on the 
 
 To change the regions or the detail, or to get a newer map, press *Change or update* and do the same again. The map you have stays in use until the new one is complete.
 
-**What the map shows.** Under the summary, *What the map shows* opens a list of switches. *Dark map* turns the map dark for a dark room or a night drive. The others switch kinds of feature off and on: woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Highways and main roads are always drawn. Your choices are kept.
+**The key.** A small key in the corner of the map says what each line and colour stands for: Interstates and freeways, main roads, streets, tracks and paths, railways, borders, water, woodland, parks and buildings. It lists only what is switched on, and it adds the app's own marks while they are on the map: your route with its start and destination, pinned and saved places, places found, blocked areas, and where you are. *Hide* folds it to a small button.
+
+**Road numbers** are drawn as the signs beside the road: a red, white and blue shield for an Interstate, a white shield for a US highway, and a plain white sign for state and other numbered roads. The map data marks Interstates as such; a US highway is told by how its number is written, so a few may show the plain sign.
+
+**What the map shows.** Under the summary, *What the map shows* opens a list of switches. Beside each switch is a small picture of what it draws, in the colours of the look chosen. *Dark map* turns the map dark for a dark room or a night drive. The others switch kinds of feature off and on: woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Highways and main roads are always drawn. Your choices are kept.
 
 On the map, highways are orange, main roads amber, streets white, and tracks and paths brown and dashed. Roads are drawn heavier as you zoom in.
 
@@ -380,9 +392,13 @@ If the library is switched to a newer edition during a round, the round ends, be
 
 If a turn does not end when you reach the target, `wikivault.log` has a line for the hole ("golf: hole 1 laid out...") and one for every page opened during the turn, with what the game made of it.
 
-## The tour
+## The tour, and a guide for every page
 
-A short tour opens over the main window: numbered pins on the buttons along the top, and a card that says what each one does. **Got it** closes it; it opens again at the next start. **Don't show again** stops that. The first time a new version runs it opens once more, with a short list of what is new. **Library > About > Show the tour** opens it at any time, and the tick box beside it switches the automatic opening back on.
+A short tour opens over the main window: numbered pins on the buttons along the top, and a card that says what each one does. **Got it** closes it; it opens again at the next start. **Don't show again** stops that. The first time a new version runs it opens once more, with a short list of what is new.
+
+The tour goes on from there. **Walk me through the next page** opens the next page of the app and points at its parts in the same way: Setup, Ask, Map, School, Wiki golf and Library, in that order, with a button to go back. On these pages the card sits in the corner, and pointing at one of its lines lights the part it is about and brings it into view when the page is longer than the window.
+
+The **?** button at the end of the top bar opens the guide for whichever page you are on, at any time. **Library > About > Show the tour** starts it from the beginning, and the tick box beside it switches the automatic opening back on.
 
 ## Download speed
 
