@@ -152,8 +152,11 @@ function gpsGuide(fix) {
   if (u.dist < 30) gps.slack = 0;
   gps.progress = u;
   if (u.arrived) {
-    gpsBanner('You have arrived', '');
-    if (!gps.arrived) { gps.arrived = true; gpsSay('You have arrived.'); }
+    // An address that was not found exactly: the end of the route is near it, or only in its town, and that is said.
+    const to = mapGo.to && mapGo.to.approx ? mapGo.to : null;
+    const rough = to && to.how === 'town';
+    gpsBanner(to ? 'You have reached the approximate position' : 'You have arrived', rough ? 'This is the middle of the town or ZIP code, not the address: the address was not found in the data.' : to ? 'The exact address was not found in the data. It should be close by.' : '');
+    if (!gps.arrived) { gps.arrived = true; gpsSay(rough ? 'You have reached the middle of the town. The exact address was not found, so this is not the address itself.' : to ? 'You have reached the approximate position. The exact address was not found. It should be close by.' : 'You have arrived.'); }
     return;
   }
   if (u.off) {
@@ -195,8 +198,15 @@ function gpsDraw() {
   mapView.getSource('gps').setData({ type: 'FeatureCollection', features: f && f.has ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [f.lon, f.lat] } }] : [] });
 }
 
+/** Where a receiver can be bought, when the app has been given one to point to: the words and the link. */
+function gpsBuy() {
+  const g = state && state.gear && state.gear.gps;
+  if (!g) return null;
+  return { text: `No receiver yet?${g.note ? ` ${g.note}` : ''}`, label: `${g.name || 'USB GPS receiver'}${g.seller ? ` on ${g.seller}` : ''} (opens your web browser)`, url: g.url };
+}
 function paintGps() {
   if (!$('gps-status')) return;
+  { const buy = gpsBuy(); const off = gps.status === 'off' || gps.status === 'lost'; $('gps-buy').hidden = !(buy && off); if (buy) { $('gps-buy-text').textContent = buy.text; $('gps-buy-link').textContent = buy.label; } }
   if (view === 'map') gpsResume();
   const f = gps.fix; const on = gps.status === 'waiting' || gps.status === 'fix';
   let text = 'Not connected. Plug in a USB GPS receiver and press the button.';
@@ -229,3 +239,5 @@ async function gpsResume() {
 }
 
 api.onGpsPorts((list) => { gps.ports = list; });
+
+$('gps-buy-link').addEventListener('click', () => { const buy = gpsBuy(); if (buy) api.openExternal(buy.url); });

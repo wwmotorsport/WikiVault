@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('api', {
   schoolLesson: (id) => call('school:lesson', { id }),
   mapsMeasure: (regions) => call('maps:measure', { regions }),
   mapsDownload: (regions, zoom) => call('maps:download', { regions, zoom }),
-  mapsPlaces: (regions) => call('maps:places', { regions }),
+  mapsPlaces: (regions, near) => call('maps:places', { regions, near: near || null }),
   mapsCancel: () => call('maps:cancel'),
   mapsSearch: (o) => call('maps:search', o),
   mapsOrigin: () => call('maps:origin'),

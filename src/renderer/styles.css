@@ -680,6 +680,7 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 
 /* Addresses: a position that was worked out and not found is said to be so. */
 .map-approx { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #b26a00; background: rgba(178, 106, 0, 0.09); font-size: 13px; }
+.map-approx-rough { border-left-color: #b3261e; background: rgba(179, 38, 30, 0.09); font-size: 14px; }
 .map-hit-approx { display: block; color: #8a5200; font-size: 13px; font-weight: 600; }
 
 /* How full the library's partition is. */
@@ -829,3 +830,8 @@ dialog #trip-list li { margin-bottom: 0; }
 .map-look-marks:empty { display: none; }
 .map-look-mark { display: flex; align-items: center; }
 .map-look-mark .map-key-sign { height: 16px; }
+
+/* A link to the web, in a line of text */
+.link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--link, #1a56c4); text-decoration: underline; cursor: pointer; text-align: left; }
+.link-btn:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+.hub-link { margin: 8px 0 0; }

@@ -30,6 +30,7 @@ const { sisterLink, pathCandidates } = require('../core/links');
 const { tourPlan } = require('../core/tour');
 const http = require('node:http');
 const schoolCore = require('../core/school');
+const { features } = require('../core/features');
 const { SchoolLibrary } = require('../core/school-library');
 const { MapsLibrary } = require('../core/maps-library');
 const routing = require('../core/routing');
@@ -449,6 +450,19 @@ async function diskInfo(probeDir) {
   return { library, main, onPartition };
 }
 
+// Hardware the app can point people to: a name and a web link, kept in one file so that it is changed in one place.
+const GEAR = (() => {
+  const web = (g) => (g && /^https:\/\//i.test(String(g.url || '')) ? { name: String(g.name || '').slice(0, 120), url: String(g.url), seller: String(g.seller || '').slice(0, 40), note: String(g.note || '').slice(0, 200) } : null);
+  try { const all = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'gear.json'), 'utf8')); return { gps: web(all.gps) }; } catch { return { gps: null }; }
+})();
+
+// Which parts of the app are in this build, on this computer (see core/features.js). Read once the settings are in.
+let featuresRead = null;
+function featuresNow() {
+  if (!featuresRead) featuresRead = features({ pkg: require('../../package.json'), settings, env: process.env });
+  return featuresRead;
+}
+
 async function getState() {
   const dir = settings.dataDir || defaultDataDir();
   let probeDir = dir;
@@ -456,6 +470,8 @@ async function getState() {
   const pub = { ...settings, ai: { ...settings.ai, apiKey: settings.ai.apiKey ? '•••' : '' } };
   return {
     version: app.getVersion(),
+    gear: GEAR,
+    features: featuresNow(),
     acknowledged: Number(settings.acknowledged) >= TERMS_VERSION,
     tour: { ...tourThisRun(), auto: !settings.tour.hide },
     platform: process.platform,
@@ -839,6 +855,8 @@ const mapsBytes = () => (maps ? maps.status().bytes : 0);
 async function initSchool() {
   if (school) { school.cancel(); school.removeAllListeners(); }
   stopIndexer();
+  // School is still being built: a build that leaves it out starts none of it. Files already on the disk are left alone.
+  if (!featuresNow().school) { school = null; return; }
   const manifest = schoolCore.loadManifest(path.join(schoolCore.MANIFEST_DIR, `${SCHOOL_GRADE}.json`));
   // Tests fetch from a stand-in server instead of the publisher.
   const base = process.env.WIKIVAULT_SCHOOL_BASE;
@@ -1647,6 +1665,13 @@ async function changePartition({ sizeBytes, staged, allowBattery }) {
 // ---------------------------------------------------------------- the address book and contacts accounts
 
 let book = null;
+/** Where the places are wanted first: where you are, else the place pinned as home. */
+function placesNear(a) {
+  const ok = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  if (a && ok(a.near)) return { lat: a.near.lat, lon: a.near.lon };
+  const home = book ? book.pinned('home').find(ok) : null;
+  return home ? { lat: home.lat, lon: home.lon } : null;
+}
 let bookBusy = null; // what the book is doing with an account, in words, or null
 let gpsWanted = null; // the serial port the window asked to open next
 
@@ -1857,7 +1882,7 @@ function registerIpc() {
     const free = await freeAt(settings.dataDir);
     return mapJob('map', maps.downloadMap(mapRegions(a), Number(a.zoom), { free }));
   }));
-  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a)).then((r) => { if (r) refreshPlacing(); return r; })); }));
+  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a), { near: placesNear(a) }).then((r) => { if (r) refreshPlacing(); return r; })); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
   handle('maps:search', inMaps((a) => {
     const r = maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 });
@@ -1961,7 +1986,7 @@ function registerIpc() {
     return { ...route, alt: o.alt, mode: o.mode, named: names.size > 0 };
   }));
   handle('maps:origin', inMaps(async () => (await startSchoolServer()).origin));
-  const inSchool = (fn) => (arg) => { if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
+  const inSchool = (fn) => (arg) => { if (!featuresNow().school) throw new Error('School is not part of this version yet.'); if (!school) throw new Error('Set up the library first.'); return fn(arg || {}); };
   handle('school:overview', inSchool(() => school.overview()));
   handle('school:week', inSchool(({ number }) => school.week(Number(number) || school.currentWeek())));
   handle('school:lesson', inSchool(({ id }) => { const l = school.lesson(String(id)); if (!l) throw new Error('That lesson is not in the plan. A unit may have been skipped.'); return l; }));

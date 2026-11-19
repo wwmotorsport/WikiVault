@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -86,5 +86,10 @@
         "to": "java"
       }
     ]
+  },
+  "wikivault": {
+    "features": {
+      "school": false
+    }
   }
 }

@@ -40,6 +40,12 @@ async function writeJson(file, value) {
 }
 async function readJson(file) { try { return JSON.parse(await fsp.readFile(file, 'utf8')); } catch { return null; } }
 
+// What one question to a places server claims of it, and how long the app waits for the answer: the claim, a wait
+// for a free slot, and the sending. A question that claims little is let in sooner, and one that is too big for
+// its claim says so quickly and is cut into four.
+const PLACES_CLAIM = { timeout: 120, maxsize: 256 * 1024 * 1024 };
+const PLACES_WAIT = 170000;
+
 class MapsLibrary extends EventEmitter {
   /**
    * @param {object} o
@@ -183,7 +189,7 @@ class MapsLibrary extends EventEmitter {
       const url = servers[(prefer + attempt) % servers.length];
       if (signal.aborted) throw new Error('Stopped.');
       try {
-        const res = await this.fetch(this.rewrite(url), { method: 'POST', signal, timeoutMs: 330000, headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': this.agent }, body: `data=${encodeURIComponent(query)}` });
+        const res = await this.fetch(this.rewrite(url), { method: 'POST', signal, timeoutMs: PLACES_WAIT, gzip: true, headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': this.agent }, body: `data=${encodeURIComponent(query)}` });
         if (!res.ok) drop(res);
         if (res.status === 429 || res.status === 504 || res.status === 503) { lastErr = new Error(`The places server is busy (it answered ${res.status}).`); await this.pause(15000 * (attempt + 1)); continue; }
         if (!res.ok) { lastErr = new Error(`The places server answered ${res.status}.`); await this.pause(5000); continue; }
@@ -210,8 +216,13 @@ class MapsLibrary extends EventEmitter {
    * disk in `places.work` as it arrives. A run that fails or is stopped keeps what it has: the next run for the
    * same regions asks only for the pieces still missing. A piece that fails goes to the back of the queue and is
    * tried again later; the run gives up only when one piece has failed three times.
+   *
+   * The servers let a question in sooner the less time and memory it claims, and their rules allow one question
+   * at a time from one program. So speed comes from asking for little at once, not from asking more at once:
+   * small pieces, a short time limit, and an answer that is sent compressed. The pieces nearest `near` ({lat, lon})
+   * come first, and while no complete set is in use, what has arrived is put to use as it comes.
    */
-  async downloadPlaces(regionIds) {
+  async downloadPlaces(regionIds, { near = null } = {}) {
     const job = this.begin('places', { done: 0, total: 0, found: 0 });
     const fresh = path.join(this.dir, 'places.new');
     const work = path.join(this.dir, 'places.work');
@@ -222,14 +233,29 @@ class MapsLibrary extends EventEmitter {
       const cats = this.registry.categories;
       const signal = job.controller.signal;
       const key = this.placesKey(regionIds);
+      const step = this.registry.placesStep || 2.5;
       state = await readJson(stateFile);
       if (!state || state.v !== 1 || state.key !== key) {
         await fsp.rm(work, { recursive: true, force: true });
         await fsp.mkdir(work, { recursive: true });
-        state = { v: 1, key, regions: regionIds, next: 0, found: 0, done: [], todo: places.boxesOf(rings, this.registry.placesStep || 5).map((box) => ({ box, depth: 0 })) };
+        state = { v: 1, key, step, regions: regionIds, next: 0, found: 0, done: [], todo: places.boxesOf(rings, step).map((box) => ({ box, depth: 0 })) };
         await writeJson(stateFile, state);
-      } else if (state.done.length) this.log(`places: carrying on, ${state.done.length} of ${state.done.length + state.todo.length} pieces already here`);
+      } else {
+        // Pieces left over from a version that asked for larger ones are cut down to today's size; what is here is kept.
+        for (let was = state.step || 5; was > step * 1.5; was /= 2) state.todo = state.todo.flatMap((p) => (p.depth ? [p] : places.quarter(p.box).filter((b) => places.boxTouches(rings, b)).map((box) => ({ box, depth: 0 }))));
+        state.step = step;
+        if (state.done.length) this.log(`places: carrying on, ${state.done.length} of ${state.done.length + state.todo.length} pieces already here`);
+      }
       for (const p of state.todo) { p.busy = false; p.fails = 0; }
+      // Nearest first: the places around home are the ones wanted soonest.
+      if (near && Number.isFinite(near.lat) && Number.isFinite(near.lon)) {
+        const far = (p) => places.km(near.lat, near.lon, (p.box[0] + p.box[2]) / 2, (p.box[1] + p.box[3]) / 2);
+        state.todo.sort((a, b) => far(a) - far(b));
+      }
+      // What arrives is put to use as it comes, unless a complete set is in use: that one stays until the new one is whole.
+      const early = !this.placesInfo || Boolean(this.placesInfo.partial);
+      let shown = this.placesInfo && this.placesInfo.partial && this.placesInfo.partial.key === key ? this.placesInfo.partial.done : 0;
+      const started = Date.now(); let answered = 0; let spent = 0;
       const save = () => writeJson(stateFile, { ...state, todo: state.todo.map(({ box, depth }) => ({ box, depth })) });
       const tell = () => { const at = { done: state.done.length, total: state.done.length + state.todo.length }; this.placesKept = at.done ? { regions: regionIds, ...at } : null; this.progress({ ...at, found: state.found }); };
       tell();
@@ -242,7 +268,8 @@ class MapsLibrary extends EventEmitter {
           if (!piece) { if (!state.todo.length) return; await new Promise((r) => setTimeout(r, 40)); continue; } // another may still cut its piece into smaller ones
           piece.busy = true;
           let r = null;
-          try { r = await this.ask(places.queryFor(cats, piece.box), signal, n); } catch (err) {
+          const asked = Date.now();
+          try { r = await this.ask(places.queryFor(cats, piece.box, PLACES_CLAIM), signal, n); } catch (err) {
             if (signal.aborted) return;
             piece.fails += 1; piece.busy = false;
             this.log(`places: a piece failed (${piece.fails} of 3): ${err.message}`);
@@ -259,7 +286,17 @@ class MapsLibrary extends EventEmitter {
             for (const el of r.elements) { const rec = places.recordOf(cats, el); if (rec && places.inRings(rings, rec.o, rec.a)) recs.push(rec); }
             const name = `p${state.next++}.json`;
             // One answer at a time goes to disk, and the list of what is done is only updated once it is there.
-            writing = writing.then(async () => { await fsp.writeFile(path.join(work, name), JSON.stringify(recs)); state.todo.splice(state.todo.indexOf(piece), 1); state.done.push(name); state.found += recs.length; await save(); });
+            writing = writing.then(async () => {
+              await fsp.writeFile(path.join(work, name), JSON.stringify(recs)); state.todo.splice(state.todo.indexOf(piece), 1); state.done.push(name); state.found += recs.length; await save();
+              answered += 1; spent += Date.now() - asked;
+              if (answered % 20 === 0) this.log(`places: ${state.done.length} of ${state.done.length + state.todo.length} pieces, ${state.found} places; the last 20 answers took ${Math.round(spent / 20000)} s each on average, ${Math.round((Date.now() - started) / 60000)} min since this run began`), spent = 0;
+              // The first piece at once (it is the nearest), then every so often.
+              const every = Math.max(10, Math.ceil((state.done.length + state.todo.length) / 20));
+              if (early && state.todo.length && (!shown || state.done.length - shown >= every)) {
+                shown = state.done.length;
+                await this.putPlaces(work, state.done, cats, regionIds, { key, done: state.done.length, total: state.done.length + state.todo.length }).catch((err) => this.log(`places: what is here could not be put to use yet: ${err.message}`));
+              }
+            });
             await writing;
           }
           tell();
@@ -271,34 +308,10 @@ class MapsLibrary extends EventEmitter {
       if (signal.aborted) throw new Error('Stopped.');
       if (failure) throw failure;
 
-      // Every piece is here: put them together. A place on the edge of two pieces came twice.
-      const byCat = new Map(cats.map((c) => [c.id, []]));
-      const seen = new Set();
-      for (const name of state.done) {
-        for (const rec of JSON.parse(await fsp.readFile(path.join(work, name), 'utf8'))) {
-          if (seen.has(rec.i) || !byCat.has(rec.c)) continue;
-          seen.add(rec.i);
-          byCat.get(rec.c).push(rec);
-        }
-      }
-      await fsp.rm(fresh, { recursive: true, force: true });
-      await fsp.mkdir(fresh, { recursive: true });
-      const counts = {}; let bytes = 0;
-      for (const [id, items] of byCat) {
-        items.sort((a, b) => a.a - b.a || a.o - b.o);
-        for (const it of items) delete it.c;
-        const file = path.join(fresh, `${id}.json`);
-        await fsp.writeFile(file, JSON.stringify({ v: 1, items }));
-        counts[id] = items.length; bytes += (await fsp.stat(file)).size;
-      }
-      const live = path.join(this.dir, 'places');
-      await fsp.rm(live, { recursive: true, force: true });
-      await fsp.rename(fresh, live);
+      // Every piece is here: put them together.
+      await this.putPlaces(work, state.done, cats, regionIds, null);
       await fsp.rm(work, { recursive: true, force: true }).catch(() => {});
       this.placesKept = null;
-      this.placesInfo = { regions: regionIds, date: new Date().toISOString(), total: seen.size, counts, bytes };
-      await writeJson(path.join(this.dir, 'places.json'), this.placesInfo);
-      this.loaded.clear();
       this.end();
       return this.placesInfo;
     } catch (err) {
@@ -308,6 +321,40 @@ class MapsLibrary extends EventEmitter {
       if (r.stopped) return null;
       throw err;
     }
+  }
+
+  /**
+   * Put the pieces named together as the places in use. A place on the edge of two pieces came twice.
+   * `partial` ({key, done, total}) marks a set that is not whole yet.
+   */
+  async putPlaces(work, names, cats, regionIds, partial) {
+    const fresh = path.join(this.dir, 'places.new');
+    const byCat = new Map(cats.map((c) => [c.id, []]));
+    const seen = new Set();
+    for (const name of names) {
+      for (const rec of JSON.parse(await fsp.readFile(path.join(work, name), 'utf8'))) {
+        if (seen.has(rec.i) || !byCat.has(rec.c)) continue;
+        seen.add(rec.i);
+        byCat.get(rec.c).push(rec);
+      }
+    }
+    await fsp.rm(fresh, { recursive: true, force: true });
+    await fsp.mkdir(fresh, { recursive: true });
+    const counts = {}; let bytes = 0;
+    for (const [id, items] of byCat) {
+      items.sort((a, b) => a.a - b.a || a.o - b.o);
+      for (const it of items) delete it.c;
+      const file = path.join(fresh, `${id}.json`);
+      await fsp.writeFile(file, JSON.stringify({ v: 1, items }));
+      counts[id] = items.length; bytes += (await fsp.stat(file)).size;
+    }
+    const live = path.join(this.dir, 'places');
+    await fsp.rm(live, { recursive: true, force: true });
+    await fsp.rename(fresh, live);
+    this.placesInfo = { regions: regionIds, date: new Date().toISOString(), total: seen.size, counts, bytes, ...(partial ? { partial } : {}) };
+    await writeJson(path.join(this.dir, 'places.json'), this.placesInfo);
+    this.loaded.clear();
+    return this.placesInfo;
   }
 
   // ---------------------------------------------------------------- routing data

@@ -4,6 +4,7 @@
 
 const http = require('node:http');
 const https = require('node:https');
+const zlib = require('node:zlib');
 
 const USER_AGENT = 'Wikivault/0.1 (offline Wikipedia reader)';
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
@@ -122,12 +123,18 @@ async function fetchLike(url, opts = {}) {
   for (const [k, v] of Object.entries(opts.headers || {})) headers[k.toLowerCase()] = v;
   const body = opts.body == null ? undefined : Buffer.from(opts.body);
   if (body) headers['content-length'] = body.length;
+  // `gzip` asks for a compressed answer, for text that is read whole (json, text, arrayBuffer): it is opened here.
+  if (opts.gzip && !headers['accept-encoding']) headers['accept-encoding'] = 'gzip';
   const { res, url: finalUrl } = await open(url, { method: opts.method || 'GET', headers, body, signal: opts.signal, timeoutMs: opts.timeoutMs || 120000 });
   // A connection lost before anyone is reading must not become an error nobody is listening for.
   res.on('error', () => {});
   const cap = opts.maxBytes || 256 * 1024 * 1024;
   // Read with the stream's own iterator: it reports a connection that was already lost, where listeners added late would wait for ever.
-  const whole = async () => { const chunks = []; let size = 0; for await (const c of res) { size += c.length; if (size > cap) throw new Error('Response too large'); chunks.push(c); } return Buffer.concat(chunks); };
+  const whole = async () => {
+    const chunks = []; let size = 0; for await (const c of res) { size += c.length; if (size > cap) throw new Error('Response too large'); chunks.push(c); }
+    const all = Buffer.concat(chunks);
+    return opts.gzip && /\bgzip\b/i.test(String(res.headers['content-encoding'] || '')) ? zlib.gunzipSync(all, { maxOutputLength: cap * 4 }) : all;
+  };
   return {
     status: res.statusCode,
     ok: res.statusCode >= 200 && res.statusCode < 300,

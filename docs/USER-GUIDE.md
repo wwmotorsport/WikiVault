@@ -57,7 +57,7 @@ Download the newer installer the same way and run it. It replaces the app and ke
 
 ## Setup and downloads
 
-**Setup**, in the top bar, is one page for everything the app can fetch or set up: Wikipedia, the offline answers, the school books, the map, directions, addresses, places, the other libraries, a GPS receiver and the address book. The number on the button is how many ticked things are still to do.
+**Setup**, in the top bar, is one page for everything the app can fetch or set up: Wikipedia, the offline answers, the map, directions, addresses, places, the other libraries, a GPS receiver and the address book. The number on the button is how many ticked things are still to do.
 
 Each row says where it stands:
 
@@ -72,7 +72,7 @@ Tick what you want. For the map, tick the areas and choose how much detail to ke
 
 **Room on the disk.** A bar shows the whole of the drive the library is on: grey for everything else on it, blue for what Wikivault has downloaded, striped amber for what the ticked rows will add, and white for what stays free. The sizes are written under it. When the library has a partition of its own, that partition is the first bar and the drive it was cut from is a second one below. If what is ticked will not fit, the part to be added turns red, the page says by how much, and **Download everything ticked** asks first: change what is ticked, make the partition larger, add storage, or download anyway.
 
-**Download everything ticked** fetches the rows one after another: school books, map, directions, places, addresses, the slow places last, and the other libraries once Wikipedia is there. The offline answers set themselves up alongside, and are then tuned to this computer by timing the models that suit it.
+**Download everything ticked** fetches the rows one after another: map, directions, places, addresses, the slow places last, and the other libraries once Wikipedia is there. The offline answers set themselves up alongside, and are then tuned to this computer by timing the models that suit it.
 
 **While it downloads**, the row at work shows a progress bar, a line saying what is being fetched and how far it has got, the speed, and about how long is left, so there is no need to go to the page it belongs to. Speeds are in megabytes a second. A step that is not a download, such as sorting the addresses or checking a file, has a bar and no speed. You can leave the page and use the app meanwhile. If the app is closed part-way, it carries on when it is opened again. One thing failing does not stop the rest.
 
@@ -226,7 +226,14 @@ Buildings, like everything on the map, are what OpenStreetMap's volunteers have 
 
 **Places.** In the same panel, *Fetch the places* asks OpenStreetMap for the places in the ticked regions: hospitals, clinics and pharmacies; fire, police and ambulance stations; water and wastewater works, water towers, drinking water, springs and wells; power plants and substations; fuel; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; and cities, towns and villages. Places can be fetched with or without the map.
 
-The servers that answer are free and shared, and they are slow and often busy. So the regions are cut into pieces of about five degrees, the pieces are asked for two at a time (one from each server), and every answer is kept on disk as it arrives. A piece that fails is tried again after the others. If the run still fails, or you stop it or close the app, nothing that arrived is lost: fetch the places again and only the missing pieces are asked for. The Setup page says how many pieces are already here, and its *Fetch everything* asks again by itself a few times. The whole of the contiguous United States is some sixty pieces to begin with, more where a busy area has to be cut smaller.
+The servers that answer are free and shared, and they are slow and often busy; their rules allow one question at a time from a program, so the app cannot hurry them by asking for more at once. What it does instead:
+
+- The regions are cut into small pieces, about two and a half degrees across, and each question asks for little of the server's time and memory. Small questions are let in sooner, and one that is too big says so quickly and is cut into four.
+- The pieces nearest you come first: around your GPS position if a receiver is connected, otherwise around the place you pinned as *Home*.
+- What has arrived can be searched straight away. The map page says how many places are in so far, and from how many pieces. (When a complete set is already in use and you are updating it, the old set stays until the new one is whole.)
+- Every answer is kept on disk as it arrives. A piece that fails is tried again after the others. If the run still fails, or you stop it or close the app, nothing that arrived is lost: fetch the places again and only the missing pieces are asked for. The Setup page asks again by itself a few times.
+
+The whole of the contiguous United States is a few hundred pieces, and still takes hours when the servers are busy. The places from Overture Maps (below) arrive in minutes and cover shops, fuel, hospitals and other businesses meanwhile; the OpenStreetMap places add what Overture does not have, such as towns, water works, springs and power plants.
 
 **Finding a place.** Type a name, a street or a town and press *Find*. The best match opens on the map. Or choose a *Kind of place* and leave the box empty: the map then shows the places of that kind in view, and the list has them nearest the middle of the map first, with the distance. Move the map and the list follows.
 
@@ -239,6 +246,8 @@ Once the addresses are there, type one in the Places box or as the start or dest
 - An address that is in the data is shown as it is.
 - A number that is not in the data is placed between the nearest known numbers on the same street, and marked *Approximate position*. The note says which numbers it lies between.
 - If only the town or the ZIP code can be found, you get the middle of it, marked *Approximate: the town only*.
+
+**Directions to an approximate place say so.** Above the turns, an amber note says the start or the destination is approximate and why. When all that could be found is the town or the ZIP code, the note is red and says plainly that the directions do not end at the address. The end of such a route has an orange ring on the map, and the key names it. Ask says the same when it works out a route, and with a GPS receiver the app does not say "You have arrived" at an approximate place: it says you have reached the approximate position, or the middle of the town, and that the address itself was not found.
 - A row of the data that names no town, or names the suburb where you wrote the city, is still found when it lies near the town or ZIP code you gave. When the data has it under another town's name, the note says so.
 - Directions to an approximate address carry the same warning above the steps. They will take you to the right street and close to the house, not to the door.
 
@@ -252,7 +261,7 @@ Places that come from Overture say so when opened. They are added only where Ope
 - if you leave the route, a new one is worked out from where you are;
 - *Speak the turns* reads each turn aloud as it comes up, using the voices Windows has.
 
-The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port.
+The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port. *No receiver yet?* under the button and on the Setup page opens the shop page of one such receiver, the GlobalSat BU-353N5, in your web browser. Any receiver of the kind described above should do.
 
 **Saved: the address book.** The *Saved* tab keeps people and places: a name, an address, telephone numbers and notes. An entry's address is looked up in the app's own address data to place it on the map, with the same *Approximate* marking as any address; one that cannot be found can be placed by clicking the map.
 
@@ -301,63 +310,11 @@ The engine works out routes from the roads as they were mapped, with no knowledg
 
 **Credit.** Map data and places are © OpenStreetMap contributors, under the Open Database License. The map file is cut from the Protomaps basemap. Wikivault is not affiliated with either.
 
-## School: Grade 5
+## School (in development)
 
-The open-book button in the top bar opens a full year of Grade 5, arranged as 36 weeks of five days in two semesters. The lessons are the Core Knowledge Foundation's free curriculum, used as published:
+A school section, a full year of Grade 5 lessons laid out week by week, is being built and is **not in this version**. It is switched off in the released app while it is finished, and will come back in a later version. Nothing of it is downloaded or shown meanwhile. If an earlier version of Wikivault downloaded school files on your computer, they are left where they are, in `<library>\school\`, and move with the library.
 
-| Subject | Series | About a day | What is in the files |
-|---|---|---|---|
-| Language Arts | Core Knowledge Language Arts (CKLA) | 90 minutes | Teacher guides with every lesson, readers, activity books, tests and answer keys |
-| Mathematics | Core Knowledge Mathematics (CKMath), built on Illustrative Mathematics' IM K-5 Math | 60 minutes | Teacher guides with lesson plans and answers, student workbooks, unit tests |
-| History and Geography | Core Knowledge History and Geography (CKHG) | 45 minutes | Student readers, teacher guides with questions, tests and answer keys |
-| Science | Core Knowledge Science (CKSci) | 45 minutes | Student readers, teacher guides with investigations, tests and answer keys |
-
-Visual Arts and Music are not included yet.
-
-**Before downloading.** The plan is part of the app. The week, the year and the list of what to buy can all be read straight away; only the links into the books wait for the files.
-
-**Downloading.** *Download the Grade 5 files* fetches 105 PDF files (about 710 MB) from coreknowledge.org into `<library>\school\`. If the line above the tabs says a file could not be downloaded, press Download again; it fetches only what is missing. It needs Wikipedia to be set up first and at least 4 GB free. It can be cancelled and continued later; files already fetched are kept. Afterwards the app reads every page of every file once, in the background, so the books can be searched and opened at the right page. The line above the tabs shows how far it is and, at the end, the real size.
-
-**Guided lessons.** Every lesson in the week has a **Start lesson** button. It opens the lesson as a list of steps on the left with the book on the right:
-
-1. *Get ready*: the first page of the lesson in the teacher guide, which says what the lesson is for and what it needs.
-2. The parts of the lesson, in the order and with the times the guide gives them. In mathematics that is a warm-up, one to three activities, a lesson synthesis and a cool-down. In language arts it is the reading, writing, grammar and other parts, with the timed activities inside each. In history it is the introduction, the guided reading and the check for understanding, then the optional activities. In science it is the lesson's numbered steps, one day at a time.
-3. *Check the work and finish*: the answer key.
-
-**Next step** and **Back** move through the lesson, and the book turns to the page of each step. You can also click any step in the list. A step with a time has a timer you can start. Under *Books for this lesson*, buttons switch the book between the teacher guide, the student pages, the reader and the answer key without leaving the lesson. **Finish the lesson** ticks it in the plan and offers the next lesson of the same day.
-
-The steps are read from the teacher guides, so they are the publisher's own. Three things to know. The guide is written for a teacher with a class: read "students" as your child and adapt group work. Some mathematics guides are printed in fonts whose letters cannot be read as text; their steps are still found, but may be named only "Activity 2", and a few have no time. And tests, review days and the end-of-year novel study have no parts to read, so they get three general steps.
-
-**The week.** *What this week covers* names the unit and lessons of each subject. Under it, each day lists its lessons, with their names where the guide gives them. Besides *Start lesson*, every lesson has links:
-
-- **Lesson plan**: the teacher guide, at that lesson.
-- **Student pages** or **Activity pages**: what the student works in.
-- **Reading** or **Reader**: the chapter read that day.
-- **Answer key**, **The test**, **Pacing guide**: where the unit has them.
-
-A link that says "p. 12" opens the book inside the app at the page the app found for it. The page comes from reading the book's text, not from a table the publisher supplies, so it can be a page or two off, and sometimes it is not found; then the link opens the book at its first page. The bar above the book says which book and page it is, and **Back to the plan** returns to the week. The viewer's own buttons print or save the file.
-
-Tick a lesson when it is done. The count at the top right is days of lessons done out of the year, and *Go to week N, where you are* jumps to the first week with something unticked.
-
-**The year.** Every unit of every subject: what it teaches, the weeks it falls in, the days done, and its files. Ticking **Skip** on a unit takes it out of the plan; that subject's remaining units then spread evenly over the 36 weeks. One science unit covers human growth and reproduction and is marked, so you can read it first and decide.
-
-**Search the school books.** The box at the top searches the text of every page of every book, including ones you added. A result opens the book at that page. This search is separate from the search box in the top bar and from Ask, which work on the encyclopedia.
-
-**Books and supplies.** The lessons are free, but a few are built on things that are not:
-
-- *They Call Me Güero* by David Bowles, the book the first language arts unit reads.
-- *Adventures of Don Quixote*, the Dover edition adapted by Argentina Palacios.
-- *The Science of Breakable Things* by Tae Keller, for the novel study that ends the year.
-- The *Poet's Journal* for the poetry unit, a workbook sold by Amplify to schools. If you cannot get it, skip that unit on the year page.
-- Materials for the science investigations. Each science teacher guide lists what its unit needs.
-
-Printing is optional: everything can be read on screen, but the activity pages are meant to be written on. The app buys and orders nothing; the boxes there are only your own checklist.
-
-**Books I have added.** PDFs you own, such as a course bought as a download, can be copied into the library with *Add PDF books*. They are searched with the rest and move with the library. Books bought from stores that lock them to a reader app cannot be added, because they are not plain PDF files.
-
-**Where it is kept, and how big it is.** `<library>\school\g5\` holds the PDFs, `school\index\` the text of their pages, and `school\progress-g5.json` your ticks. All of it moves with Wikipedia whenever the library is moved, counts toward the size of a dedicated partition, and is removed by the uninstaller if you ask it to remove your data. The PDFs are stored as the publisher made them. They are not compressed further: a PDF is already compressed inside, so packing it again saves very little.
-
-**Licences.** The Core Knowledge materials are under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 licence; the mathematics is based on IM K-5 Math by Illustrative Mathematics, under Creative Commons Attribution 4.0. They are free to use and copy for teaching and may not be sold. Wikivault is not affiliated with or endorsed by either.
+What it does so far is described in [SCHOOL.md](SCHOOL.md).
 
 ## Wiki golf
 
@@ -396,7 +353,7 @@ If a turn does not end when you reach the target, `wikivault.log` has a line for
 
 A short tour opens over the main window: numbered pins on the buttons along the top, and a card that says what each one does. **Got it** closes it; it opens again at the next start. **Don't show again** stops that. The first time a new version runs it opens once more, with a short list of what is new.
 
-The tour goes on from there. **Walk me through the next page** opens the next page of the app and points at its parts in the same way: Setup, Ask, Map, School, Wiki golf and Library, in that order, with a button to go back. On these pages the card sits in the corner, and pointing at one of its lines lights the part it is about and brings it into view when the page is longer than the window.
+The tour goes on from there. **Walk me through the next page** opens the next page of the app and points at its parts in the same way: Setup, Ask, Map, Wiki golf and Library, in that order, with a button to go back. On these pages the card sits in the corner, and pointing at one of its lines lights the part it is about and brings it into view when the page is longer than the window.
 
 The **?** button at the end of the top bar opens the guide for whichever page you are on, at any time. **Library > About > Show the tour** starts it from the beginning, and the tick box beside it switches the automatic opening back on.
 
@@ -584,7 +541,7 @@ When no article contains every word, the search is retried without filler words 
 | Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
 | The map and its places | `<library>\maps\` (`map.pmtiles`, `places\`) |
-| School books, their text index and your progress | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |
+| School books, their text index and your progress (School is in development and not in this version) | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |
 | Wiki golf players and records | `%APPDATA%\Wikivault\golf.json` |
 | The address book, and the sign-ins for contacts accounts (encrypted) | `%APPDATA%\Wikivault\addressbook.json`, `accounts.json` |
 

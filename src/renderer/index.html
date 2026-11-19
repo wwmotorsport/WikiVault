@@ -22,7 +22,7 @@
       <button class="icon-btn" id="nav-golf" title="Wiki golf: a game for one to six players" aria-label="Wiki golf" aria-pressed="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 17V3l8 3.200L7 9.400M3.500 17h7"/></svg>
       </button>
-      <button class="icon-btn" id="nav-school" title="School: a year of lessons, week by week" aria-label="School" aria-pressed="false">
+      <button class="icon-btn" id="nav-school" hidden title="School: a year of lessons, week by week" aria-label="School" aria-pressed="false">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 5.500C8 4 5.500 3.800 3 4.200v10.600c2.500-.400 5-.200 7 1.300 2-1.500 4.500-1.700 7-1.300V4.200c-2.500-.400-5-.200-7 1.300ZM10 5.500V16"/></svg>
       </button>
       <button class="icon-btn" id="nav-map" title="Map: offline map and places" aria-label="Map" aria-pressed="false">
@@ -280,6 +280,7 @@
                 <button type="button" class="btn small" id="gps-from" hidden>Start from my position</button>
                 <button type="button" class="btn small" id="gps-off" hidden>Disconnect</button>
               </div>
+              <p class="small-print" id="gps-buy" hidden><span id="gps-buy-text"></span> <button type="button" class="link-btn" id="gps-buy-link"></button></p>
               <label class="map-check" id="gps-follow-row" hidden><input type="checkbox" id="gps-follow"><span>Keep the map on my position</span></label>
               <label class="map-check" id="gps-speak-row" hidden><input type="checkbox" id="gps-speak"><span>Speak the turns</span></label>
             </fieldset>
