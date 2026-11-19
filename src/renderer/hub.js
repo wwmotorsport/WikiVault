@@ -3,7 +3,8 @@
 // and what is left, adds up the room it needs, and fetches the lot in one go.
 // It opens by itself the first time a version is run. Shares the page with app.js and uses its helpers.
 
-const hub = { want: null, sizes: { wikipedia: null, libs: {} }, errors: {}, running: false, stopAsked: false, current: null, measuring: false, waiters: [], popped: false, resumed: false, fresh: null, wasNew: null };
+const hub = { want: null, sizes: { wikipedia: null, libs: {} }, errors: {}, running: false, stopAsked: false, current: null, measuring: false, waiters: [], popped: false, resumed: false, fresh: null, wasNew: null, rates: {}, autoKey: null, autoTimer: null, autoNote: '' };
+const { driveParts: hubDriveParts, Rate: HubRate, timeLeft: hubTimeLeft } = WikivaultHubCalc;
 const HUB_SINCE = { gps: '0.23.0', contacts: '0.23.0', addresses: '0.21.0', more: '0.21.0', routing: '0.19.0' };
 const HUB_CHIP = { done: 'Done', todo: 'To do', update: 'Update', working: 'Working', failed: 'Failed', off: 'Not chosen', info: 'Optional' };
 const hubOlder = (a, b) => { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
@@ -134,6 +135,78 @@ function hubItems() {
 }
 const hubLeft = (it) => it.state === 'todo' || it.state === 'update' || it.state === 'failed';
 
+/** How much of a row is on the disk already, in bytes; null for rows that keep nothing in the library. */
+function hubHave(id) {
+  const e = state.edition; const m = state.maps; const s = state.school;
+  const part = (x) => (x && x.phase === 'downloading' && x.progress && x.progress.downloaded) || 0;
+  const of = (x) => (x ? ((x.active && x.active.bytes) || 0) + part(x) : 0) || null;
+  if (id === 'wikipedia') return of(e);
+  if (id.startsWith('lib:')) return of((state.libraries || []).find((x) => x.id === id.slice(4)));
+  if (id === 'school') return (s && s.bytes) || null;
+  if (!m) return null;
+  const kept = { map: m.map, routing: m.routing, addresses: m.addresses, more: m.overture, places: m.places }[id];
+  return (kept && kept.bytes) || null;
+}
+
+/**
+ * What a row that is at work is doing: { text, value, max, rate, left }. `value` of `max` fills its bar (neither
+ * when the amount is not known), `rate` is bytes a second, `left` the bytes still to come.
+ */
+function hubProgress(it) {
+  const fetched = (x, what) => {
+    if (!x) return null;
+    const p = x.progress || {};
+    if (x.phase === 'downloading' && p.total) return { value: p.downloaded || 0, max: p.total, text: `${p.note ? `${p.note}. ` : ''}Downloading ${what}: ${bytes(p.downloaded || 0)} of ${bytes(p.total)}`, rate: p.bytesPerSec || null, left: p.total - (p.downloaded || 0) };
+    if (x.phase === 'verifying' && p.total) return { value: p.verified || 0, max: p.total, text: `Checking ${what} against its published checksum: ${bytes(p.verified || 0)} of ${bytes(p.total)}`, left: 0 };
+    return { text: x.phase === 'checking' ? 'Asking which edition is the newest' : x.phase === 'switching' ? 'Opening the new edition' : x.phase === 'moving' ? 'Moving the library' : 'Getting ready to download', left: null };
+  };
+  let pr = null;
+  if (it.id === 'wikipedia') pr = fetched(state.edition, 'Wikipedia');
+  else if (it.id.startsWith('lib:')) pr = fetched((state.libraries || []).find((x) => x.id === it.id.slice(4)), it.title);
+  else if (it.id === 'school') { const j = state.school && state.school.job; if (j) pr = { value: j.done || 0, max: j.total || 1, text: `${j.kind === 'index' ? 'Reading the books so that they can be searched' : 'Fetching the books'}: ${j.done || 0} of ${j.total || 0}${j.current ? `, now ${j.current}` : ''}`, bytesNow: j.kind === 'download' ? j.bytes || 0 : null, left: null }; }
+  else if (it.id === 'ai') pr = { text: state.ai.busy || 'Timing the models on this computer to pick the best one', left: null };
+  else { const j = state.maps && state.maps.job; if (j) { const v = mapJobView(j); pr = { value: v.value, max: v.max, text: [v.title, String(v.detail || '').split(/\. (?=[A-Z])/).slice(0, 1).join('. ')].filter(Boolean).join(': ').replace(/\.$/, ''), bytesNow: v.bytesNow, left: v.bytesNow != null && v.max ? Math.max(0, v.max - v.bytesNow) : null }; } }
+  if (!pr) return null;
+  // A speed that the downloader does not give is worked out here, from the bytes seen arriving.
+  if (pr.rate == null && pr.bytesNow != null) { hub.rates[it.id] = hub.rates[it.id] || new HubRate(); pr.rate = hub.rates[it.id].push(pr.bytesNow).get(); }
+  return pr;
+}
+const hubSpeed = (rate) => (rate >= 1048576 ? `${(rate / 1048576).toFixed(1)} MB/s` : rate > 0 ? `${Math.max(1, Math.round(rate / 1024))} KB/s` : '');
+const hubRoot = (d) => String((d && d.root) || '').replace(/[\\/]+$/, '') || 'this drive';
+
+/** The bar that shows where the room on the library's drive goes, now and once everything ticked is here. */
+function hubDisk(need, unknown) {
+  const box = $('hub-disk'); const d = state.disk;
+  if (!d || !d.library) { box.hidden = true; box.replaceChildren(); return; }
+  box.hidden = false;
+  const groups = [{ title: d.onPartition ? `The library's own partition (${hubRoot(d.library)})` : `The drive the library is on (${hubRoot(d.library)})`, id: 'library', parts: hubDriveParts(d.library, state.libraryBytes || 0, need) }];
+  if (d.main) groups.push({ title: `The drive the partition was cut from (${hubRoot(d.main)})`, id: 'main', parts: hubDriveParts(d.main, 0, 0) });
+  const NAMES = { other: 'Everything else on it', app: 'Wikivault, downloaded so far', add: 'To be added by what is ticked', over: 'To be added by what is ticked', free: 'Free' };
+  box.replaceChildren(el('h2', 'hub-disk-title', 'Room on the disk'), ...groups.filter((g) => g.parts).map((g) => {
+    const p = g.parts; const wrap = el('div', 'hub-drive'); wrap.dataset.drive = g.id;
+    wrap.append(el('p', 'hub-drive-name', `${g.title}: ${bytes(p.total)} in all`));
+    const bar = el('div', 'hub-bar');
+    bar.setAttribute('role', 'img');
+    const said = [];
+    const legend = el('ul', 'hub-legend');
+    const rows = g.id === 'library'
+      ? [['other', p.other], ['app', p.app], [p.short ? 'over' : 'add', p.add + p.short], ['free', p.freeAfter]]
+      : [['other', p.other], ['free', p.freeAfter]];
+    for (const part of p.parts) { const seg = el('span', `hub-seg hub-seg-${part.key}`); seg.style.flexGrow = String(Math.max(part.share, 0.004)); bar.append(seg); }
+    for (const [key, n] of rows) {
+      const li = el('li', `hub-key hub-key-${key}`);
+      li.dataset.key = key;
+      const label = key === 'free' ? (g.id === 'library' && need > 0 ? 'Free once that is here' : 'Free') : key === 'other' && g.id === 'main' ? 'In use' : NAMES[key];
+      li.append(el('span', `hub-swatch hub-seg-${key}`), el('span', 'hub-key-name', label), el('span', 'hub-key-size', key === 'over' ? `${bytes(n)}, which is ${bytes(p.short)} more than fits` : bytes(n)));
+      legend.append(li); said.push(`${label} ${bytes(n)}`);
+    }
+    bar.setAttribute('aria-label', `${g.title}, ${bytes(p.total)} in all: ${said.join(', ')}.`);
+    wrap.append(bar, legend);
+    if (g.id === 'library' && unknown) wrap.append(el('p', 'small-print', `${unknown} ticked ${unknown === 1 ? 'row has' : 'rows have'} not been measured yet and ${unknown === 1 ? 'is' : 'are'} not in the bar.`));
+    return wrap;
+  }));
+}
+
 function renderHub(force) {
   if (!state || !$('hub-steps')) return;
   hubTick();
@@ -153,6 +226,7 @@ function renderHub(force) {
   if (hub.fresh) { $('hub-new-title').textContent = `New in version ${state.version}`; $('hub-new-list').replaceChildren(...hub.fresh.map((t) => el('li', '', t))); }
 
   const w = hubWant();
+  const sums = { need: 0, have: 0, unknown: 0 };
   $('hub-steps').replaceChildren(...items.map((it) => {
     const li = el('li', `hub-step hub-${it.state}${it.done ? ' hub-have' : ''}`);
     li.dataset.id = it.id;
@@ -161,8 +235,16 @@ function renderHub(force) {
     const title = el('span', 'hub-title', it.title);
     if (it.isNew) title.append(el('span', 'hub-newtag', 'New'));
     head.append(title);
-    const size = it.state === 'done' || it.state === 'info' || it.state === 'working' ? '' : it.bytes != null ? bytes(it.bytes) : it.state === 'off' ? '' : it.sizeNote || 'not measured yet';
-    head.append(el('span', 'hub-size', size));
+    // Two columns at the right: what is still to download for this row as it is ticked now, and what is here already.
+    const pr = it.state === 'working' ? hubProgress(it) : null;
+    if (it.state !== 'working') delete hub.rates[it.id];
+    const todo = it.state === 'working' ? (pr && pr.left != null ? pr.left : it.bytes) : hubLeft(it) ? it.bytes : null;
+    const need = el('span', 'hub-size hub-need', it.state === 'working' ? (todo != null ? bytes(todo) : '') : hubLeft(it) ? (it.bytes != null ? bytes(it.bytes) : it.sizeNote || 'not measured') : it.state === 'off' && it.bytes ? `${bytes(it.bytes)} if ticked` : '');
+    if (it.state === 'off' && it.bytes) need.classList.add('hub-size-off');
+    const have = hubHave(it.id);
+    head.append(need, el('span', 'hub-size hub-have-size', have ? bytes(have) : ''));
+    sums.need += todo || 0; sums.have += have || 0;
+    if ((hubLeft(it) || it.state === 'working') && todo == null && !it.sizeNote && it.id !== 'ai') sums.unknown += 1;
     li.append(head);
     if (it.tick) {
       const key = it.tick; const row = el('label', 'hub-tick');
@@ -171,7 +253,17 @@ function renderHub(force) {
       row.append(box, el('span', '', 'Include'));
       li.append(row);
     }
-    li.append(el('p', 'hub-detail', it.detail));
+    if (pr) {
+      // At work: a bar, what is happening in a few words, how fast, and how long it should take.
+      const box = el('div', 'hub-prog');
+      const bar = document.createElement('progress');
+      if (pr.max) { bar.max = pr.max; bar.value = Math.min(pr.value || 0, pr.max); }
+      const row = el('div', 'hub-prog-row');
+      row.append(bar, el('span', 'hub-prog-rate', hubSpeed(pr.rate)));
+      const eta = pr.left ? hubTimeLeft(pr.left, pr.rate) : '';
+      box.append(row, el('p', 'hub-prog-text', `${pr.text.replace(/\.$/, '')}${eta ? `, ${eta}` : ''}.`));
+      li.append(box);
+    } else li.append(el('p', 'hub-detail', it.detail));
     if (it.note) li.append(el('p', 'small-print', it.note));
     if (it.pick && state.maps) {
       const pick = el('div', 'hub-pick');
@@ -201,16 +293,27 @@ function renderHub(force) {
   }));
   if (focused && focused.id && $(focused.id)) $(focused.id).focus();
 
-  const need = left.reduce((n, it) => n + (it.bytes || 0), 0);
-  const unknown = left.filter((it) => it.bytes == null && !it.sizeNote).length;
-  const free = state.freeBytes;
+  // The sums of the two columns, and the room they take.
+  const need = sums.need; const unknown = sums.unknown;
+  hub.need = need; hub.unknown = unknown;
+  const free = state.disk && state.disk.library ? state.disk.library.free : state.freeBytes;
+  hub.free = free;
+  $('hub-sum-need').textContent = need >= 5e6 ? bytes(need) : left.length || hub.running ? 'very little' : 'nothing';
+  $('hub-sum-have').textContent = sums.have ? bytes(sums.have) : 'nothing yet';
+  $('hub-sum-note').textContent = unknown ? `plus ${unknown} not measured yet` : '';
+  hubDisk(need, unknown);
   const total = $('hub-total'); total.replaceChildren();
-  if (left.length) total.append(el('p', '', `Still to fetch: ${need < 5e6 ? 'very little' : `about ${bytes(need)}`}${unknown ? `, plus ${unknown} not measured yet` : ''}. Free on the library's drive: ${free == null ? 'unknown' : bytes(free)}.`));
-  if (free != null && need > free) total.append(el('p', 'map-approx', `That is ${bytes(need - free)} more than there is room for. Untick something, choose less map detail, or make room${state.partition && state.libraryOnPartition ? ': the partition can be made larger from the Library page' : ''}.`));
+  if (free != null && need > free) total.append(el('p', 'map-approx', `What is ticked needs ${bytes(need - free)} more than there is room for. Untick something, choose less map detail, ${state.partition && state.libraryOnPartition ? 'make the partition larger from the Library page, ' : ''}or add storage.`));
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));
+  else if (hub.autoNote) total.append(el('p', 'small-print', hub.autoNote));
   const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'more'].includes(it.id) && hubLeft(it) && it.bytes == null) || Object.keys(w.libs).some((id) => w.libs[id] && hub.sizes.libs[id] == null);
   $('hub-sizes').hidden = !anyMap && hub.sizes.wikipedia != null;
+  const key = JSON.stringify([w.regions, w.level, Object.keys(w.libs).filter((id) => w.libs[id]).sort(), ['map', 'routing', 'addresses', 'more'].filter((id) => w[id])]);
+  if (anyMap && !hub.running && !hub.measuring && hub.autoKey !== key && state.maps && !state.maps.job) {
+    clearTimeout(hub.autoTimer);
+    hub.autoTimer = setTimeout(() => { if (hub.running || hub.measuring || (view !== 'hub' && !$('hub-pop').open)) return; hub.autoKey = key; hubMeasure(true); }, 900);
+  }
   $('hub-sizes').disabled = hub.running || hub.measuring;
   const startable = left.filter((it) => it.id !== 'wikipedia' || active);
   $('hub-go').disabled = hub.running || hub.measuring || !startable.length || (!active && !state.settings.dataDir);
@@ -220,9 +323,9 @@ function renderHub(force) {
 }
 
 /** Find out how big everything ticked is. Reads summaries only. */
-async function hubMeasure() {
+async function hubMeasure(auto = false) {
   if (hub.measuring || hub.running) return;
-  hub.measuring = true; $('hub-error').hidden = true; renderHub(true);
+  hub.measuring = true; hub.autoNote = ''; $('hub-error').hidden = true; renderHub(true);
   const w = hubWant(); const m = state.maps; const fails = [];
   const attempt = async (name, fn) => { try { await fn(); } catch (err) { fails.push(`${name}: ${err.message}`); } };
   await attempt('Wikipedia', async () => { const f = (await api.setupFlavours()).find((x) => x.flavour === state.settings.flavour); hub.sizes.wikipedia = f ? f.bytes : null; });
@@ -235,7 +338,9 @@ async function hubMeasure() {
     if (open('addresses') || open('more')) await attempt('Addresses and places', () => hubMapJob(() => api.mapsOvertureMeasure(w.regions)));
   }
   hub.measuring = false;
-  if (fails.length) { $('hub-error').textContent = `Some sizes could not be worked out. ${fails.join(' ')}`; $('hub-error').hidden = false; }
+  // Asked for by the page itself, a failure (no connection, most likely) is a note, not an error.
+  if (fails.length && auto) hub.autoNote = 'Some sizes could not be worked out just now, which needs a connection. Press "Work out the sizes" to try again.';
+  else if (fails.length) { $('hub-error').textContent = `Some sizes could not be worked out. ${fails.join(' ')}`; $('hub-error').hidden = false; }
   renderHub(true);
 }
 
@@ -314,7 +419,21 @@ function hubClosePop() {
 $('hub-later').addEventListener('click', () => hubClosePop());
 $('hub-pop').addEventListener('cancel', (e) => { e.preventDefault(); hubClosePop(); });
 $('hub-sizes').addEventListener('click', () => hubMeasure());
-$('hub-go').addEventListener('click', () => hubRun());
+/** Start the downloads, unless what is ticked will not fit: then say so first, with what can be done about it. */
+function hubStart() {
+  const free = hub.free; const need = hub.need || 0;
+  if (free == null || need <= free) { hubRun(); return; }
+  const onPart = Boolean(state.partition && state.libraryOnPartition);
+  $('hub-room-text').textContent = `What is ticked needs about ${bytes(need)}${hub.unknown ? `, plus ${hub.unknown} ${hub.unknown === 1 ? 'row' : 'rows'} not measured yet` : ''}. ${onPart ? "The library's partition" : "The library's drive"} has ${bytes(free)} free, which is ${bytes(need - free)} too little.`;
+  $('hub-room-part').hidden = !(onPart && state.partitionAvailable);
+  $('hub-room-opt-part').hidden = !onPart;
+  $('hub-room').showModal();
+  $('hub-room-back').focus();
+}
+$('hub-go').addEventListener('click', () => hubStart());
+$('hub-room-back').addEventListener('click', () => $('hub-room').close());
+$('hub-room-go').addEventListener('click', () => { $('hub-room').close(); hubRun(); });
+$('hub-room-part').addEventListener('click', () => { $('hub-room').close(); hubClosePop(); showView('library'); render(); const b = $('psize-open'); if (b && !b.hidden) b.click(); });
 $('hub-stop').addEventListener('click', () => { hub.stopAsked = true; renderHub(true); });
 
 // This is the last script: if the app's state arrived while the scripts were loading, draw now.

@@ -433,6 +433,22 @@ const llm = new LlmService({
   log,
 });
 
+/**
+ * The size and free room of the drive the library is on, for the Setup page. When the library has a partition of
+ * its own, that is its drive, and the drive the partition was cut from is given as well.
+ */
+async function diskInfo(probeDir) {
+  const stat = async (dir) => {
+    try { const s = await fsp.statfs(dir); const total = Number(s.blocks) * Number(s.bsize); return total > 0 ? { total, free: Number(s.bavail) * Number(s.bsize), root: path.parse(path.resolve(dir)).root } : null; } catch { return null; }
+  };
+  const library = await stat(probeDir);
+  const onPartition = libraryOnPartition();
+  let main = null;
+  if (onPartition && settings.partition && settings.partition.sourceLetter) main = await stat(`${settings.partition.sourceLetter}:\\`);
+  if (main && library && main.root.toLowerCase() === library.root.toLowerCase()) main = null;
+  return { library, main, onPartition };
+}
+
 async function getState() {
   const dir = settings.dataDir || defaultDataDir();
   let probeDir = dir;
@@ -446,6 +462,8 @@ async function getState() {
     packaged: app.isPackaged,
     partitionAvailable: partitionAvailable(),
     libraryBytes: libraryBreakdown().total,
+    libraryParts: libraryBreakdown(),
+    disk: await diskInfo(probeDir),
     onBattery: onBattery(),
     settings: pub,
     suggestedDataDir: dir,

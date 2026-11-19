@@ -120,6 +120,7 @@ function bookOverlay(map) {
   if (!bookUi.data) bookLoad(); else bookDraw();
 }
 function bookDraw() {
+  if (typeof paintMapKey === 'function') paintMapKey();
   if (typeof mapView === 'undefined' || !mapView || !mapView.getSource('book') || !bookUi.data) return;
   mapView.getSource('book').setData({ type: 'FeatureCollection', features: bookUi.data.entries.filter((e) => e.lat != null).map((e) => ({ type: 'Feature', properties: { id: e.id, n: e.pin && e.pinName ? e.pinName : e.name, pin: Boolean(e.pin) }, geometry: { type: 'Point', coordinates: [e.lon, e.lat] } })) });
 }
@@ -181,13 +182,13 @@ $('book-delete').addEventListener('click', async () => {
 // Placing by hand: the form steps aside, the next click on the map is the place, and the form comes back.
 $('book-pin').addEventListener('click', () => {
   if (!mapView) { $('book-edit-error').textContent = 'Download a map first, to have something to click on.'; $('book-edit-error').hidden = false; return; }
-  bookUi.picking = true;
+  bookUi.picking = true; paintMapKey();
   bookUi.kept = { name: $('book-name').value, label: $('book-label').value, address: $('book-address').value, phones: $('book-phones').value, note: $('book-note').value, fav: $('book-fav').value, 'fav-name': $('book-fav-name').value, 'rel-group': $('book-rel-group').value, 'rel-tie': $('book-rel-tie').value };
   $('book-edit').close();
   mapView.getCanvas().style.cursor = 'crosshair';
   $('map-error').textContent = 'Click the map where this entry belongs.'; $('map-error').hidden = false;
   mapView.once('click', (ev) => {
-    bookUi.picking = false; mapView.getCanvas().style.cursor = ''; $('map-error').hidden = true;
+    bookUi.picking = false; paintMapKey(); mapView.getCanvas().style.cursor = ''; $('map-error').hidden = true;
     const ed = bookUi.editing; if (!ed) return;
     ed.lat = ev.lngLat.lat; ed.lon = ev.lngLat.lng; ed.placed = true;
     $('book-edit').showModal();

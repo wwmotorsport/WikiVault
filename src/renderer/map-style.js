@@ -54,6 +54,37 @@
     { id: 'pois', name: 'Small symbols for shops and sights', test: (id) => id === 'pois' },
   ];
 
+  // What the lines and colours stand for: the key drawn on the map and beside each switch. `group` is the switch
+  // that hides it (none for what is always drawn); `color` and `edge` name colours of the day and night looks.
+  const KEY = [
+    { id: 'highway', group: null, name: 'Interstates and freeways', draw: 'line', color: 'highway', edge: 'highway_casing_late', width: 5 },
+    { id: 'major', group: null, name: 'Main roads', draw: 'line', color: 'major', edge: 'major_casing_late', width: 4 },
+    { id: 'street', group: 'minor', name: 'Streets', draw: 'line', color: 'minor_b', edge: 'minor_casing', width: 3 },
+    { id: 'track', group: 'minor', name: 'Tracks and paths', draw: 'dash', color: 'other', width: 2 },
+    { id: 'rail', group: 'rail', name: 'Railways', draw: 'line', color: 'railway', width: 2 },
+    { id: 'border', group: 'borders', name: 'State and country borders', draw: 'line', color: 'boundaries', width: 1.5 },
+    { id: 'water', group: 'water', name: 'Water', draw: 'fill', color: 'water' },
+    { id: 'wood', group: 'green', name: 'Woodland', draw: 'fill', color: 'wood_b' },
+    { id: 'park', group: 'green', name: 'Parks', draw: 'fill', color: 'park_b' },
+    { id: 'building', group: 'buildings', name: 'Buildings', draw: 'fill', color: 'buildings' },
+    { id: 'interstate', group: 'roadnames', name: 'Interstate', draw: 'shield', shield: 'i', text: '85' },
+    { id: 'usroute', group: 'roadnames', name: 'US highway', draw: 'shield', shield: 'us', text: '29' },
+    { id: 'stateroute', group: 'roadnames', name: 'State and other numbered roads', draw: 'shield', shield: 'st', text: '16' },
+  ];
+  // Road numbers are drawn as the signs beside the road: a red, white and blue shield for an Interstate, a white
+  // shield for a US highway, a plain white sign for the rest. The same in the day and the night look.
+  const SHIELDS = {
+    i: { fill: '#003f87', top: '#c8102e', edge: '#ffffff', text: '#ffffff' },
+    us: { fill: '#ffffff', edge: '#111111', text: '#111111' },
+    st: { fill: '#ffffff', edge: '#111111', text: '#111111' },
+  };
+  // Which sign a road gets. The map data marks Interstates; a US highway is told by how its number is written.
+  const refIs = (re) => ['all', ['has', 'ref'], ['!=', ['index-of', re, ['concat', ';', ['get', 'ref']]], -1]];
+  const shieldKind = ['case',
+    ['any', ['==', ['get', 'network'], 'US:I'], refIs(';I ')], 'i',
+    ['any', ['==', ['get', 'network'], 'US:US'], refIs(';US ')], 'us',
+    'st'];
+
   // How much heavier than the stock style each kind of road is drawn, at every zoom.
   const WEIGHT = [[/highway/, 1.7], [/major/, 1.5], [/link/, 1.4], [/minor/, 1.3], [/rail/, 1.6], [/other|pier/, 1.25]];
   const round = (v) => Math.round(v * 100) / 100;
@@ -63,6 +94,12 @@
     const out = expr.slice(0, 3);
     for (let i = 3; i + 1 < expr.length; i += 2) out.push(expr[i], typeof expr[i + 1] === 'number' ? round(expr[i + 1] * k) : expr[i + 1]);
     return out;
+  }
+
+  /** The key for a look: every entry whose kind is switched on, with its colours resolved. */
+  function legend(look, every = false) {
+    const l = clean(look); const c = l.dark ? NIGHT : DAY;
+    return KEY.filter((k) => every || !k.group || !l.off.includes(k.group)).map((k) => ({ id: k.id, group: k.group, name: k.name, draw: k.draw, width: k.width || 0, color: k.color ? c[k.color] : null, edge: k.edge ? c[k.edge] : k.draw === 'fill' ? (l.dark ? '#5b6672' : '#8d949b') : null, ...(k.shield ? { shield: k.shield, text: k.text, sign: SHIELDS[k.shield] } : {}) }));
   }
 
   const clean = (look) => ({ dark: Boolean(look && look.dark), off: Array.isArray(look && look.off) ? look.off.filter((g) => GROUPS.some((x) => x.id === g)) : [] });
@@ -90,11 +127,18 @@
       if (layer.id === 'boundaries') out.paint['line-width'] = 1;
       if (layer.id === 'boundaries_country') out.paint['line-width'] = 1.6;
       if (/^roads_labels/.test(layer.id)) out.paint['text-halo-width'] = 1.6;
+      if (layer.id === 'roads_shields') {
+        // The signs are drawn by the window when the map first asks for one (see mapShield in app.js).
+        out.layout['icon-image'] = ['concat', 'wv-shield-', shieldKind, '-', ['to-string', ['length', ['get', 'shield_text']]]];
+        out.layout['icon-size'] = 1;
+        out.layout['text-size'] = 10;
+        out.paint['text-color'] = ['match', shieldKind, 'i', SHIELDS.i.text, SHIELDS.us.text];
+      }
       return out;
     });
   }
 
-  const api = { GROUPS: GROUPS.map(({ id, name }) => ({ id, name })), layers, shown, clean, sprite: (look) => (clean(look).dark ? 'dark' : 'light'), background: (look) => (clean(look).dark ? NIGHT.earth : DAY.earth) };
+  const api = { GROUPS: GROUPS.map(({ id, name }) => ({ id, name })), legend, SHIELDS, layers, shown, clean, sprite: (look) => (clean(look).dark ? 'dark' : 'light'), background: (look) => (clean(look).dark ? NIGHT.earth : DAY.earth) };
   root.WikivaultMapStyle = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this));

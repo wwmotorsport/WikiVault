@@ -60,3 +60,35 @@ test('each kind of feature can be switched off, and nothing else goes with it', 
   assert.deepEqual(look.clean({ dark: 1, off: ['water', 'nonsense'] }), { dark: true, off: ['water'] });
   assert.deepEqual(look.clean(null), { dark: false, off: [] });
 });
+
+test('the key lists what is switched on, in the colours of the look, and road numbers are drawn as road signs', () => {
+  const day = look.legend({ dark: false, off: [] });
+  assert.deepEqual(day.map((k) => k.id), ['highway', 'major', 'street', 'track', 'rail', 'border', 'water', 'wood', 'park', 'building', 'interstate', 'usroute', 'stateroute']);
+  // The colours are those the map is drawn in.
+  const layers = look.layers(basemaps, { dark: false, off: [] });
+  assert.equal(day.find((k) => k.id === 'highway').color, by(layers, 'roads_highway').paint['line-color']);
+  assert.equal(day.find((k) => k.id === 'major').color, by(layers, 'roads_major').paint['line-color']);
+  assert.equal(day.find((k) => k.id === 'track').color, by(layers, 'roads_other').paint['line-color']);
+  assert.equal(day.find((k) => k.id === 'water').color, by(layers, 'water').paint['fill-color']);
+  assert.equal(day.find((k) => k.id === 'rail').color, by(layers, 'roads_rail').paint['line-color']);
+  assert.deepEqual([day.find((k) => k.id === 'track').draw, day.find((k) => k.id === 'water').draw, day.find((k) => k.id === 'street').edge !== null], ['dash', 'fill', true]);
+  const night = look.legend({ dark: true, off: [] });
+  assert.notEqual(night.find((k) => k.id === 'water').color, day.find((k) => k.id === 'water').color);
+  // What is switched off is not in the key; highways and main roads have no switch and are always there.
+  const some = look.legend({ dark: false, off: ['minor', 'water', 'roadnames', 'green'] }).map((k) => k.id);
+  assert.deepEqual(some, ['highway', 'major', 'rail', 'border', 'building']);
+  // Asked for every entry (for the pictures beside the switches), each switch that draws lines or colours has some.
+  const every = look.legend({ dark: false, off: look.GROUPS.map((g) => g.id) }, true);
+  assert.equal(every.length, 13);
+  for (const g of ['green', 'water', 'buildings', 'minor', 'rail', 'borders', 'roadnames']) assert.ok(every.some((k) => k.group === g), g);
+  // Road signs: an Interstate is red, white and blue with white figures; the rest are white with black figures.
+  const sign = (id) => day.find((k) => k.id === id).sign;
+  assert.deepEqual([sign('interstate').fill, sign('interstate').top, sign('interstate').text], ['#003f87', '#c8102e', '#ffffff']);
+  assert.deepEqual([sign('usroute').fill, sign('usroute').text, sign('stateroute').fill], ['#ffffff', '#111111', '#ffffff']);
+  for (const dark of [false, true]) {
+    const shields = by(look.layers(basemaps, { dark, off: [] }), 'roads_shields');
+    assert.equal(JSON.stringify(shields.layout['icon-image']).includes('wv-shield-'), true);
+    assert.deepEqual(shields.paint['text-color'].slice(-3), ['i', '#ffffff', '#111111']);
+    assert.deepEqual(spec.validateStyleMin(style([shields])).map((e) => e.message), [], 'the sign layer is a valid layer');
+  }
+});
