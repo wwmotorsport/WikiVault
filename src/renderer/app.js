@@ -1879,21 +1879,53 @@ function mapKeyMark(k) {
  * The key on the map: what each line and colour stands for, for what is switched on just now, and for the
  * app's own marks that are on the map at the moment (a route, saved places, places found, blocked areas).
  */
+// The key on the map says what the lines and colours stand for, and is where each kind is switched on and off:
+// a tick box beside every kind that can be hidden, and one for the dark map. Folded, it is a button.
 function paintMapKey() {
   const box = $('map-key');
   if (!box) return;
   const m = state && state.maps;
   box.hidden = !(m && m.map);
-  if (box.hidden) return;
+  if (box.hidden) { mapKeyTip(false); return; }
   const dark = mapLook.dark;
   box.classList.toggle('dark', dark);
+  $('map-key-tip').classList.toggle('dark', dark);
   // While the map is waiting for a click, the key folds away so that it is never what is clicked.
-  const open = mapKeyOpen() && !mapGo.picking && !(typeof bookUi === 'object' && bookUi.picking);
+  const waiting = Boolean(mapGo.picking || (typeof bookUi === 'object' && bookUi.picking));
+  const open = mapKeyOpen() && !waiting;
+  box.classList.toggle('folded', !open);
   $('map-key-toggle').setAttribute('aria-expanded', String(open));
-  $('map-key-toggle').textContent = open ? 'Hide' : 'Key';
+  $('map-key-toggle-text').textContent = open ? 'Hide' : 'Key and layers';
+  $('map-key-toggle').title = open ? 'Fold the key down to a button' : 'Open the key: what the map shows, and switches for each kind';
   $('map-key-title').hidden = !open;
-  $('map-key-list').hidden = !open;
+  $('map-key-body').hidden = !open;
+  if (waiting) mapKeyTip(false);
   if (!open) return;
+  $('map-dark').checked = dark;
+  // The kinds of thing on the map. Built once, and drawn again when the look changes, in its colours.
+  const groups = $('map-look-groups');
+  const marksOf = (keys) => keys.map((k) => { const wrap = el('span', 'map-look-mark'); wrap.title = k.name; wrap.append(mapKeyMark(k)); return wrap; });
+  if (!groups.children.length) {
+    for (const g of WikivaultMapStyle.GROUPS) {
+      const label = el('label', 'map-key-row map-key-switch');
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.dataset.group = g.id;
+      input.addEventListener('change', () => { mapLook.off = [...groups.querySelectorAll('input')].filter((i) => !i.checked).map((i) => i.dataset.group); mapApplyLook(false); });
+      const name = el('span', 'map-look-name', g.name);
+      if (g.hint) name.append(el('span', 'map-key-hint', g.hint));
+      label.append(input, el('span', 'map-look-marks'), name);
+      groups.append(label);
+    }
+    groups.dataset.dark = '';
+  }
+  for (const label of groups.children) { const input = label.querySelector('input'); input.checked = !mapLook.off.includes(input.dataset.group); label.classList.toggle('off', !input.checked); }
+  if (groups.dataset.dark !== String(dark)) {
+    groups.dataset.dark = String(dark);
+    const key = WikivaultMapStyle.legend(mapLook, true);
+    for (const label of groups.children) label.querySelector('.map-look-marks').replaceChildren(...marksOf(key.filter((k) => k.group === label.querySelector('input').dataset.group)));
+    // What is always drawn has no tick box.
+    $('map-key-fixed').replaceChildren(...key.filter((k) => !k.group).map((k) => { const li = el('li', 'map-key-row'); li.dataset.key = k.id; const marks = el('span', 'map-look-marks'); marks.append(...marksOf([k])); li.append(el('span'), marks, el('span', 'map-look-name', k.name)); return li; }));
+  }
   const dot = (color, ring, big) => { const s = el('span', 'map-key-mark map-key-dot'); Object.assign(s.style, { background: color, borderColor: ring, width: `${big ? 14 : 11}px`, height: `${big ? 14 : 11}px` }); return s; };
   const ring = dark ? '#0b0d10' : '#ffffff';
   const mine = [];
@@ -1906,41 +1938,41 @@ function paintMapKey() {
   if (mapHits.hits && mapHits.hits.length) mine.push(['Place found', dot(dark ? '#ffd84a' : '#14304d', ring)], ['The one chosen', dot('#d93025', ring, true)]);
   if (mapGo.blocks && mapGo.blocks.length) mine.push(['Blocked road or area', mapKeyMark({ draw: 'fill', color: 'rgba(217, 48, 37, .35)', edge: dark ? '#ff6b5e' : '#b3261e' })]);
   if (typeof gpsPoint === 'function' && gpsPoint()) mine.push(['Where you are', dot('#1a73e8', '#ffffff', true)]);
-  const row = (name, mark) => { const li = el('li', 'map-key-row'); li.append(mark, el('span', '', name)); return li; };
-  $('map-key-list').replaceChildren(...WikivaultMapStyle.legend(mapLook).map((k) => { const li = row(k.name, mapKeyMark(k)); li.dataset.key = k.id; return li; }), ...mine.map(([name, mark]) => { const li = row(name, mark); li.classList.add('map-key-mine'); return li; }));
+  $('map-key-list').replaceChildren(...mine.map(([name, mark]) => { const li = el('li', 'map-key-row map-key-mine'); const marks = el('span', 'map-look-marks'); marks.append(mark); li.append(el('span'), marks, el('span', 'map-look-name', name)); return li; }));
+  $('map-key-list').hidden = !mine.length;
 }
 const mapKeyOpen = () => { try { return localStorage.getItem('wikivault-map-key') !== 'closed'; } catch { return true; } };
 
-function paintMapLook(m) {
-  const box = $('map-look');
-  box.hidden = !m.map;
-  if (!m.map) return;
-  $('map-dark').checked = mapLook.dark;
-  const groups = $('map-look-groups');
-  if (!groups.children.length) {
-    for (const g of WikivaultMapStyle.GROUPS) {
-      const label = el('label', 'map-check');
-      const input = document.createElement('input');
-      input.type = 'checkbox'; input.dataset.group = g.id;
-      input.addEventListener('change', () => { mapLook.off = [...groups.querySelectorAll('input')].filter((i) => !i.checked).map((i) => i.dataset.group); mapApplyLook(false); });
-      const text = el('span', 'map-look-name', g.name);
-      label.append(input, text, el('span', 'map-look-marks'));
-      groups.append(label);
-    }
-    groups.dataset.dark = '';
-  }
-  for (const input of groups.querySelectorAll('input')) input.checked = !mapLook.off.includes(input.dataset.group);
-  // Beside each switch, the lines and colours it turns on and off, as they are drawn in the look chosen.
-  if (groups.dataset.dark !== String(mapLook.dark)) {
-    groups.dataset.dark = String(mapLook.dark);
-    const key = WikivaultMapStyle.legend(mapLook, true);
-    for (const label of groups.children) label.querySelector('.map-look-marks').replaceChildren(...key.filter((k) => k.group === label.querySelector('input').dataset.group).map((k) => { const mark = mapKeyMark(k); const wrap = el('span', 'map-look-mark'); wrap.title = k.name; wrap.append(mark); return wrap; }));
-    groups.classList.toggle('dark', mapLook.dark);
-  }
-  paintMapKey();
+// A note that says what the key is for. It comes up when the pointer is on or beside the key, can be put away
+// for now, and can be told not to come back.
+const mapTip = { never: false, done: false, timer: 0 };
+try { mapTip.never = localStorage.getItem('wikivault-map-key-tip') === 'off'; } catch { /* shown, then */ }
+function mapKeyTip(show) {
+  const tip = $('map-key-tip'); const key = $('map-key');
+  clearTimeout(mapTip.timer); mapTip.timer = 0;
+  if (!show || mapTip.never || mapTip.done || key.hidden || mapGo.picking || (typeof bookUi === 'object' && bookUi.picking)) { tip.hidden = true; return; }
+  const folded = key.classList.contains('folded');
+  $('map-key-tip-text').textContent = folded
+    ? 'Press this button to open the key. It says what the lines and colours on the map mean, and has a tick box beside each kind to show or hide it.'
+    : 'What the lines and colours on the map mean. Untick a kind to take it off the map, and tick it to bring it back. "Hide" folds the key down to a button.';
+  tip.hidden = false;
+  // Beside the key where there is room, otherwise above it; never under the pointer that brought it up.
+  const s = key.parentElement.getBoundingClientRect(); const k = key.getBoundingClientRect();
+  const beside = s.right - k.right >= 270;
+  Object.assign(tip.style, beside ? { left: `${k.right - s.left + 18}px`, bottom: `${s.bottom - k.bottom}px` } : { left: `${k.left - s.left}px`, bottom: `${s.bottom - k.top + 18}px` });
 }
-
-/** Put the chosen look on the map. Switching kinds on and off touches the layers; day and night need a new style. */
+function mapKeyTipMove(ev) {
+  if (mapTip.never || mapTip.done) return;
+  const key = $('map-key'); const tip = $('map-key-tip');
+  if (key.hidden) return;
+  const k = key.getBoundingClientRect();
+  const near = (r, pad) => ev.clientX >= r.left - pad && ev.clientX <= r.right + pad && ev.clientY >= r.top - pad && ev.clientY <= r.bottom + pad;
+  // Once it is up it stays while the pointer is on the key, on the note, or on the way between them.
+  let on = near(k, 14);
+  if (!on && !tip.hidden) { const t = tip.getBoundingClientRect(); on = near({ left: Math.min(k.left, t.left), right: Math.max(k.right, t.right), top: Math.min(k.top, t.top), bottom: Math.max(k.bottom, t.bottom) }, 14); }
+  if (on) { clearTimeout(mapTip.timer); mapTip.timer = 0; if (tip.hidden) mapKeyTip(true); } else if (!tip.hidden && !mapTip.timer) mapTip.timer = setTimeout(() => mapKeyTip(false), 500);
+}
+function paintMapLook() { paintMapKey(); }
 function mapApplyLook(restyle) {
   try { localStorage.setItem('wikivault-map-look', JSON.stringify(mapLook)); } catch { /* not kept, that is all */ }
   $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
@@ -2527,7 +2559,12 @@ function renderMap() {
 
 $('nav-map').addEventListener('click', () => { if (!golfPlaying()) showView('map'); });
 $('map-dark').addEventListener('change', () => { mapLook.dark = $('map-dark').checked; mapApplyLook(true); });
-$('map-key-toggle').addEventListener('click', () => { try { localStorage.setItem('wikivault-map-key', mapKeyOpen() ? 'closed' : 'open'); } catch { /* not kept, that is all */ } paintMapKey(); });
+$('map-key-toggle').addEventListener('click', () => { try { localStorage.setItem('wikivault-map-key', mapKeyOpen() ? 'closed' : 'open'); } catch { /* not kept, that is all */ } paintMapKey(); if (!$('map-key-tip').hidden) mapKeyTip(true); });
+$('map-canvas').parentElement.addEventListener('mousemove', mapKeyTipMove);
+$('map-canvas').parentElement.addEventListener('mouseleave', () => { if (!$('map-key-tip').hidden && !mapTip.timer) mapTip.timer = setTimeout(() => mapKeyTip(false), 500); });
+$('map-key').addEventListener('focusin', () => mapKeyTip(true));
+$('map-key-tip-ok').addEventListener('click', () => { mapTip.done = true; mapKeyTip(false); });
+$('map-key-tip-never').addEventListener('click', () => { mapTip.never = true; try { localStorage.setItem('wikivault-map-key-tip', 'off'); } catch { /* it comes back next time, that is all */ } mapKeyTip(false); });
 $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
 $('map-search').addEventListener('submit', (e) => { e.preventDefault(); guard(() => mapFind(), $('map-error')); });
 $('map-cat').addEventListener('change', () => { renderMap(); guard(() => mapFind(), $('map-error')); });
@@ -2709,6 +2746,12 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.26.1': [
+    'Map: the key now has a tick box beside each kind of thing, to show or hide it. It replaces "What the map shows".',
+    'Places are fetched in smaller pieces, the nearest to home first, and can be searched as they arrive.',
+    'Directions to an address that could only be placed by its town now say plainly that they do not end at the address.',
+    'School is being finished and is not in this version. It returns in a later one; files already downloaded are kept.',
+  ],
   '0.26.0': [
     'Places are fetched in smaller pieces, the nearest to home first, and can be searched as they arrive.',
     'Directions to an address that could only be placed by its town now say plainly that they do not end at the address.',
@@ -2813,7 +2856,7 @@ const TOUR_PAGES = [
     stops: [
       [['map-about'], 'What is on this computer', 'One line for the map, places, addresses and directions that have been fetched. Open it for the detail.'],
       [['map-setup-toggle'], 'Change or update', 'Choose regions and detail and fetch the map, the places, the addresses and the routing data. The Setup page does the same with everything else.'],
-      [['map-look'], 'What the map shows', 'Switch buildings, woodland, water, streets, names and symbols on or off, and choose the dark map.'],
+      [['map-key'], 'Key and layers', 'What the lines and colours on the map mean, with a tick box beside each kind to show or hide it, and the dark map. Hide folds it down to a button.'],
       [['map-tab-find'], 'Places', 'Find a place by name or kind, a town, or a street address. An address the data does not have is placed as near as can be told, and marked approximate.'],
       [['map-tab-go'], 'Directions', 'A start and a destination, by car, bicycle or on foot, with the turns listed. Mark roads and areas as blocked and the route goes round them. A USB GPS receiver leads you turn by turn.'],
       [['map-tab-book'], 'Saved', 'Your address book: people and places, with a copy of your Google or iCloud contacts. Pin Home and Work, set who people are to you, and narrow the list.'],

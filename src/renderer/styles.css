@@ -672,11 +672,6 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 .map-place-go { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 /* ---------- map: what the map shows ---------- */
-.map-look { margin: 0 0 16px; padding: 0 0 12px; border-bottom: 1px solid var(--rule); }
-.map-look summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.map-look summary:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
-.map-look .map-check { padding: 3px 0; }
-#map-look-groups { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--rule); }
 
 /* Addresses: a position that was worked out and not found is said to be so. */
 .map-approx { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #b26a00; background: rgba(178, 106, 0, 0.09); font-size: 13px; }
@@ -812,24 +807,43 @@ dialog #trip-list li { margin-bottom: 0; }
 
 /* ---- 0.25.0: the key on the map, and the same pictures beside the switches */
 .map-stage { position: relative; }
-.map-key { position: absolute; left: 10px; bottom: 44px; z-index: 2; max-width: 216px; max-height: calc(100% - 120px); overflow: auto; padding: 6px 9px; border-radius: 6px; background: rgba(255, 255, 255, .93); color: #14263b; border: 1px solid #b9c6d2; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); font-size: 11.5px; line-height: 1.2; }
-.map-key.dark { background: rgba(22, 28, 36, .93); color: #e6eaee; border-color: #3a4552; }
-.map-key-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.map-key-toggle { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; text-decoration: underline; cursor: pointer; }
-.map-key ul { list-style: none; margin: 6px 0 0; padding: 0; }
-.map-key-row { display: grid; grid-template-columns: 26px 1fr; gap: 7px; align-items: center; margin: 0; padding: 1px 0; }
-.map-key-row.map-key-mine:first-of-type, .map-key-row:not(.map-key-mine) + .map-key-mine { margin-top: 5px; padding-top: 6px; border-top: 1px solid rgba(128, 140, 152, .5); }
-.map-key-mark { justify-self: center; display: block; }
+.map-key { position: absolute; left: 10px; bottom: 44px; z-index: 2; width: 252px; max-width: calc(100% - 20px); max-height: calc(100% - 120px); overflow: auto; padding: 7px 10px 8px; border-radius: 8px; background: rgba(255, 255, 255, .95); color: #14263b; border: 1px solid #b9c6d2; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); font-size: 11.5px; line-height: 1.2; }
+.map-key.dark { background: rgba(22, 28, 36, .95); color: #e6eaee; border-color: #3a4552; }
+.map-key-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.map-key-toggle { display: inline-flex; align-items: center; gap: 7px; border: 1px solid currentColor; border-radius: 6px; background: none; padding: 2px 8px; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
+.map-key-toggle:hover { background: rgba(128, 140, 152, .2); }
+.map-key-toggle:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+.map-key-icon { display: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+/* Folded: one button, plain to see on any map */
+.map-key.folded { width: auto; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
+.map-key.folded .map-key-toggle { padding: 9px 14px 9px 11px; border: 2px solid #ffffff; border-radius: 9px; background: #14263b; color: #ffffff; font-size: 13.5px; box-shadow: 0 2px 8px rgba(0, 0, 0, .4); }
+.map-key.folded .map-key-toggle:hover { background: #1f3a5a; }
+.map-key.folded.dark .map-key-toggle { background: #f0f2f4; color: #14263b; border-color: #0b0d10; }
+.map-key.folded .map-key-icon { display: block; }
+.map-key ul { list-style: none; margin: 0; padding: 0; }
+#map-key-body { margin-top: 6px; }
+.map-key-row { display: grid; grid-template-columns: 15px 58px minmax(0, 1fr); gap: 7px; align-items: center; margin: 0; padding: 2px 0; }
+.map-key-switch { cursor: pointer; }
+.map-key-switch input { margin: 0; width: 14px; height: 14px; }
+.map-key-switch.off .map-look-marks { opacity: .3; }
+.map-key-switch.off .map-look-name { opacity: .65; }
+.map-key-hint { display: block; font-size: 10.5px; opacity: .7; }
+.map-key-dark { margin-top: 5px; padding-top: 6px; border-top: 1px solid rgba(128, 140, 152, .5); }
+#map-key-list { margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(128, 140, 152, .5); }
+.map-key-mark { display: block; }
 .map-key-sign { height: 16px; width: auto; }
 .map-key svg.map-key-mark { width: 26px; height: 12px; }
 .map-key-dot { border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); box-sizing: border-box; }
-#map-look-groups .map-check { grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; }
-#map-look-groups .map-check input { margin-top: 0; }
-.map-look-marks { display: flex; align-items: center; gap: 5px; padding: 2px 5px; border-radius: 4px; background: #f4f1e8; }
-#map-look-groups.dark .map-look-marks { background: #1c2026; }
-.map-look-marks:empty { display: none; }
+.map-look-marks { display: flex; align-items: center; gap: 3px; min-height: 16px; }
 .map-look-mark { display: flex; align-items: center; }
-.map-look-mark .map-key-sign { height: 16px; }
+/* The note that says what the key is for */
+.map-key-tip { position: absolute; z-index: 3; width: 250px; padding: 10px 12px; border-radius: 8px; background: #14263b; color: #ffffff; font-size: 13px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, .4); }
+.map-key-tip.dark { background: #f0f2f4; color: #14263b; }
+.map-key-tip p { margin: 0 0 9px; }
+.map-key-tip-acts { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.map-key-tip .btn.small { background: #ffffff; color: #14263b; border-color: #ffffff; }
+.map-key-tip.dark .btn.small { background: #14263b; color: #ffffff; border-color: #14263b; }
+.map-key-tip .link-btn { color: inherit; font-size: 12.5px; }
 
 /* A link to the web, in a line of text */
 .link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--link, #1a56c4); text-decoration: underline; cursor: pointer; text-align: left; }

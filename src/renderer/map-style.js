@@ -49,7 +49,7 @@
     { id: 'minor', name: 'Streets, tracks and paths', test: (id) => /^roads_.*(minor|other|link|oneway)/.test(id) },
     { id: 'rail', name: 'Railways', test: (id) => id === 'roads_rail' },
     { id: 'borders', name: 'Borders', test: (id) => id.startsWith('boundaries') },
-    { id: 'roadnames', name: 'Road names and numbers', test: (id) => /^roads_(labels|shields)/.test(id) },
+    { id: 'roadnames', name: 'Road names and numbers', hint: 'Interstate, US highway, other roads', test: (id) => /^roads_(labels|shields)/.test(id) },
     { id: 'placenames', name: 'Names of towns and places', test: (id) => /^places_|^earth_label|^address_label/.test(id) },
     { id: 'pois', name: 'Small symbols for shops and sights', test: (id) => id === 'pois' },
   ];
@@ -138,7 +138,7 @@
     });
   }
 
-  const api = { GROUPS: GROUPS.map(({ id, name }) => ({ id, name })), legend, SHIELDS, layers, shown, clean, sprite: (look) => (clean(look).dark ? 'dark' : 'light'), background: (look) => (clean(look).dark ? NIGHT.earth : DAY.earth) };
+  const api = { GROUPS: GROUPS.map(({ id, name, hint }) => ({ id, name, hint: hint || '' })), legend, SHIELDS, layers, shown, clean, sprite: (look) => (clean(look).dark ? 'dark' : 'light'), background: (look) => (clean(look).dark ? NIGHT.earth : DAY.earth) };
   root.WikivaultMapStyle = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this));
