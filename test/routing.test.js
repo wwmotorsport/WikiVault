@@ -68,6 +68,9 @@ test('an answer becomes steps: turns named from the map, straight-on only when t
   // With no names to be had, the turns still stand; a nameless straight-on is left out.
   const bare = routing.parseRoute(answer(coords, [[1, 2, 0, 1, 1], [2, 1, 0, 1, 1], [4, 7, 0, 1, 1]]));
   assert.deepEqual(bare.steps.map((s) => s.text), ['Start out heading east', 'Turn left', 'Turn sharply right', 'Arrive at the destination']);
+  // A turn that keeps to the road already being driven says so, and a road with two numbers is written as both.
+  const twice = routing.parseRoute(answer(coords, [[1, 2, 0, 1, 1], [2, 4, 0, 1, 1], [4, 2, 0, 1, 1]]), (lon, lat) => (lat < 35.2001 ? 'South Road' : lat < 35.2295 ? 'I 285;US 52' : 'North Road'));
+  assert.deepEqual(twice.steps.map((s) => s.text), ['Start out heading east on South Road', 'Turn left onto I 285 / US 52', 'Turn sharply left to stay on I 285 / US 52', 'Turn left onto North Road', 'Arrive at the destination']);
   assert.throws(() => routing.parseRoute({ features: [] }), /not a route/);
   assert.equal(routing.heading([0, 0], [0, 1]), 'north');
   assert.equal(routing.heading([0, 0], [-1, -1]), 'south-west');

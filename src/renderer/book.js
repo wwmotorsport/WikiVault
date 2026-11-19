@@ -107,7 +107,7 @@ function bookShow(e) {
   if (e.lat == null || !mapView) { bookEdit(e.id); return; }
   const hit = bookHitOf(e);
   if (mapPopup) mapPopup.remove();
-  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px', offset: 10 }).setLngLat([e.lon, e.lat]).setDOMContent(mapDetails(hit)).addTo(mapView);
+  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px', offset: 10, focusAfterOpen: false }).setLngLat([e.lon, e.lat]).setDOMContent(mapDetails(hit)).addTo(mapView);
   mapView.easeTo({ center: [e.lon, e.lat], zoom: Math.max(mapView.getZoom(), Math.min(14, mapView.getMaxZoom())), duration: 600 });
 }
 
@@ -204,7 +204,16 @@ function paintAccounts() {
   const g = b.accounts.google; const i = b.accounts.icloud;
   $('acc-google-status').textContent = line(g, b.sources.google, 'Not connected.') + (g ? ` Connected by ${b.accounts.googleBy}${b.accounts.googleUser ? `: ${b.accounts.googleUser}` : ''}.` : '');
   $('acc-icloud-status').textContent = line(Boolean(i), b.sources.icloud, 'Not connected.') + (i ? ` Account: ${i}.` : '');
-  for (const [k, on] of [['google', g], ['icloud', Boolean(i)]]) { $(`acc-${k}-sync`).hidden = !on; $(`acc-${k}-off`).hidden = !on; }
+  for (const [k, on] of [['google', g], ['icloud', Boolean(i)]]) {
+    $(`acc-${k}-sync`).hidden = !on; $(`acc-${k}-off`).hidden = !on;
+    // Once connected, how to connect is put away: it is wanted again only to reconnect, or when the account asks for a new sign-in.
+    const again = Boolean(b.sources[k] && b.sources[k].error);
+    const open = !on || again || Boolean(bookUi.more && bookUi.more[k]);
+    $(`acc-${k}-on`).hidden = !on;
+    $(`acc-${k}-form`).hidden = !open;
+    $(`acc-${k}-more`).hidden = again;
+    $(`acc-${k}-more`).setAttribute('aria-expanded', String(open));
+  }
   $('acc-google-connect').textContent = g && b.accounts.googleBy === 'sign-in' ? 'Sign in again' : 'Sign in with Google';
   $('acc-google-pass-connect').textContent = g && b.accounts.googleBy === 'app password' ? 'Connect again' : 'Connect with an app password';
   if (b.sources.google && b.sources.google.error && b.accounts.googleBy === 'sign-in') $('acc-google-how').open = true; // where the button to sign in again is
@@ -225,10 +234,11 @@ async function bookDo(work, done) {
   paintAccounts();
 }
 const bookTold = (name) => (r) => `${name}: ${r.contacts.toLocaleString()} contacts read, ${r.entries.toLocaleString()} entries kept, ${r.located.toLocaleString()} placed on the map.`;
-$('book-accounts').addEventListener('click', () => { $('book-acc-error').hidden = true; $('book-acc-done').hidden = true; $('book-acc').showModal(); paintAccounts(); });
+$('book-accounts').addEventListener('click', () => { bookUi.more = {}; $('book-acc-error').hidden = true; $('book-acc-done').hidden = true; $('book-acc').showModal(); paintAccounts(); });
 $('book-acc-close').addEventListener('click', () => $('book-acc').close());
 $('acc-google-connect').addEventListener('click', () => bookDo(() => api.bookGoogleConnect($('acc-google-id').value, $('acc-google-secret').value).then((r) => { $('acc-google-secret').value = ''; $('acc-google-how').open = false; return r; }), bookTold('Google')));
 $('acc-google-pass-connect').addEventListener('click', () => bookDo(() => api.bookGooglePassword($('acc-google-user').value, $('acc-google-pass').value).then((r) => { $('acc-google-pass').value = ''; return r; }), bookTold('Google')));
+for (const k of ['google', 'icloud']) $(`acc-${k}-more`).addEventListener('click', () => { bookUi.more = { ...(bookUi.more || {}), [k]: !(bookUi.more && bookUi.more[k]) }; paintAccounts(); });
 $('acc-icloud-connect').addEventListener('click', () => bookDo(() => api.bookIcloudConnect($('acc-icloud-user').value, $('acc-icloud-pass').value).then((r) => { $('acc-icloud-pass').value = ''; return r; }), bookTold('iCloud')));
 $('acc-google-sync').addEventListener('click', () => bookDo(() => api.bookSync('google').then((r) => r.google), bookTold('Google')));
 $('acc-icloud-sync').addEventListener('click', () => bookDo(() => api.bookSync('icloud').then((r) => r.icloud), bookTold('iCloud')));

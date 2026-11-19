@@ -63,8 +63,15 @@ test('a contact address is put on the map as well as it can be told, and a miss 
     assert.deepEqual(at('77 Nowhere Lane, Charlotte, NC 28202'), ['town', -80.85, 'Approximate. That street is not in the address data, so this points at the middle of the ZIP code.']);
     assert.deepEqual(at('Acme Widgets\n77 Nowhere Lane\nSuite 4\nRaleigh, NC'), ['town', -78.64, 'Approximate. That street is not in the address data, so this points at the middle of the town.']);
     // Nothing to go by, and an area the data does not have: no place, and the reason.
-    assert.deepEqual(at('77 Nowhere Lane, Smalltown, NC 28999'), [null, null, 'Neither the street nor ZIP code 28999 is in the address data. The data does not cover every state and county, so this area may be missing from it. It can be placed by hand, on the map.']);
-    assert.deepEqual(at('Savannah, GA'), [null, null, 'Neither the street nor Savannah is in the address data. The data does not cover every state and county, so this area may be missing from it. It can be placed by hand, on the map.']);
+    const tail = ' is in the address data, which does not cover every state and county. Fetching the places (towns, water, power and services) on the Setup page adds the towns of every state, which would at least place it at its town. It can also be placed by hand, on the map.';
+    assert.deepEqual(at('77 Nowhere Lane, Smalltown, NC 28999'), [null, null, `Neither the street nor ZIP code 28999 nor Smalltown, NC${tail}`]);
+    // The reason names the town as the address was read, with or without a house number, a ZIP code or commas.
+    assert.deepEqual(at('421 E Charlton, Savannah, GA'), [null, null, `Neither the street nor Savannah, GA${tail}`]);
+    assert.deepEqual(at('Franklin Delano Roosevelt Blvd, California, MD, USA'), [null, null, `Neither the street nor California, MD${tail}`]);
+    // And a street the data lacks still falls back on its town: no house number, or no commas at all.
+    assert.deepEqual(at('Nowhere Boulevard, Raleigh, NC'), ['town', -78.64, 'The street is not in the address data, so this points at the middle of the town.']);
+    assert.deepEqual(at('77 Nowhere Lane Raleigh NC'), ['town', -78.64, 'The street is not in the address data, so this points at the middle of the town.']);
+    assert.deepEqual(at('Savannah, GA'), [null, null, `Neither the street nor Savannah, GA${tail}`]);
     assert.deepEqual(at('the blue house'), [null, null, 'No town or ZIP code that the address data knows could be read from this address.']);
     // The search box gains the same fall-back for a street it cannot find.
     const hit = lib.findAddress('77 Nowhere Lane, Charlotte, NC 28202').hits[0];
@@ -93,7 +100,7 @@ test('a contact address is put on the map as well as it can be told, and a miss 
     ], 'google');
     const by = (n) => book.list().find((e) => e.name === n);
     assert.deepEqual([by('Ann').how, by('Bo').how, by('Cy').how, by('Cy').lat], ['exact', 'town', null, null]);
-    assert.match(by('Cy').why, /^Neither the street nor ZIP code 31401 is in the address data/);
+    assert.match(by('Cy').why, /^Neither the street nor ZIP code 31401 nor Savannah, GA is in the address data/);
     assert.deepEqual(found[0], '420 Tryon St, Charlotte, NC 28202');
     assert.equal(book.summary().located, 2);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
