@@ -105,9 +105,15 @@ function hubItems() {
       out.push({ id: 'more', title: 'Places: shops, fuel, hospitals and more', state: jobOf(['overture:places']) ? 'working' : moreDone ? 'done' : w.more && regs.length ? 'todo' : 'off', tick: moreDone ? null : 'more',
         detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
       const plDone = Boolean(m.places && !m.places.partial && hubSame(m.places.regions || [], regs));
+// Read out of regional extracts: a large download of which little is kept. `bytes` is what is still to
+      // download; `keeps` what stays on the disk, a guess until it is done; `room` adds the largest file, held while it is read.
+      const pm = m.placesHow === 'extract' && m.placesMeasured && hubSame(m.placesMeasured.regions, regs) ? m.placesMeasured : null;
+      const plKeeps = pm ? Math.round(pm.left * 0.02) : null;
       out.push({ id: 'places', title: 'Places: towns, water, power and services', state: jobOf(['places']) ? 'working' : plDone ? 'done' : w.places && regs.length ? 'todo' : 'off', tick: plDone ? null : 'places',
-        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} pieces were fetched before it stopped, and are kept. Fetching again carries on from there.` : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from free, shared servers in small pieces, the nearest to home first. What has arrived can be searched straight away, and is kept, so a run that fails carries on where it stopped.',
-        bytes: plDone ? 0 : null, sizeNote: 'small' });
+        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} ${m.placesKept.how === 'extract' ? 'files were read' : 'pieces were fetched'} before it stopped, and what they held is kept. Fetching again carries on from there.`
+          : m.placesHow === 'extract' ? `Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Read out of regional extracts, one file to a state: each is downloaded, read here and deleted, the nearest to home first, so most of what is downloaded is not kept.${pm ? ` Needs ${bytes(pm.largest)} of room while it works.` : ''} What has been read can be searched straight away.`
+            : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from free, shared servers in small pieces, the nearest to home first.',
+        bytes: plDone ? 0 : pm ? pm.left : null, keeps: plDone ? 0 : plKeeps, room: plDone ? 0 : pm ? plKeeps + pm.largest : null, sizeNote: m.placesHow === 'extract' ? '' : 'small' });
     }
     // 5. Other libraries
     for (const lib of state.libraries || []) {
@@ -227,7 +233,7 @@ function renderHub(force) {
   if (hub.fresh) { $('hub-new-title').textContent = `New in version ${state.version}`; $('hub-new-list').replaceChildren(...hub.fresh.map((t) => el('li', '', t))); }
 
   const w = hubWant();
-  const sums = { need: 0, have: 0, unknown: 0 };
+  const sums = { need: 0, have: 0, unknown: 0, keeps: 0, room: 0 };
   $('hub-steps').replaceChildren(...items.map((it) => {
     const li = el('li', `hub-step hub-${it.state}${it.done ? ' hub-have' : ''}`);
     li.dataset.id = it.id;
@@ -245,6 +251,9 @@ function renderHub(force) {
     const have = hubHave(it.id);
     head.append(need, el('span', 'hub-size hub-have-size', have ? bytes(have) : ''));
     sums.need += todo || 0; sums.have += have || 0;
+    // What stays on the disk, and the room needed while fetching, are the same as the download for all but the places.
+    const counted = hubLeft(it) || it.state === 'working';
+    sums.keeps += counted && it.keeps != null ? it.keeps : todo || 0; sums.room += counted && it.room != null ? it.room : todo || 0;
     if ((hubLeft(it) || it.state === 'working') && todo == null && !it.sizeNote && it.id !== 'ai') sums.unknown += 1;
     li.append(head);
     if (it.tick) {
@@ -301,16 +310,16 @@ function renderHub(force) {
   if (focused && focused.id && $(focused.id)) $(focused.id).focus();
 
   // The sums of the two columns, and the room they take.
-  const need = sums.need; const unknown = sums.unknown;
-  hub.need = need; hub.unknown = unknown;
+  const need = sums.need; const unknown = sums.unknown; const room = sums.room;
+  hub.need = room; hub.unknown = unknown;
   const free = state.disk && state.disk.library ? state.disk.library.free : state.freeBytes;
   hub.free = free;
   $('hub-sum-need').textContent = need >= 5e6 ? bytes(need) : left.length || hub.running ? 'very little' : 'nothing';
   $('hub-sum-have').textContent = sums.have ? bytes(sums.have) : 'nothing yet';
   $('hub-sum-note').textContent = unknown ? `plus ${unknown} not measured yet` : '';
-  hubDisk(need, unknown);
+  hubDisk(sums.keeps, unknown);
   const total = $('hub-total'); total.replaceChildren();
-  if (free != null && need > free) total.append(el('p', 'map-approx', `What is ticked needs ${bytes(need - free)} more than there is room for. Untick something, choose less map detail, ${state.partition && state.libraryOnPartition ? 'make the partition larger from the Library page, ' : ''}or add storage.`));
+  if (free != null && room > free) total.append(el('p', 'map-approx', `What is ticked needs ${bytes(room - free)} more than there is room for. Untick something, choose less map detail, ${state.partition && state.libraryOnPartition ? 'make the partition larger from the Library page, ' : ''}or add storage.`));
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));
   else if (hub.autoNote) total.append(el('p', 'small-print', hub.autoNote));
@@ -343,6 +352,7 @@ async function hubMeasure(auto = false) {
     if (open('map')) await attempt('Map', () => hubMapJob(() => api.mapsMeasure(w.regions)));
     if (open('routing')) await attempt('Directions', () => hubMapJob(() => api.mapsRoutingMeasure(w.regions)));
     if (open('addresses') || open('more')) await attempt('Addresses and places', () => hubMapJob(() => api.mapsOvertureMeasure(w.regions)));
+    if (m.placesHow === 'extract' && open('places')) await attempt('Places', () => hubMapJob(() => api.mapsPlacesMeasure(w.regions)));
   }
   hub.measuring = false;
   // Asked for by the page itself, a failure (no connection, most likely) is a note, not an error.
@@ -378,11 +388,11 @@ async function hubRun() {
     // Places before addresses: they are quick, and the addresses take the longest of all.
     if (kinds.includes('places')) await step('more', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['places'])));
     if (kinds.includes('addresses')) await step('addresses', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['addresses'])));
-    // The places server often fails part of the way. What arrived is kept, so it is simply asked again a few times.
+    // A fetch of the places can fail part of the way. What arrived is kept, so it is simply asked for again a few times.
     await step('places', async () => {
       for (let round = 0; ; round++) {
         try { await hubMapJob(() => api.mapsPlaces(w.regions, typeof gpsPoint === 'function' ? gpsPoint() : null)); return; } catch (err) {
-          if (hub.stopAsked || round >= 3 || !/carries on from there/.test(err.message)) throw err;
+          if (hub.stopAsked || round >= 3 || !/carries on from there|to carry on/.test(err.message)) throw err;
           await new Promise((r) => setTimeout(r, 30000));
         }
       }

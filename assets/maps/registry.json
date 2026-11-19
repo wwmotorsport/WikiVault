@@ -8,7 +8,7 @@
   "https://overpass-api.de/api/interpreter",
   "https://overpass.private.coffee/api/interpreter"
  ],
- "credit": "Map and places: © OpenStreetMap contributors, under the Open Database License. Map tiles prepared by Protomaps.",
+ "credit": "Map and places: \u00a9 OpenStreetMap contributors, under the Open Database License. Map tiles prepared by Protomaps; regional extracts by Geofabrik.",
  "regions": [
   {
    "id": "us48",
@@ -1068,12 +1068,607 @@
  ],
  "routing": {
   "base": "https://brouter.de/brouter/segments4/",
-  "credit": "Routing data: © OpenStreetMap contributors, prepared weekly by the BRouter project."
+  "credit": "Routing data: \u00a9 OpenStreetMap contributors, prepared weekly by the BRouter project."
  },
  "overture": {
   "releases": "https://labs.overturemaps.org/data/releases.json",
   "bucket": "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/",
   "minConfidence": 0.7,
-  "credit": "Addresses and added places: © Overture Maps Foundation and its sources, overturemaps.org. Address data includes the US National Address Database and OpenAddresses sources."
+  "credit": "Addresses and added places: \u00a9 Overture Maps Foundation and its sources, overturemaps.org. Address data includes the US National Address Database and OpenAddresses sources."
+ },
+ "extracts": {
+  "_": "Regional OpenStreetMap extracts the places are read from, one file to a state or province. A file's address is base + path; the server sends on from '-latest' to the file of the day.",
+  "base": "https://download.geofabrik.de/",
+  "credit": "Extracts by Geofabrik GmbH. Map data \u00a9 OpenStreetMap contributors, Open Database License.",
+  "regions": {
+   "us48": [
+    {
+     "id": "alabama",
+     "name": "Alabama",
+     "path": "north-america/us/alabama-latest.osm.pbf",
+     "at": [
+      32.8,
+      -86.8
+     ]
+    },
+    {
+     "id": "arizona",
+     "name": "Arizona",
+     "path": "north-america/us/arizona-latest.osm.pbf",
+     "at": [
+      34.3,
+      -111.7
+     ]
+    },
+    {
+     "id": "arkansas",
+     "name": "Arkansas",
+     "path": "north-america/us/arkansas-latest.osm.pbf",
+     "at": [
+      34.9,
+      -92.4
+     ]
+    },
+    {
+     "id": "california",
+     "name": "California",
+     "path": "north-america/us/california-latest.osm.pbf",
+     "at": [
+      37.2,
+      -119.4
+     ]
+    },
+    {
+     "id": "colorado",
+     "name": "Colorado",
+     "path": "north-america/us/colorado-latest.osm.pbf",
+     "at": [
+      39.0,
+      -105.5
+     ]
+    },
+    {
+     "id": "connecticut",
+     "name": "Connecticut",
+     "path": "north-america/us/connecticut-latest.osm.pbf",
+     "at": [
+      41.6,
+      -72.7
+     ]
+    },
+    {
+     "id": "delaware",
+     "name": "Delaware",
+     "path": "north-america/us/delaware-latest.osm.pbf",
+     "at": [
+      39.0,
+      -75.5
+     ]
+    },
+    {
+     "id": "district-of-columbia",
+     "name": "District of Columbia",
+     "path": "north-america/us/district-of-columbia-latest.osm.pbf",
+     "at": [
+      38.9,
+      -77.0
+     ]
+    },
+    {
+     "id": "florida",
+     "name": "Florida",
+     "path": "north-america/us/florida-latest.osm.pbf",
+     "at": [
+      28.6,
+      -82.4
+     ]
+    },
+    {
+     "id": "georgia",
+     "name": "Georgia",
+     "path": "north-america/us/georgia-latest.osm.pbf",
+     "at": [
+      32.7,
+      -83.4
+     ]
+    },
+    {
+     "id": "idaho",
+     "name": "Idaho",
+     "path": "north-america/us/idaho-latest.osm.pbf",
+     "at": [
+      44.4,
+      -114.6
+     ]
+    },
+    {
+     "id": "illinois",
+     "name": "Illinois",
+     "path": "north-america/us/illinois-latest.osm.pbf",
+     "at": [
+      40.0,
+      -89.2
+     ]
+    },
+    {
+     "id": "indiana",
+     "name": "Indiana",
+     "path": "north-america/us/indiana-latest.osm.pbf",
+     "at": [
+      39.9,
+      -86.3
+     ]
+    },
+    {
+     "id": "iowa",
+     "name": "Iowa",
+     "path": "north-america/us/iowa-latest.osm.pbf",
+     "at": [
+      42.1,
+      -93.5
+     ]
+    },
+    {
+     "id": "kansas",
+     "name": "Kansas",
+     "path": "north-america/us/kansas-latest.osm.pbf",
+     "at": [
+      38.5,
+      -98.4
+     ]
+    },
+    {
+     "id": "kentucky",
+     "name": "Kentucky",
+     "path": "north-america/us/kentucky-latest.osm.pbf",
+     "at": [
+      37.5,
+      -85.3
+     ]
+    },
+    {
+     "id": "louisiana",
+     "name": "Louisiana",
+     "path": "north-america/us/louisiana-latest.osm.pbf",
+     "at": [
+      31.1,
+      -92.0
+     ]
+    },
+    {
+     "id": "maine",
+     "name": "Maine",
+     "path": "north-america/us/maine-latest.osm.pbf",
+     "at": [
+      45.4,
+      -69.2
+     ]
+    },
+    {
+     "id": "maryland",
+     "name": "Maryland",
+     "path": "north-america/us/maryland-latest.osm.pbf",
+     "at": [
+      39.0,
+      -76.8
+     ]
+    },
+    {
+     "id": "massachusetts",
+     "name": "Massachusetts",
+     "path": "north-america/us/massachusetts-latest.osm.pbf",
+     "at": [
+      42.3,
+      -71.8
+     ]
+    },
+    {
+     "id": "michigan",
+     "name": "Michigan",
+     "path": "north-america/us/michigan-latest.osm.pbf",
+     "at": [
+      44.3,
+      -85.4
+     ]
+    },
+    {
+     "id": "minnesota",
+     "name": "Minnesota",
+     "path": "north-america/us/minnesota-latest.osm.pbf",
+     "at": [
+      46.3,
+      -94.3
+     ]
+    },
+    {
+     "id": "mississippi",
+     "name": "Mississippi",
+     "path": "north-america/us/mississippi-latest.osm.pbf",
+     "at": [
+      32.7,
+      -89.7
+     ]
+    },
+    {
+     "id": "missouri",
+     "name": "Missouri",
+     "path": "north-america/us/missouri-latest.osm.pbf",
+     "at": [
+      38.4,
+      -92.5
+     ]
+    },
+    {
+     "id": "montana",
+     "name": "Montana",
+     "path": "north-america/us/montana-latest.osm.pbf",
+     "at": [
+      47.0,
+      -109.6
+     ]
+    },
+    {
+     "id": "nebraska",
+     "name": "Nebraska",
+     "path": "north-america/us/nebraska-latest.osm.pbf",
+     "at": [
+      41.5,
+      -99.8
+     ]
+    },
+    {
+     "id": "nevada",
+     "name": "Nevada",
+     "path": "north-america/us/nevada-latest.osm.pbf",
+     "at": [
+      39.3,
+      -116.6
+     ]
+    },
+    {
+     "id": "new-hampshire",
+     "name": "New Hampshire",
+     "path": "north-america/us/new-hampshire-latest.osm.pbf",
+     "at": [
+      43.7,
+      -71.6
+     ]
+    },
+    {
+     "id": "new-jersey",
+     "name": "New Jersey",
+     "path": "north-america/us/new-jersey-latest.osm.pbf",
+     "at": [
+      40.2,
+      -74.7
+     ]
+    },
+    {
+     "id": "new-mexico",
+     "name": "New Mexico",
+     "path": "north-america/us/new-mexico-latest.osm.pbf",
+     "at": [
+      34.4,
+      -106.1
+     ]
+    },
+    {
+     "id": "new-york",
+     "name": "New York",
+     "path": "north-america/us/new-york-latest.osm.pbf",
+     "at": [
+      42.9,
+      -75.5
+     ]
+    },
+    {
+     "id": "north-carolina",
+     "name": "North Carolina",
+     "path": "north-america/us/north-carolina-latest.osm.pbf",
+     "at": [
+      35.6,
+      -79.4
+     ]
+    },
+    {
+     "id": "north-dakota",
+     "name": "North Dakota",
+     "path": "north-america/us/north-dakota-latest.osm.pbf",
+     "at": [
+      47.4,
+      -100.5
+     ]
+    },
+    {
+     "id": "ohio",
+     "name": "Ohio",
+     "path": "north-america/us/ohio-latest.osm.pbf",
+     "at": [
+      40.3,
+      -82.8
+     ]
+    },
+    {
+     "id": "oklahoma",
+     "name": "Oklahoma",
+     "path": "north-america/us/oklahoma-latest.osm.pbf",
+     "at": [
+      35.6,
+      -97.5
+     ]
+    },
+    {
+     "id": "oregon",
+     "name": "Oregon",
+     "path": "north-america/us/oregon-latest.osm.pbf",
+     "at": [
+      43.9,
+      -120.6
+     ]
+    },
+    {
+     "id": "pennsylvania",
+     "name": "Pennsylvania",
+     "path": "north-america/us/pennsylvania-latest.osm.pbf",
+     "at": [
+      40.9,
+      -77.8
+     ]
+    },
+    {
+     "id": "rhode-island",
+     "name": "Rhode Island",
+     "path": "north-america/us/rhode-island-latest.osm.pbf",
+     "at": [
+      41.7,
+      -71.6
+     ]
+    },
+    {
+     "id": "south-carolina",
+     "name": "South Carolina",
+     "path": "north-america/us/south-carolina-latest.osm.pbf",
+     "at": [
+      33.9,
+      -80.9
+     ]
+    },
+    {
+     "id": "south-dakota",
+     "name": "South Dakota",
+     "path": "north-america/us/south-dakota-latest.osm.pbf",
+     "at": [
+      44.4,
+      -100.2
+     ]
+    },
+    {
+     "id": "tennessee",
+     "name": "Tennessee",
+     "path": "north-america/us/tennessee-latest.osm.pbf",
+     "at": [
+      35.9,
+      -86.4
+     ]
+    },
+    {
+     "id": "texas",
+     "name": "Texas",
+     "path": "north-america/us/texas-latest.osm.pbf",
+     "at": [
+      31.5,
+      -99.3
+     ]
+    },
+    {
+     "id": "utah",
+     "name": "Utah",
+     "path": "north-america/us/utah-latest.osm.pbf",
+     "at": [
+      39.3,
+      -111.7
+     ]
+    },
+    {
+     "id": "vermont",
+     "name": "Vermont",
+     "path": "north-america/us/vermont-latest.osm.pbf",
+     "at": [
+      44.1,
+      -72.7
+     ]
+    },
+    {
+     "id": "virginia",
+     "name": "Virginia",
+     "path": "north-america/us/virginia-latest.osm.pbf",
+     "at": [
+      37.5,
+      -78.8
+     ]
+    },
+    {
+     "id": "washington",
+     "name": "Washington",
+     "path": "north-america/us/washington-latest.osm.pbf",
+     "at": [
+      47.4,
+      -120.5
+     ]
+    },
+    {
+     "id": "west-virginia",
+     "name": "West Virginia",
+     "path": "north-america/us/west-virginia-latest.osm.pbf",
+     "at": [
+      38.6,
+      -80.6
+     ]
+    },
+    {
+     "id": "wisconsin",
+     "name": "Wisconsin",
+     "path": "north-america/us/wisconsin-latest.osm.pbf",
+     "at": [
+      44.6,
+      -89.9
+     ]
+    },
+    {
+     "id": "wyoming",
+     "name": "Wyoming",
+     "path": "north-america/us/wyoming-latest.osm.pbf",
+     "at": [
+      43.0,
+      -107.5
+     ]
+    }
+   ],
+   "alaska": [
+    {
+     "id": "alaska",
+     "name": "Alaska",
+     "path": "north-america/us/alaska-latest.osm.pbf",
+     "at": [
+      64.0,
+      -152.0
+     ]
+    }
+   ],
+   "hawaii": [
+    {
+     "id": "hawaii",
+     "name": "Hawaii",
+     "path": "north-america/us/hawaii-latest.osm.pbf",
+     "at": [
+      20.8,
+      -156.3
+     ]
+    }
+   ],
+   "pr": [
+    {
+     "id": "puerto-rico",
+     "name": "Puerto Rico",
+     "path": "north-america/us/puerto-rico-latest.osm.pbf",
+     "at": [
+      18.2,
+      -66.4
+     ]
+    },
+    {
+     "id": "us-virgin-islands",
+     "name": "U.S. Virgin Islands",
+     "path": "north-america/us/us-virgin-islands-latest.osm.pbf",
+     "at": [
+      18.0,
+      -64.8
+     ]
+    }
+   ],
+   "canada": [
+    {
+     "id": "alberta",
+     "name": "Alberta",
+     "path": "north-america/canada/alberta-latest.osm.pbf",
+     "at": [
+      55.0,
+      -115.0
+     ]
+    },
+    {
+     "id": "british-columbia",
+     "name": "British Columbia",
+     "path": "north-america/canada/british-columbia-latest.osm.pbf",
+     "at": [
+      54.0,
+      -125.0
+     ]
+    },
+    {
+     "id": "manitoba",
+     "name": "Manitoba",
+     "path": "north-america/canada/manitoba-latest.osm.pbf",
+     "at": [
+      55.0,
+      -97.0
+     ]
+    },
+    {
+     "id": "new-brunswick",
+     "name": "New Brunswick",
+     "path": "north-america/canada/new-brunswick-latest.osm.pbf",
+     "at": [
+      46.6,
+      -66.4
+     ]
+    },
+    {
+     "id": "newfoundland-and-labrador",
+     "name": "Newfoundland and Labrador",
+     "path": "north-america/canada/newfoundland-and-labrador-latest.osm.pbf",
+     "at": [
+      53.0,
+      -60.0
+     ]
+    },
+    {
+     "id": "nova-scotia",
+     "name": "Nova Scotia",
+     "path": "north-america/canada/nova-scotia-latest.osm.pbf",
+     "at": [
+      45.2,
+      -63.0
+     ]
+    },
+    {
+     "id": "ontario",
+     "name": "Ontario",
+     "path": "north-america/canada/ontario-latest.osm.pbf",
+     "at": [
+      50.0,
+      -85.0
+     ]
+    },
+    {
+     "id": "prince-edward-island",
+     "name": "Prince Edward Island",
+     "path": "north-america/canada/prince-edward-island-latest.osm.pbf",
+     "at": [
+      46.3,
+      -63.2
+     ]
+    },
+    {
+     "id": "quebec",
+     "name": "Quebec",
+     "path": "north-america/canada/quebec-latest.osm.pbf",
+     "at": [
+      52.0,
+      -72.0
+     ]
+    },
+    {
+     "id": "saskatchewan",
+     "name": "Saskatchewan",
+     "path": "north-america/canada/saskatchewan-latest.osm.pbf",
+     "at": [
+      55.0,
+      -106.0
+     ]
+    }
+   ],
+   "mexico": [
+    {
+     "id": "mexico",
+     "name": "Mexico",
+     "path": "north-america/mexico-latest.osm.pbf",
+     "at": [
+      23.6,
+      -102.5
+     ]
+    }
+   ]
+  }
  }
 }

@@ -19,6 +19,7 @@ const registry = (origin) => ({
   ...real,
   builds: { index: `${origin}/builds.json`, base: `${origin}/` },
   overpass: [`${origin}/overpass`],
+  extracts: undefined, // these tests are of the places servers that answer questions; the extracts have tests of their own
   regions: [{ id: 'east', name: 'East', default: true, rings: [box(-90, 30, -75, 40)] }, { id: 'west', name: 'West', rings: [box(-120, 35, -110, 40)] }],
 });
 const builds = Buffer.from(JSON.stringify([
