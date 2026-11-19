@@ -51,6 +51,8 @@ function paintBook() {
     if (show === 'address' && !e.address) return false;
     if (show === 'map' && e.lat == null) return false;
     if (show === 'none' && e.address) return false;
+    if (show === 'miss' && !(e.address && e.lat == null)) return false;
+    if (show === 'rough' && !(e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual')) return false;
     if (group === 'unset' ? (e.group || e.tie) : group !== 'all' && e.group !== group) return false;
     if (!words.length) return true;
     const hay = `${e.name} ${e.label} ${e.address} ${e.org} ${bookRel(e)} ${e.pin ? `${e.pinName || ''} ${(BOOK_PINS.find((p) => p[0] === e.pin) || [])[1] || ''}` : ''}`.toLowerCase();
@@ -73,7 +75,7 @@ function bookRow(e, pinned) {
   if (bookRel(e)) btn.append(el('span', 'book-rel', bookRel(e)));
   if (e.address) btn.append(el('span', 'map-hit-addr', bookLine(e.address)));
   if (e.phones) btn.append(el('span', 'map-hit-addr', e.phones));
-  if (e.address && e.lat == null) btn.append(el('span', 'map-hit-approx', 'Not on the map yet'));
+  if (e.address && e.lat == null) { const miss = el('span', 'map-hit-approx', 'Not on the map yet'); if (e.why) miss.title = e.why; btn.append(miss); }
   else if (e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual') btn.append(el('span', 'map-hit-approx', e.how === 'town' ? 'Approximate: the town only' : 'Approximate position'));
   btn.addEventListener('click', () => bookShow(e));
   const acts = el('div', 'book-row-acts');
@@ -144,6 +146,7 @@ function bookWhere(e) {
   let text = 'When you save, the address is looked up in the address data to place it on the map.';
   if (ed.placed && ed.lat != null) text = `Placed by hand at ${Number(ed.lat).toFixed(5)}, ${Number(ed.lon).toFixed(5)}. It stays there whatever the address says.`;
   else if (e && e.lat != null) text = e.how === 'exact' ? 'Found in the address data.' : e.why || 'Placed approximately from the address.';
+  else if (e && e.address && e.why) text = `Not on the map: ${e.why}`;
   else if (e && e.address) text = state?.book?.addressData ? 'This address was not found in the address data. You can place it on the map by hand.' : 'There is no address data yet, so it has no place on the map. Fetch the addresses, or place it by hand.';
   if (e && (e.src === 'google' || e.src === 'icloud')) text += ` It came from ${e.src === 'google' ? 'Google' : 'iCloud'}. Pinning it or setting the relationship keeps it in step with the account. Changing the name, address, telephone or notes makes it yours, and reading the account again then leaves it alone.`;
   $('book-where').textContent = text;

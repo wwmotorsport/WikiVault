@@ -24,10 +24,10 @@ class AddressBook {
   constructor(file, { locate = () => null, log = () => {} } = {}) { this.file = file; this.locate = locate; this.log = log; this.entries = []; this.sources = {}; this.next = 1; }
 
   load() {
-    try { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.entries = Array.isArray(j.entries) ? j.entries : []; this.sources = j.sources || {}; this.next = Number(j.next) || this.entries.length + 1; } catch { this.entries = []; this.sources = {}; this.next = 1; }
+    try { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.entries = Array.isArray(j.entries) ? j.entries : []; this.sources = j.sources || {}; this.placedBy = j.placedBy || ''; this.next = Number(j.next) || this.entries.length + 1; } catch { this.entries = []; this.sources = {}; this.next = 1; }
     return this;
   }
-  save() { fs.writeFileSync(`${this.file}.tmp`, JSON.stringify({ v: 1, next: this.next, sources: this.sources, entries: this.entries })); fs.renameSync(`${this.file}.tmp`, this.file); }
+  save() { fs.writeFileSync(`${this.file}.tmp`, JSON.stringify({ v: 1, next: this.next, placedBy: this.placedBy || '', sources: this.sources, entries: this.entries })); fs.renameSync(`${this.file}.tmp`, this.file); }
 
   summary() {
     const withAddress = this.entries.filter((e) => e.address).length;
@@ -40,7 +40,7 @@ class AddressBook {
   place(e) {
     if (e.fixed) return e;
     const hit = e.address ? this.locate(oneLine(e.address)) : null;
-    if (hit) { e.lat = hit.lat; e.lon = hit.lon; e.how = hit.how; e.why = hit.why || ''; } else { e.lat = null; e.lon = null; e.how = null; e.why = ''; }
+    if (hit && hit.lat != null) { e.lat = hit.lat; e.lon = hit.lon; e.how = hit.how; e.why = hit.why || ''; } else { e.lat = null; e.lon = null; e.how = null; e.why = (hit && hit.why) || ''; } // with no place, `why` says what stood in the way
     return e;
   }
 

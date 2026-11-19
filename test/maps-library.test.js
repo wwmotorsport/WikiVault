@@ -90,7 +90,8 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     el('node', 9, 45.0, -80.0, { amenity: 'hospital', name: 'Outside The Region' }),
     el('node', 10, 35.5, -80.0, { amenity: 'cafe', name: 'Not Wanted' }),
   ];
-  const server = http.createServer((req, res) => {
+  let fail = null;
+  const answer = (req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; }).on('end', () => {
       const q = decodeURIComponent(body.replace(/^data=/, ''));
@@ -98,12 +99,14 @@ test('places are fetched box by box, cut to the region, and searched', async () 
       if (busy > 0) { busy -= 1; res.writeHead(429); res.end(); return; }
       const m = /\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(q);
       const [s, w, n, e] = m.slice(1).map(Number);
-      if (slow > 0 && e - w > 6) { slow -= 1; res.end(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out in "query" at line 3 after 301 seconds.' })); return; }
+      if (fail && fail(w)) { res.writeHead(500); res.end(); return; }
+      if (slow > 0 && e - w > 4) { slow -= 1; res.end(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out in "query" at line 3 after 301 seconds.' })); return; }
       // Like the real server: everything in the box, and the same thing again from a neighbouring box now and then.
       const inBox = all.filter((x) => { const lat = x.lat ?? x.center.lat; const lon = x.lon ?? x.center.lon; return lat >= s && lat <= n && lon >= w && lon <= e; });
       res.end(JSON.stringify({ elements: [...inBox, all[0]] }));
     });
-  });
+  };
+  const server = http.createServer(answer);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const dir = tmp();
@@ -116,10 +119,13 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     const info = await lib.downloadPlaces(['east']);
     assert.equal(asked[0].agent, 'Wikivault/test');
     assert.match(asked[0].q, /^\[out:json\]\[timeout:300\];/);
-    assert.match(asked[0].q, /nwr\["amenity"="hospital"\]\(30,-90,40,-82\.5\);/);
+    assert.match(asked[0].q, /nwr\["amenity"="hospital"\]\(30,-90,35,-85\);/, 'the region is asked for in pieces of five degrees');
     assert.match(asked[0].q, /out center tags qt;$/);
     assert.ok(waits.includes(15000), 'a busy server is waited for');
-    assert.equal(asked.length, 7, 'busy once, timed out once and asked again in four pieces, and the second box');
+    const pieces = require('../src/core/places').boxesOf(lib.rings(['east']), 5).length;
+    assert.equal(asked.length, pieces + 1 + 4, 'every piece once, one asked again after the server was busy, and one that timed out asked again as four smaller ones');
+    assert.ok(!fs.existsSync(path.join(dir, 'places.work')), 'the working files are gone once the places are in');
+    assert.equal(lib.status().placesKept, null);
     assert.deepEqual(info.counts.hospital, 2);
     assert.deepEqual([info.counts.pharmacy, info.counts.hardware, info.counts.military, info.counts.town, info.total], [1, 1, 1, 2, 7]);
     assert.equal(seen.at(-1).done, seen.at(-1).total);
@@ -148,5 +154,32 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     await assert.rejects(lib.downloadPlaces(['east']), /answered 500/);
     assert.equal(lib.search({ q: 'mercy' }).total, 2);
     assert.ok(!fs.existsSync(path.join(dir, 'places.new')));
+    assert.equal(lib.status().placesKept, null, 'nothing arrived, so there is nothing to carry on from');
+
+    // A run that fails part of the way keeps the pieces that arrived, and the next run asks only for the rest.
+    server.removeAllListeners('request');
+    server.on('request', answer);
+    fail = (w) => w >= -80; // the eastern pieces fail for now
+    asked.length = 0;
+    await assert.rejects(lib.downloadPlaces(['east']), /answered 500\. (\d+) of (\d+) pieces are already here and are kept: fetch the places again and it carries on from there\.$/);
+    const kept = lib.status().placesKept;
+    assert.ok(kept.done > 0 && kept.done < kept.total && kept.total === pieces, JSON.stringify(kept));
+    assert.match(lib.status().error, /carries on from there/);
+    assert.equal(lib.search({ q: 'mercy' }).total, 2, 'the places in use are untouched meanwhile');
+    // The app is closed and opened again: what was kept is still known.
+    const again = new MapsLibrary({ dir, registry: registry(origin), pause: () => Promise.resolve(), agent: 'Wikivault/test' });
+    await again.init();
+    assert.deepEqual(again.status().placesKept, kept);
+    fail = null; asked.length = 0;
+    const info2 = await again.downloadPlaces(['east']);
+    assert.equal(asked.length, kept.total - kept.done, 'only the pieces still missing are asked for');
+    assert.deepEqual([info2.total, info2.counts.hospital, info2.counts.town], [7, 2, 2]);
+    assert.equal(again.status().placesKept, null);
+    // Other regions do not carry on from these pieces.
+    fail = (w) => w >= -80; asked.length = 0;
+    await assert.rejects(again.downloadPlaces(['east']), /carries on from there/);
+    fail = null; asked.length = 0;
+    await again.downloadPlaces(['west']).catch(() => null);
+    assert.ok(asked.length >= 1 && again.status().placesKept === null);
   } finally { await new Promise((r) => server.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
 });

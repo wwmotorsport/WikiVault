@@ -103,7 +103,7 @@ function hubItems() {
         detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
       const plDone = Boolean(m.places && hubSame(m.places.regions || [], regs));
       out.push({ id: 'places', title: 'Places: towns, water, power and services', state: jobOf(['places']) ? 'working' : plDone ? 'done' : w.places && regs.length ? 'todo' : 'off', tick: plDone ? null : 'places',
-        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from a shared server a piece at a time, so it is fetched last.',
+        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} pieces were fetched before it stopped, and are kept. Fetching again carries on from there.` : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from a free, shared server in pieces, two at a time. Pieces that arrive are kept, so a run that fails carries on where it stopped.',
         bytes: plDone ? 0 : null, sizeNote: 'small' });
     }
     // 5. Other libraries
@@ -264,7 +264,15 @@ async function hubRun() {
     // Places before addresses: they are quick, and the addresses take the longest of all.
     if (kinds.includes('places')) await step('more', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['places'])));
     if (kinds.includes('addresses')) await step('addresses', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['addresses'])));
-    await step('places', () => hubMapJob(() => api.mapsPlaces(w.regions)));
+    // The places server often fails part of the way. What arrived is kept, so it is simply asked again a few times.
+    await step('places', async () => {
+      for (let round = 0; ; round++) {
+        try { await hubMapJob(() => api.mapsPlaces(w.regions)); return; } catch (err) {
+          if (hub.stopAsked || round >= 3 || !/carries on from there/.test(err.message)) throw err;
+          await new Promise((r) => setTimeout(r, 30000));
+        }
+      }
+    });
     const libs = (state.libraries || []).filter((l) => due(`lib:${l.id}`));
     if (libs.length && !hub.stopAsked) {
       await hubUntil(() => Boolean(state.edition && state.edition.active)); // the other libraries open in Wikipedia's reader, so they wait for it

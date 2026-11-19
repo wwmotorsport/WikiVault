@@ -16,6 +16,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const extract = require('./map-extract');
+const crypto = require('node:crypto');
 const places = require('./places');
 const routing = require('./routing');
 const pm = require('./pmtiles');
@@ -57,7 +58,7 @@ class MapsLibrary extends EventEmitter {
     this.routing = null; this.routingMeasured = null;
     this.onRoutingSwap = async () => {}; // called before the routing files are replaced: the engine must let go of them
     this.archive = null; this.tiles = new Map(); // the map file, open for reading road names
-    this.overture = null; this.addresses = null; this.addressIndex = null; this.overtureMeasured = null; // places and addresses from Overture Maps
+    this.overture = null; this.addresses = null; this.addressIndex = null; this.overtureMeasured = null; this.gaz = null; this.gazCities = new Map(); this.gazBuilding = false; // places and addresses from Overture Maps
   }
 
   get mapFile() { return path.join(this.dir, 'map.pmtiles'); }
@@ -72,6 +73,7 @@ class MapsLibrary extends EventEmitter {
     if (this.routing && !fs.existsSync(this.segmentsDir)) this.routing = null;
     // Leftovers of an update that did not finish are not kept, except a map download that can carry on.
     await fsp.rm(path.join(this.dir, 'places.new'), { recursive: true, force: true });
+    { const st = await readJson(path.join(this.dir, 'places.work', 'state.json')); this.placesKept = st && st.v === 1 && st.done && st.done.length ? { regions: st.regions || [], done: st.done.length, total: st.done.length + st.todo.length } : null; } // a fetch of the places that did not finish
     await fsp.rm(path.join(this.dir, 'overture.new'), { recursive: true, force: true });
     await fsp.rm(path.join(this.dir, 'addresses.new.dat'), { force: true });
     this.loadOverture();
@@ -90,9 +92,10 @@ class MapsLibrary extends EventEmitter {
       levels: this.registry.levels,
       map: this.map,
       places: this.placesInfo,
+      placesKept: this.placesKept || null,
       measured: this.measured,
       routing: this.routing, routingMeasured: this.routingMeasured, routingCredit: this.registry.routing.credit,
-      overture: this.overture, addresses: this.addresses, overtureMeasured: this.overtureMeasured, overtureCredit: this.registry.overture.credit,
+      overture: this.overture, addresses: this.addresses, addressTowns: this.gaz ? { towns: Object.keys(this.gaz.towns).length, zips: Object.keys(this.gaz.zips).length, ...(this.gaz.stats || {}) } : null, overtureMeasured: this.overtureMeasured, overtureCredit: this.registry.overture.credit,
       modes: routing.MODES.map(({ id, name, what }) => ({ id, name, what })),
       job: this.job ? { ...this.job, controller: undefined } : null,
       error: this.error,
@@ -172,10 +175,12 @@ class MapsLibrary extends EventEmitter {
     } catch (err) { const r = this.end(err); if (r.stopped) return null; throw err; }
   }
 
-  async ask(query, signal) {
+  /** Put one question to a places server. `prefer` says which server to try first, so two questions at once go to two servers. */
+  async ask(query, signal, prefer = 0) {
     let lastErr = null;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const url = this.registry.overpass[attempt % this.registry.overpass.length];
+    const servers = this.registry.overpass;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const url = servers[(prefer + attempt) % servers.length];
       if (signal.aborted) throw new Error('Stopped.');
       try {
         const res = await this.fetch(this.rewrite(url), { method: 'POST', signal, timeoutMs: 330000, headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': this.agent }, body: `data=${encodeURIComponent(query)}` });
@@ -195,36 +200,86 @@ class MapsLibrary extends EventEmitter {
     throw lastErr;
   }
 
-  /** Fetch every category of places for these regions. The places in use stay until the new set is complete. */
+  placesKey(regionIds) { return crypto.createHash('sha1').update(JSON.stringify([regionIds.slice().sort(), this.registry.categories.map((c) => [c.id, c.filters])])).digest('hex').slice(0, 16); }
+
+  /**
+   * Fetch every category of places for these regions. The places in use stay until the new set is complete.
+   *
+   * The places server is free and shared, and answers one area at a time, slowly and not always. So the regions
+   * are cut into pieces, the pieces are asked for two at a time (one of each server), and every answer is put on
+   * disk in `places.work` as it arrives. A run that fails or is stopped keeps what it has: the next run for the
+   * same regions asks only for the pieces still missing. A piece that fails goes to the back of the queue and is
+   * tried again later; the run gives up only when one piece has failed three times.
+   */
   async downloadPlaces(regionIds) {
     const job = this.begin('places', { done: 0, total: 0, found: 0 });
     const fresh = path.join(this.dir, 'places.new');
+    const work = path.join(this.dir, 'places.work');
+    const stateFile = path.join(work, 'state.json');
+    let state = null;
     try {
       const rings = this.rings(regionIds);
       const cats = this.registry.categories;
-      const queue = places.boxesOf(rings, 10).map((box) => ({ box, depth: 0 }));
+      const signal = job.controller.signal;
+      const key = this.placesKey(regionIds);
+      state = await readJson(stateFile);
+      if (!state || state.v !== 1 || state.key !== key) {
+        await fsp.rm(work, { recursive: true, force: true });
+        await fsp.mkdir(work, { recursive: true });
+        state = { v: 1, key, regions: regionIds, next: 0, found: 0, done: [], todo: places.boxesOf(rings, this.registry.placesStep || 5).map((box) => ({ box, depth: 0 })) };
+        await writeJson(stateFile, state);
+      } else if (state.done.length) this.log(`places: carrying on, ${state.done.length} of ${state.done.length + state.todo.length} pieces already here`);
+      for (const p of state.todo) { p.busy = false; p.fails = 0; }
+      const save = () => writeJson(stateFile, { ...state, todo: state.todo.map(({ box, depth }) => ({ box, depth })) });
+      const tell = () => { const at = { done: state.done.length, total: state.done.length + state.todo.length }; this.placesKept = at.done ? { regions: regionIds, ...at } : null; this.progress({ ...at, found: state.found }); };
+      tell();
+      let failure = null;
+      let writing = Promise.resolve();
+      const worker = async (n) => {
+        for (;;) {
+          if (failure || signal.aborted) return;
+          const piece = state.todo.find((p) => !p.busy);
+          if (!piece) { if (!state.todo.length) return; await new Promise((r) => setTimeout(r, 40)); continue; } // another may still cut its piece into smaller ones
+          piece.busy = true;
+          let r = null;
+          try { r = await this.ask(places.queryFor(cats, piece.box), signal, n); } catch (err) {
+            if (signal.aborted) return;
+            piece.fails += 1; piece.busy = false;
+            this.log(`places: a piece failed (${piece.fails} of 3): ${err.message}`);
+            if (piece.fails >= 3) { failure = err; return; }
+            state.todo.splice(state.todo.indexOf(piece), 1); state.todo.push(piece); // later, after the others
+            await this.pause(10000);
+            continue;
+          }
+          if (r.tooBig) {
+            if (piece.depth >= 4) { failure = new Error('The places server could not answer for one area even in small pieces. Try again later.'); return; }
+            state.todo.splice(state.todo.indexOf(piece), 1, ...places.quarter(piece.box).map((b) => ({ box: b, depth: piece.depth + 1, busy: false, fails: 0 })));
+          } else {
+            const recs = [];
+            for (const el of r.elements) { const rec = places.recordOf(cats, el); if (rec && places.inRings(rings, rec.o, rec.a)) recs.push(rec); }
+            const name = `p${state.next++}.json`;
+            // One answer at a time goes to disk, and the list of what is done is only updated once it is there.
+            writing = writing.then(async () => { await fsp.writeFile(path.join(work, name), JSON.stringify(recs)); state.todo.splice(state.todo.indexOf(piece), 1); state.done.push(name); state.found += recs.length; await save(); });
+            await writing;
+          }
+          tell();
+          if (state.todo.length) await this.pause(1500); // the server is shared and free: no hurry
+        }
+      };
+      await Promise.all(Array.from({ length: Math.max(1, Math.min(3, this.registry.overpass.length)) }, (_, n) => worker(n)));
+      await writing.catch(() => {});
+      if (signal.aborted) throw new Error('Stopped.');
+      if (failure) throw failure;
+
+      // Every piece is here: put them together. A place on the edge of two pieces came twice.
       const byCat = new Map(cats.map((c) => [c.id, []]));
       const seen = new Set();
-      let done = 0;
-      this.progress({ total: queue.length });
-      while (queue.length) {
-        const { box, depth } = queue.shift();
-        const r = await this.ask(places.queryFor(cats, box), job.controller.signal);
-        if (r.tooBig) {
-          if (depth >= 4) throw new Error('The places server could not answer for one area even in small pieces. Try again later.');
-          queue.unshift(...places.quarter(box).map((b) => ({ box: b, depth: depth + 1 })));
-          this.progress({ total: done + queue.length });
-          continue;
-        }
-        for (const el of r.elements) {
-          const rec = places.recordOf(cats, el);
-          if (!rec || seen.has(rec.i) || !places.inRings(rings, rec.o, rec.a)) continue;
+      for (const name of state.done) {
+        for (const rec of JSON.parse(await fsp.readFile(path.join(work, name), 'utf8'))) {
+          if (seen.has(rec.i) || !byCat.has(rec.c)) continue;
           seen.add(rec.i);
           byCat.get(rec.c).push(rec);
         }
-        done += 1;
-        this.progress({ done, total: done + queue.length, found: seen.size });
-        if (queue.length) await this.pause(2000); // the server is shared and free: no hurry
       }
       await fsp.rm(fresh, { recursive: true, force: true });
       await fsp.mkdir(fresh, { recursive: true });
@@ -239,12 +294,20 @@ class MapsLibrary extends EventEmitter {
       const live = path.join(this.dir, 'places');
       await fsp.rm(live, { recursive: true, force: true });
       await fsp.rename(fresh, live);
+      await fsp.rm(work, { recursive: true, force: true }).catch(() => {});
+      this.placesKept = null;
       this.placesInfo = { regions: regionIds, date: new Date().toISOString(), total: seen.size, counts, bytes };
       await writeJson(path.join(this.dir, 'places.json'), this.placesInfo);
       this.loaded.clear();
       this.end();
       return this.placesInfo;
-    } catch (err) { await fsp.rm(fresh, { recursive: true, force: true }).catch(() => {}); const r = this.end(err); if (r.stopped) return null; throw err; }
+    } catch (err) {
+      await fsp.rm(fresh, { recursive: true, force: true }).catch(() => {});
+      const kept = state && state.done && state.done.length ? ` ${state.done.length} of ${state.done.length + state.todo.length} pieces are already here and are kept: fetch the places again and it carries on from there.` : '';
+      const r = this.end(kept && !/carries on from there/.test(err.message) ? Object.assign(err, { message: `${err.message}${kept}` }) : err);
+      if (r.stopped) return null;
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------- routing data
@@ -419,21 +482,76 @@ class MapsLibrary extends EventEmitter {
     const meta = readJsonSync(path.join(this.dir, 'addresses.json'));
     const dat = path.join(this.dir, 'addresses.dat');
     if (meta && Array.isArray(meta.offsets) && fs.existsSync(dat)) { const { offsets, ...summary } = meta; this.addresses = summary; this.addressIndex = new addresses.AddressIndex(dat, meta); } else { this.addresses = null; this.addressIndex = null; }
+    // The towns and ZIP codes of the address data, worked out from it once (see buildGazetteer).
+    const gaz = this.addresses ? readJsonSync(path.join(this.dir, 'address-towns.json')) : null;
+    this.setGazetteer(gaz && gaz.v === 1 && gaz.of === this.gazStamp() ? gaz : null);
     this.loaded.clear();
   }
+  gazStamp() { return this.addresses ? `${this.addresses.addresses}:${this.addresses.date || ''}:${this.addresses.bytes || ''}` : ''; }
+  setGazetteer(gaz) {
+    this.gaz = gaz;
+    this.gazCities = new Map(); // town name -> [[state, lon, lat, count]]
+    if (!gaz) return;
+    for (const [key, [lon, lat, n]] of Object.entries(gaz.towns)) { const [city, state] = key.split('|'); if (!this.gazCities.has(city)) this.gazCities.set(city, []); this.gazCities.get(city).push([state, lon, lat, n]); }
+  }
+  /**
+   * Work out where each town and ZIP code of the address data is, from the data itself, and keep the list.
+   * It is what lets an address be found when its row names no town or another one, and what an address that
+   * cannot be found falls back on. Done once per set of address data; a minute or so for a whole country.
+   * Returns true when a list was built now.
+   */
+  async buildGazetteer() {
+    if (!this.addressIndex || this.gaz || this.gazBuilding) return false;
+    this.gazBuilding = true;
+    const index = this.addressIndex; const of = this.gazStamp();
+    try {
+      const t0 = Date.now();
+      const g = await index.gazetteer();
+      if (this.addressIndex !== index) return false; // the address data was replaced meanwhile
+      const gaz = { v: 1, of, ...g };
+      await writeJson(path.join(this.dir, 'address-towns.json'), gaz);
+      this.setGazetteer(gaz);
+      const pc = (n) => `${Math.round((1000 * n) / Math.max(1, g.stats.rows)) / 10}%`;
+      this.log(`addresses: ${Object.keys(g.towns).length} towns and ${Object.keys(g.zips).length} ZIP codes placed from the address data in ${Math.round((Date.now() - t0) / 100) / 10} s. Of ${g.stats.rows} addresses, ${pc(g.stats.noTown)} name no town, ${pc(g.stats.noZip)} no ZIP code, ${pc(g.stats.neither)} neither.`);
+      this.emit('changed');
+      return true;
+    } catch (err) { this.log(`addresses: the list of towns could not be built: ${err.message}`); return false; } finally { this.gazBuilding = false; }
+  }
 
-  /** Where a named town is, from the places, for an address whose town the address data names differently. */
+  /**
+   * Where a named town is: { a, o, n }. From the places when they are here (they know the larger town of a name),
+   * else from the address data's own towns. Used for an address whose row names the town differently or not at all.
+   */
   townAt(city, state, near) {
-    if (!this.placesInfo || !this.placesInfo.counts.town) return null;
     const want = addresses.normCity(city);
-    let best = null;
-    for (const t of this.recordsOf('town')) {
-      if (addresses.normCity(t.n) !== want) continue;
-      const pop = t.x && t.x.population ? Number(String(t.x.population).replace(/\D/g, '')) || 0 : 0;
-      const score = near ? -places.km(near[1], near[0], t.a, t.o) : pop;
-      if (!best || score > best.score) best = { score, t };
+    if (!want) return null;
+    const st = state ? addresses.normState(state) : '';
+    const known = this.gazCities.get(want) || null;
+    if (this.placesInfo && this.placesInfo.counts.town) {
+      // With the state known, the town of that name there comes first: the address data says where that is.
+      const there = st && known ? known.find((g) => g[0] === st) : null;
+      let best = null;
+      for (const t of this.recordsOf('town')) {
+        if (addresses.normCity(t.n) !== want) continue;
+        const pop = t.x && t.x.population ? Number(String(t.x.population).replace(/\D/g, '')) || 0 : 0;
+        const score = there ? -places.km(there[2], there[1], t.a, t.o) : near ? -places.km(near[1], near[0], t.a, t.o) : pop;
+        if (!best || score > best.score) best = { score, t };
+      }
+      if (best) return best.t;
     }
-    return best ? best.t : null;
+    if (!known) return null;
+    const pick = st ? known.find((g) => g[0] === st) || null : known.slice().sort((x, y) => (near ? places.km(near[1], near[0], x[2], x[1]) - places.km(near[1], near[0], y[2], y[1]) : y[3] - x[3]))[0];
+    return pick ? { a: pick[2], o: pick[1], n: addresses.title(want) } : null;
+  }
+  /** The middle of a ZIP code's addresses: [lon, lat], or null. */
+  zipAt(zip) { const z5 = addresses.normZip(zip); const g = this.gaz && this.gaz.zips[z5]; return g ? [g[0], g[1]] : null; }
+  /** A town or ZIP code as somewhere to point at when the address itself cannot be found: { a, o, n, by } or null. */
+  areaOf(loc, near) {
+    if (!loc) return null;
+    const z5 = loc.zip ? this.zipAt(loc.zip) : null;
+    if (z5) return { a: z5[1], o: z5[0], n: `ZIP code ${addresses.normZip(loc.zip)}${loc.city ? ` (${addresses.title(loc.city)}${loc.state ? `, ${loc.state}` : ''})` : ''}`, by: 'zip' };
+    const t = loc.city ? this.townAt(loc.city, loc.state, near) : null;
+    return t ? { a: t.a, o: t.o, n: `${t.n}${loc.state ? `, ${loc.state}` : ''}`, by: 'town' } : null;
   }
 
   /**
@@ -444,15 +562,34 @@ class MapsLibrary extends EventEmitter {
     if (!this.addressIndex) return { hits: [], tried: false };
     const parsed = addresses.parse(text);
     if (!addresses.looksLikeAddress(parsed)) return { hits: [], tried: false };
-    const r = this.addressIndex.find(text, { near, townAt: (city) => { const t = this.townAt(city, '', near); return t ? [t.o, t.a] : null; } });
+    const r = this.addressIndex.find(text, { near, townAt: (city, state) => { const t = this.townAt(city, state || '', near); return t ? [t.o, t.a] : null; }, zipAt: (zip) => this.zipAt(zip) });
     const hits = r.hits.map((h) => ({ c: 'address', i: `ad${h.lon},${h.lat}`, a: h.lat, o: h.lon, n: h.label, d: h.note, kind: 'Address', how: h.how, approx: h.how !== 'exact', sure: h.sure, km: h.km }));
     const loc = r.parsed && r.parsed.loc;
-    if (!hits.length && parsed.number != null && loc && loc.city) {
-      // Neither the number nor the street could be placed: the town is still a place to head for.
-      const t = this.townAt(loc.city, loc.state, near);
-      if (t) hits.push({ c: 'address', i: `ad${t.o},${t.a}`, a: t.a, o: t.o, n: `${t.n}${loc.state ? `, ${loc.state}` : ''}`, d: `Approximate. ${r.street ? 'That street was not found in this town' : 'That street is not'} in the address data, so this points at the town itself.`, kind: 'Address', how: 'town', approx: true, sure: true, km: near ? Math.round(places.km(near[1], near[0], t.a, t.o) * 10) / 10 : null });
+    if (!hits.length && parsed.number != null && loc && (loc.city || loc.zip)) {
+      // Neither the number nor the street could be placed: the ZIP code or the town is still somewhere to head for.
+      const t = this.areaOf(loc, near);
+      if (t) hits.push({ c: 'address', i: `ad${t.o},${t.a}`, a: t.a, o: t.o, n: t.n, d: `Approximate. ${r.street ? 'That street was not found in this town' : 'That street is not'} in the address data, so this points at the middle of ${t.by === 'zip' ? 'the ZIP code' : 'the town'}.`, kind: 'Address', how: 'town', approx: true, sure: true, km: near ? Math.round(places.km(near[1], near[0], t.a, t.o) * 10) / 10 : null });
     }
-    return { hits, tried: true };
+    return { hits, tried: true, street: r.street };
+  }
+
+  /**
+   * Where a contact's address is, as well as it can be told. A contact's address is not always a street address:
+   * it may be a town alone, a post office box, or a street the data does not have.
+   * Returns { lat, lon, how, why } when it can be put on the map ('exact', 'between', 'nearest', 'street' or 'town'),
+   * else { why } saying what stood in the way.
+   */
+  locateAddress(text) {
+    if (!this.addressIndex) return { why: 'The street addresses have not been fetched yet. They are on the Setup page.' };
+    const r = this.findAddress(text);
+    if (r.hits[0]) { const h = r.hits[0]; return { lat: h.a, lon: h.o, how: h.how, why: h.d || '' }; }
+    const loc = addresses.placeIn(text);
+    const t = this.areaOf(loc);
+    if (t) return { lat: t.a, lon: t.o, how: 'town', why: r.tried ? `The street is not in the address data, so this points at the middle of ${t.by === 'zip' ? 'its ZIP code' : 'the town'}.` : `This is not a street address the data can place, so it points at the middle of ${t.by === 'zip' ? 'its ZIP code' : 'the town'}.` };
+    if (!this.gaz) return { why: 'The list of towns is still being worked out from the address data. This is tried again when it is ready.' };
+    if (loc && !loc.zip && !loc.state && !r.tried) return { why: 'No town or ZIP code that the address data knows could be read from this address.' };
+    if (!loc) return { why: r.tried && r.street ? 'A street of that name is in the address data, but not in a town that could be told from this address. Add the town, state or ZIP code.' : 'No town, state or ZIP code could be read from this address.' };
+    return { why: `Neither the street nor ${loc.zip ? `ZIP code ${loc.zip}` : addresses.title(loc.city)} is in the address data. The data does not cover every state and county, so this area may be missing from it. It can be placed by hand, on the map.` };
   }
 
   /** Measure what the regions need from Overture: rows and bytes of addresses and of places. Downloads only the files' footers. */

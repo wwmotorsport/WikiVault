@@ -798,6 +798,23 @@ async function initMaps() {
   maps.on('progress', () => { const now = Date.now(); if (now - last > 400) { last = now; pushState(); } });
   maps.onRoutingSwap = async () => { stopRouteEngine(); await new Promise((r) => setTimeout(r, 300)); };
   await maps.init();
+  refreshPlacing(false);
+}
+/**
+ * After anything that changes which addresses can be found (new address data, new places, a new version of
+ * the app): work out the towns of the address data if that is still to do, then try the saved entries again.
+ */
+function refreshPlacing(always = true) {
+  if (!maps) return;
+  maps.buildGazetteer().catch(() => false).then((built) => {
+    if (!book) return;
+    // Each version may read addresses better than the last, so the first start of a new one tries again too.
+    if (!always && !built && book.placedBy === app.getVersion()) return;
+    book.placedBy = app.getVersion();
+    const r = book.locateAll();
+    log(`address book: entries placed again, ${r.found} more now on the map (${r.located} of ${r.withAddress} with an address)`);
+    pushState();
+  });
 }
 const mapsBytes = () => (maps ? maps.status().bytes : 0);
 
@@ -1655,9 +1672,7 @@ const openSignIn = (url) => (contactsBase() ? fetch(url).then(() => true) : shel
 function initBook() {
   const locate = (address) => {
     if (!maps) return null;
-    let hit = null;
-    try { hit = maps.findAddress(address).hits[0] || null; } catch { hit = null; }
-    return hit ? { lat: hit.a, lon: hit.o, how: hit.how, why: hit.d || '' } : null;
+    try { return maps.locateAddress(address); } catch { return null; }
   };
   book = new AddressBook(path.join(app.getPath('userData'), 'addressbook.json'), { locate, log }).load();
   loadSecrets().then(() => pushState()).catch(() => {});
@@ -1824,7 +1839,7 @@ function registerIpc() {
     const free = await freeAt(settings.dataDir);
     return mapJob('map', maps.downloadMap(mapRegions(a), Number(a.zoom), { free }));
   }));
-  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a))); }));
+  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a)).then((r) => { if (r) refreshPlacing(); return r; })); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
   handle('maps:search', inMaps((a) => {
     const r = maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 });
@@ -1908,7 +1923,7 @@ function registerIpc() {
     const kinds = ['places', 'addresses'].filter((k) => Array.isArray(a.kinds) && a.kinds.includes(k));
     if (!kinds.length) throw new Error('Choose addresses, places or both.');
     // With new address data, addresses in the book that could not be placed before are tried again.
-    return mapJob('Overture data', maps.downloadOverture(mapRegions(a), { kinds, free: await freeAt(settings.dataDir) }).then((r) => { if (r && book) { book.locateAll(); pushState(); } return r; }));
+    return mapJob('Overture data', maps.downloadOverture(mapRegions(a), { kinds, free: await freeAt(settings.dataDir) }).then((r) => { if (r) refreshPlacing(); return r; }));
   }));
   handle('maps:address', inMaps((a) => maps.findAddress(String(a.q || ''), Array.isArray(a.near) ? a.near.map(Number) : null)));
   handle('maps:route', inMaps(async (a) => {

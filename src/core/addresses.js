@@ -172,8 +172,15 @@ class AddressBuilder {
             const out = [];
             for (const [li, pts] of groups) {
               pts.sort((a, b) => a[0] - b[0]);
-              const flat = []; let pn = 0; let px = 0; let py = 0; let last = null;
-              for (const p of pts) { if (p[0] === last) continue; last = p[0]; flat.push(p[0] - pn, p[1] - px, p[2] - py); [pn, px, py] = p; addresses += 1; }
+              const flat = []; let pn = 0; let px = 0; let py = 0; let last = null; let kept = [];
+              for (const p of pts) {
+                // A number given again at the same spot is the same building (its flats, or the row read twice) and is kept once.
+                // The same number far away is another building: rows that name no town are one group for a whole state.
+                if (p[0] !== last) { last = p[0]; kept = []; }
+                if (kept.some((k) => Math.abs(k[1] - p[1]) < 5000 && Math.abs(k[2] - p[2]) < 5000)) continue;
+                kept.push(p);
+                flat.push(p[0] - pn, p[1] - px, p[2] - py); [pn, px, py] = p; addresses += 1;
+              }
               const name = this.locList[Number(li)] || '||';
               let id = local.get(name); if (id === undefined) { id = l.length; local.set(name, id); l.push(name); }
               out.push([id, flat]);
@@ -205,8 +212,10 @@ function metres(lon1, lat1, lon2, lat2) {
 function locOf(tokens) {
   const t = tokens.slice();
   const out = { city: '', state: '', zip: '' };
+  if (t.length >= 2 && t[t.length - 2] === 'OF' && t[t.length - 1] === 'AMERICA') t.splice(-2);
   while (t.length && COUNTRIES.has(t[t.length - 1])) t.pop();
   if (t.length >= 2 && t[t.length - 2] === 'UNITED' && t[t.length - 1] === 'STATES') t.splice(-2);
+  if (t.length && /^\d{9}$/.test(t[t.length - 1])) t[t.length - 1] = t[t.length - 1].slice(0, 5); // a nine-digit ZIP code written as one number
   if (t.length && /^\d{4}$/.test(t[t.length - 1]) && t.length >= 2 && /^\d{5}$/.test(t[t.length - 2])) t.pop(); // the last four of a nine-digit ZIP code
   if (t.length && /^\d{5}$/.test(t[t.length - 1])) out.zip = t.pop();
   else if (t.length && /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(t[t.length - 1])) out.zip = t.pop();
@@ -226,13 +235,19 @@ function locOf(tokens) {
  * With commas the town is what follows the first one. Without, the words after the number are the street
  * and perhaps the town, and the index decides where one ends (see AddressIndex.find).
  */
+const UNIT = /^(?:APT|APARTMENT|UNIT|STE|SUITE|LOT|TRLR|BLDG|BUILDING|FLOOR|FL|RM|ROOM|DEPT|PMB|NO)\b\s*#?\s*[A-Z0-9-]*$|^#\s*[A-Z0-9-]+$|^\d+(?:ST|ND|RD|TH) FLOOR$/;
+const NUMBERED = /^\d+[A-Z]?(?:-(?:\d+[A-Z]?|[A-Z]))?\s+\S/;
 function parse(text) {
-  const segs = fold(text).replace(/[.'’`]/g, '').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  let segs = fold(text).replace(/[.'’`]/g, '').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  // A line of its own for the apartment or suite says nothing about where the building is.
+  segs = segs.filter((s, i) => !(UNIT.test(s) && segs.length > 1 && (i > 0 || segs.length > 2)));
+  // A contact's address often begins with a name ("Acme Widgets", "c/o ...") before the line with the house number.
+  if (segs.length > 1 && !NUMBERED.test(segs[0])) { const at = segs.findIndex((s, i) => i > 0 && i <= 2 && NUMBERED.test(s)); if (at > 0 && !LEAD_SET.has(WORDS[segs[0].split(/\s+/)[0]] || segs[0].split(/\s+/)[0])) segs = segs.slice(at); }
   if (!segs.length) return null;
   const first = segs[0].replace(/\s+(APT|APARTMENT|UNIT|STE|SUITE|LOT|TRLR|BLDG|FLOOR|RM|ROOM)\s*#?\s*[A-Z0-9-]+$/, '').replace(/\s*#\s*[A-Z0-9-]+$/, '');
   let t = first.split(/\s+/).filter((w) => w && !/^\d+\/\d+$/.test(w));
   let number = null;
-  if (t.length > 1 && /^\d+[A-Z]?(-\d+[A-Z]?)?$/.test(t[0])) { number = numOf(t[0]); t = t.slice(1); } else if (t.length > 1 && /^\d+[A-Z]?$/.test(t[t.length - 1]) && LEAD_SET.has(WORDS[t[0]] || t[0])) { number = numOf(t[t.length - 1]); t = t.slice(0, -1); }
+  if (t.length > 1 && /^\d+[A-Z]?(-(\d+[A-Z]?|[A-Z]))?$/.test(t[0])) { number = numOf(t[0]); t = t.slice(1); } else if (t.length > 1 && /^\d+[A-Z]?$/.test(t[t.length - 1]) && LEAD_SET.has(WORDS[t[0]] || t[0])) { number = numOf(t[t.length - 1]); t = t.slice(0, -1); }
   const raw = t.join(' ').split(/[^A-Z0-9]+/).filter(Boolean); // as typed, for the words that turn out to be the town
   const street = raw.map((w) => WORDS[w] || w);
   if (!street.length) return null;
@@ -240,7 +255,18 @@ function parse(text) {
   return { number, street, raw, loc: rest.length ? locOf(rest) : null };
 }
 
-const LIMITS = { apart: 2500, span: 4000, town: 40000 };
+/**
+ * The town, state and ZIP code in a piece of text that may hold no street at all: "Albany, NY",
+ * "PO Box 12, Utica NY 13501", "12207". Returns { city, state, zip } or null when it names none of them.
+ */
+function placeIn(text) {
+  const t = fold(text).replace(/[.'’`]/g, '').replace(/\bP\s*O\s*BOX\s*\d*\b|\bPOST OFFICE BOX\s*\d*\b/g, ' ').split(/[^A-Z0-9]+/).filter(Boolean);
+  if (!t.length) return null;
+  const loc = locOf(t);
+  return loc.city || loc.zip ? loc : null;
+}
+
+const LIMITS = { apart: 2500, span: 4000, town: 40000, other: 15000 };
 
 /** Reads the index. */
 class AddressIndex {
@@ -260,12 +286,52 @@ class AddressIndex {
   }
 
   /**
+   * Where every town and every ZIP code of the address data is: the middle of its addresses.
+   * Returns { towns: { 'CITY|ST': [lon, lat, count] }, zips: { '12207': [lon, lat, count] } }.
+   * Reads the whole index once, a shard at a time, and lets other work in between.
+   */
+  async gazetteer({ onProgress = () => {}, signal = null } = {}) {
+    const towns = new Map(); const zips = new Map();
+    const stats = { rows: 0, noTown: 0, noZip: 0, neither: 0 };
+    const add = (map, key, n, x, y) => { let v = map.get(key); if (!v) { v = [0, 0, 0]; map.set(key, v); } v[0] += x; v[1] += y; v[2] += n; };
+    const fd = fs.openSync(this.file, 'r');
+    try {
+      for (let i = 0; i < this.meta.offsets.length; i++) {
+        if (signal && signal.aborted) throw new Error('Stopped.');
+        const [at, len] = this.meta.offsets[i] || [0, 0];
+        if (len) {
+          const b = Buffer.alloc(len);
+          fs.readSync(fd, b, 0, len, at);
+          const sh = JSON.parse(zlib.gunzipSync(b).toString('utf8'));
+          const sums = new Map(); // per place of this shard: count, sum of x, sum of y
+          for (const entry of Object.values(sh.s)) for (const [, groups] of entry) for (const [li, flat] of groups) {
+            let s = sums.get(li); if (!s) { s = [0, 0, 0]; sums.set(li, s); }
+            let x = 0; let y = 0;
+            for (let k = 0; k < flat.length; k += 3) { x += flat[k + 1]; y += flat[k + 2]; s[0] += 1; s[1] += x; s[2] += y; }
+          }
+          for (const [li, [n, sx, sy]] of sums) {
+            const [city, state, zip] = (sh.l[li] || '||').split('|');
+            const town = Boolean(city) && !/^UNINCORPORATED|^UNKNOWN$|^NOT STATED$/.test(city);
+            const code = /^\d{5}$/.test(zip) || /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(zip);
+            if (town) add(towns, `${city}|${state}`, n, sx, sy);
+            if (code) add(zips, zip, n, sx, sy);
+            stats.rows += n; if (!town) stats.noTown += n; if (!code) stats.noZip += n; if (!town && !code) stats.neither += n;
+          }
+        }
+        if (i % 16 === 15) { onProgress((i + 1) / this.meta.offsets.length); await new Promise((r) => setImmediate(r)); }
+      }
+    } finally { fs.closeSync(fd); }
+    const out = (map) => Object.fromEntries([...map].filter(([, v]) => v[2] >= 3).map(([k, [sx, sy, n]]) => [k, [Math.round(sx / n) / 1e6, Math.round(sy / n) / 1e6, n]]));
+    return { towns: out(towns), zips: out(zips), stats };
+  }
+
+  /**
    * Find a typed address. `near` is [lon, lat] to prefer when the town is not given; `townAt(city, state)`
    * may return [lon, lat] of a named town, used when the address data names the town differently.
    * Returns { parsed, hits: [{ lon, lat, label, how, note }], street } where `how` is 'exact', 'between',
    * 'nearest' or 'street', and `street` is true when a street of that name exists somewhere.
    */
-  find(text, { near = null, townAt = () => null, limit = 5 } = {}) {
+  find(text, { near = null, townAt = () => null, zipAt = () => null, limit = 5 } = {}) {
     const p = parse(text);
     if (!p) return { parsed: null, hits: [], street: false };
     let seen = false;
@@ -278,15 +344,16 @@ class AddressIndex {
       seen = true;
       const tail = p.raw.slice(k);
       const loc = p.loc && tail.length ? { ...p.loc, city: [...tail.map((w) => OTHER[w] || w), p.loc.city].filter(Boolean).join(' ') } : p.loc || (tail.length ? locOf(tail) : null);
-      const hits = this.resolve(entry, sh.l, key, p.number, loc, near, townAt).slice(0, limit);
+      const hits = this.resolve(entry, sh.l, key, p.number, loc, near, townAt, zipAt).slice(0, limit);
       if (hits.length) return { parsed: { ...p, loc }, hits, street: true };
     }
     return { parsed: p, hits: [], street: seen };
   }
 
-  resolve(entry, locs, key, number, loc, near, townAt) {
+  resolve(entry, locs, key, number, loc, near, townAt, zipAt = () => null) {
     const asked = loc && (loc.zip || loc.city || loc.state);
-    const anchor = loc && loc.city ? townAt(loc.city, loc.state) : null;
+    // Where the town asked for is, for rows that name it differently or not at all: the ZIP code's own middle first.
+    const anchor = (loc && loc.zip ? zipAt(loc.zip) : null) || (loc && loc.city ? townAt(loc.city, loc.state) : null);
     const plain = noDirs(key); const kc = core(key);
     const found = [];
     for (const [full, groups] of entry) {
@@ -296,30 +363,43 @@ class AddressIndex {
         const [city, state, zip] = (locs[li] || '||').split('|');
         let set = null;
         if (!asked) set = `${li}`;
-        else if (loc.zip && zip === loc.zip) set = 'z';
-        else if (loc.city && city === loc.city && (!loc.state || !state || state === loc.state)) set = 'c';
+        else if (loc.zip && zip === loc.zip) set = 'town';
+        else if (loc.city && city === loc.city && (!loc.state || !state || state === loc.state)) set = 'town';
         else if (!loc.zip && !loc.city && loc.state && state === loc.state) set = `${li}`;
-        else if (anchor && flat.length && (!loc.state || !state || state === loc.state) && metres(anchor[0], anchor[1], flat[1] / 1e6, flat[2] / 1e6) <= LIMITS.town) set = 'a';
+        else if (anchor && flat.length && (!loc.state || !state || state === loc.state)) set = `a${li}`;
         if (set === null) continue;
-        if (set === 'z' || set === 'c' || set === 'a') set = 'town';
-        if (!sets.has(set)) sets.set(set, { pts: [], names: new Map() });
-        const s = sets.get(set);
+        // Rows found only by being near the town asked for are taken point by point: rows that name no town
+        // are one group for the whole state. Where the data names another town and ZIP code, only close by.
+        const reach = set[0] === 'a' ? (city && loc.city && zip && loc.zip ? LIMITS.other : LIMITS.town) : 0;
+        const pts = [];
         let n = 0; let x = 0; let y = 0;
-        for (let i = 0; i < flat.length; i += 3) { n += flat[i]; x += flat[i + 1]; y += flat[i + 2]; s.pts.push([n, x / 1e6, y / 1e6, li]); }
+        for (let i = 0; i < flat.length; i += 3) { n += flat[i]; x += flat[i + 1]; y += flat[i + 2]; if (!reach || metres(anchor[0], anchor[1], x / 1e6, y / 1e6) <= reach) pts.push([n, x / 1e6, y / 1e6, li]); }
+        if (!pts.length) continue;
+        if (!sets.has(set)) sets.set(set, { pts: [], near: set[0] === 'a' });
+        sets.get(set).pts.push(...pts);
       }
       for (const s of sets.values()) {
         s.pts.sort((a, b) => a[0] - b[0]);
+        // Several buildings with the number asked for, all near the town: the one nearest its middle.
+        if (s.near && number != null) { const same = s.pts.filter((p) => p[0] === number); if (same.length > 1) { const d = (p) => metres(anchor[0], anchor[1], p[1], p[2]); const keep = same.reduce((a, b) => (d(b) < d(a) ? b : a)); s.pts = s.pts.filter((p) => p[0] !== number || p === keep); } }
         const hit = place(s.pts, number);
         if (!hit) continue;
         const [city, state, zip] = (locs[hit.li] || '||').split('|');
-        const where = [title(city), [state.length <= 3 ? state : title(state), zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        // A row that names no town, found near the one asked for, is shown under the town asked for.
+        const shown = !city && s.near && loc.city ? loc.city : city;
+        const where = [title(shown), [state.length <= 3 ? state : title(state), zip || (!city && s.near && loc.zip ? loc.zip : '')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
         const street = title(full);
-        found.push({ lon: hit.lon, lat: hit.lat, how: hit.how, rank, sure: rank === 3, label: [`${number != null ? `${number} ` : ''}${street}`, where].filter(Boolean).join(', '), note: noteOf(hit, street, rank < 3 && number != null), far: near ? metres(near[0], near[1], hit.lon, hit.lat) : 0 });
+        const off = s.near ? metres(anchor[0], anchor[1], hit.lon, hit.lat) : 0;
+        // Found near the town asked for, under another town's name: said, and not counted as certain.
+        const elsewhere = s.near && city && loc.city && city !== loc.city ? ` The address data has it under ${title(city)}${zip ? ` ${zip}` : ''}, ${Math.max(1, Math.round(off / 1000))} km from the middle of ${loc.zip && zipAt(loc.zip) ? `ZIP code ${loc.zip}` : title(loc.city)}.` : '';
+        found.push({ lon: hit.lon, lat: hit.lat, how: hit.how, rank, tier: s.near ? 0 : 1, off, sure: rank === 3 && !elsewhere, label: [`${number != null ? `${number} ` : ''}${street}`, where].filter(Boolean).join(', '), note: `${noteOf(hit, street, rank < 3 && number != null)}${elsewhere}`.trim(), far: near ? metres(near[0], near[1], hit.lon, hit.lat) : 0 });
       }
     }
     const best = Math.max(-1, ...found.map((f) => f.rank));
+    let top = found.filter((f) => f.rank === best);
+    if (top.some((f) => f.tier === 1)) top = top.filter((f) => f.tier === 1); // named by ZIP code or town: the merely near ones are not wanted
     const order = { exact: 0, between: 1, nearest: 2, street: 3 };
-    return found.filter((f) => f.rank === best).sort((a, b) => order[a.how] - order[b.how] || a.far - b.far).map(({ rank, far, ...h }) => ({ ...h, lon: Math.round(h.lon * 1e6) / 1e6, lat: Math.round(h.lat * 1e6) / 1e6, km: near ? Math.round(far / 100) / 10 : null }));
+    return top.sort((a, b) => order[a.how] - order[b.how] || a.off - b.off || a.far - b.far).map(({ rank, far, tier, off, ...h }) => ({ ...h, lon: Math.round(h.lon * 1e6) / 1e6, lat: Math.round(h.lat * 1e6) / 1e6, km: near ? Math.round(far / 100) / 10 : null }));
   }
 }
 
@@ -357,4 +437,4 @@ function place(pts, number) {
 /** Whether typed words read as an address and not the name of a place: a house number, or a word for a kind of street. */
 const looksLikeAddress = (p) => Boolean(p) && (p.number != null || p.street.some((w) => TYPE_SET.has(w) || LEAD_SET.has(w)));
 
-module.exports = { looksLikeAddress, AddressBuilder, AddressIndex, Spool, SHARDS, normStreet, normCity, normState, normZip, core, numOf, parse, locOf, hash, place, metres, title, fold };
+module.exports = { placeIn, looksLikeAddress, AddressBuilder, AddressIndex, Spool, SHARDS, normStreet, normCity, normState, normZip, core, numOf, parse, locOf, hash, place, metres, title, fold };

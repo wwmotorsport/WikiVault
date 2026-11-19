@@ -1899,7 +1899,7 @@ function paintMapJob(m) {
     else if (j.stage === 'index') { title = 'Building the address index'; value = j.done || 0; max = j.total || 100; detail = 'Sorting the addresses by street. This part needs no connection.'; }
     else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
   }
-  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `Area ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. ${(j.found || 0).toLocaleString()} places so far. The server is free and shared, so this is done slowly.`; }
+  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: pieces are asked for two at a time and kept as they arrive, so a run that stops carries on from here.`; }
   const bar = document.createElement('progress');
   if (max) { bar.max = max; bar.value = value; }
   const stop = el('button', 'btn small', 'Stop');
@@ -2556,6 +2556,10 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.24.1': [
+    'The places download keeps what it has fetched: a run that fails or is stopped carries on where it left off.',
+    'More contact addresses are placed on the map, and one that cannot be placed says why.',
+  ],
   '0.24.0': [
     'Ask understands requests for the map: "directions from my house to my mother-in-law\'s house", "take me to work", "where does Dave live".',
     'Saved places can be pinned as Home, Work, School or a meeting point, and people given a relationship. Both can be searched and asked for.',

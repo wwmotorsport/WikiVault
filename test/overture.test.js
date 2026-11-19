@@ -82,7 +82,7 @@ test('fetching builds the address index and adds places OpenStreetMap does not h
     assert.equal(lib.findAddress('30 Elm Ave, Concord, NC').hits[0].how, 'exact', 'the postal city is the town');
     // A street whose rows name no town is found through the town's own position, the nearer Harrisburg.
     const oak = lib.findAddress('506 Oak Hollow Rd, Harrisburg, NC', [-80.8, 35.2]).hits[0];
-    assert.deepEqual([oak.how, oak.n], ['between', '506 Oak Hollow Rd, NC']);
+    assert.deepEqual([oak.how, oak.n], ['between', '506 Oak Hollow Rd, Harrisburg, NC']);
     // Nothing to place it by but the town: better than nothing, and said to be approximate.
     const town = lib.findAddress('999 Unknown Rd, Concord, NC').hits[0];
     assert.deepEqual([town.how, town.approx, town.n, town.a], ['town', true, 'Concord, NC', 35.41]);

@@ -2,6 +2,21 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.24.1 (2026-11-18)
+
+The places download, and contacts that would not go on the map.
+
+- **The places download carries on where it stopped.** The OpenStreetMap places come from free, shared servers that are slow and often refuse. Before, the regions were asked for in large areas, one after another, with everything held in memory: one failure late in the run lost all of it. Now the regions are cut into smaller pieces, asked for two at a time (one from each server), and each answer is written to disk as it arrives. A piece that fails goes to the back of the queue. A run that fails, is stopped, or ends with the app keeps its pieces, and the next run asks only for what is missing. The Setup page shows how many pieces are here and asks again by itself a few times.
+- **More contact addresses are placed.** Three things kept addresses off the map, and all three are addressed:
+  - Rows of the address data that name no town and no ZIP code, or name a suburb where the contact says the city, could only be matched with the help of the list of towns from the places download. With that download failing, they were not matched at all. The app now works out where every town and ZIP code is from the address data itself (once, about a minute for a whole country) and matches by nearness to the town or ZIP code asked for.
+  - An address whose street is not in the data now falls back on the middle of its ZIP code or town, marked approximate, instead of having no place. So does an address that is only a town, or a post office box.
+  - A contact's address that begins with a company name or an apartment line, has the apartment on a line of its own, ends in "United States of America", or has a number like 120-A, is now read correctly.
+- An entry that still cannot be placed says why. The Saved list can be narrowed to *Address not on the map yet* and *Placed approximately*.
+- The app logs how much of the address data names no town or ZIP code, so the size of that gap can be seen for the data actually on the computer.
+- When address data is built from now on, two buildings with the same number on streets of the same name, in rows that name no town, are both kept. Before, only one was. Address data fetched with an earlier version keeps that gap until it is fetched again.
+- A route between two points that come out at the same spot on the roads says so, instead of "not a route".
+- Not yet tried against the real servers or real contacts: tested with stand-in servers and made-up address rows that copy the gaps described above.
+
 ## 0.24.0 (2026-11-18)
 
 Pins, relationships, and directions by asking.

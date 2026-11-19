@@ -88,7 +88,7 @@ test('a known address is exact; an unknown number is placed between its neighbou
     // Rows that do not name their town are matched through where the town is.
     assert.deepEqual(index.find('508 Oak Hollow Rd, Harrisburg, NC').hits, [], 'a town the data does not know, with nothing to place it by');
     const byTown = index.find('506 Oak Hollow Rd, Harrisburg, NC', { townAt: (city) => (city === 'HARRISBURG' ? [-80.66, 35.32] : null) });
-    assert.deepEqual([byTown.hits[0].how, byTown.hits[0].label], ['between', '506 Oak Hollow Rd, NC']);
+    assert.deepEqual([byTown.hits[0].how, byTown.hits[0].label], ['between', '506 Oak Hollow Rd, Harrisburg, NC']);
     assert.deepEqual(index.find('506 Oak Hollow Rd, Harrisburg, NC', { townAt: () => [-97, 30] }).hits, [], 'a town far from the street does not match it');
     assert.equal(one('12 St. Charles Ave, Fort Mill SC').how, 'exact');
 
@@ -122,5 +122,64 @@ test('work in hand can be saved and returned to, and a number given twice is kep
     assert.equal(index.find('20 Main St, Monroe, NC').hits[0].how, 'exact');
     assert.equal(index.find('198 N Main St, Charlotte').hits[0].how, 'exact');
     assert.throws(() => new A.AddressBuilder(path.join(dir, 'work'), 16).restore({ lengths: new Array(16).fill(1e9), locs: 0, rows: 0 }), /not whole/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('contact addresses: a name or apartment line, a spelled-out country and odd numbers do not hide the street', () => {
+  const p = (t) => { const r = A.parse(t.replace(/\n/g, ', ')); return [r.number, r.street.join(' '), r.loc && r.loc.city, r.loc && r.loc.state, r.loc && r.loc.zip]; };
+  assert.deepEqual(p('Acme Widgets Inc\n120 N Main St\nCharlotte, NC 28202'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '28202']);
+  assert.deepEqual(p('Apt 4B\n120 N Main St\nCharlotte, NC 28202'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '28202']);
+  assert.deepEqual(p('120 N Main St\nSuite 300\nCharlotte, NC'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '']);
+  assert.deepEqual(p('120 N Main St, Apt 4B, Charlotte, NC'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '']);
+  assert.deepEqual(p('120 N Main St, 3rd Floor, Charlotte, North Carolina 28202, United States of America'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '28202']);
+  assert.deepEqual(p('120-A N Main St, Charlotte, NC 282021234'), [120, 'N MAIN ST', 'CHARLOTTE', 'NC', '28202']);
+  // What already worked still does: no number, a number after the street, and a town on the first line of nothing else.
+  assert.deepEqual(p('Main St, Monroe NC'), [null, 'MAIN ST', 'MONROE', 'NC', '']);
+  assert.deepEqual(p('Calle Juárez 45, Monterrey'), [45, 'CALLE JUAREZ', 'MONTERREY', '', '']);
+  assert.deepEqual(p('Unit 5, Charlotte'), [null, 'UNIT 5', 'CHARLOTTE', '', '']);
+  // The town, state and ZIP code of something that is not a street address.
+  assert.deepEqual(A.placeIn('Charlotte, NC'), { city: 'CHARLOTTE', state: 'NC', zip: '' });
+  assert.deepEqual(A.placeIn('P.O. Box 123, Fort Mill, SC 29715'), { city: 'FT MILL', state: 'SC', zip: '29715' });
+  assert.deepEqual(A.placeIn('28202'), { city: '', state: '', zip: '28202' });
+  assert.equal(A.placeIn('NC'), null);
+});
+
+test('address data with gaps: rows that name no town, or another, are found through the towns and ZIP codes of the data itself', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-addr-'));
+  try {
+    const out = [];
+    // Charlotte as the data often has it: most rows whole, one street with neither town nor ZIP code,
+    // and one under the name of the suburb it stands in.
+    for (let n = 100; n <= 198; n += 2) out.push(['North Main Street', n, -80.85 + (n - 100) * 0.0001, 35.23, 'Charlotte', 'NC', '28202']);
+    for (let n = 1; n <= 40; n++) out.push(['Tryon Street', 400 + n, -80.84 + n * 0.0001, 35.225, '', 'NC', '']);
+    for (let n = 1; n <= 40; n++) out.push(['Idlewild Road', 9000 + n * 2, -80.70 + n * 0.0001, 35.17, 'Mint Hill', 'NC', '28227']);
+    for (let n = 1; n <= 40; n++) out.push(['Tryon Street', 400 + n, -78.64 + n * 0.0001, 35.78, '', 'NC', '']); // Raleigh has one too, as bare
+    for (let n = 1; n <= 30; n++) out.push(['Fayetteville Street', n * 10, -78.64, 35.77 + n * 0.0001, 'Raleigh', 'NC', '27601']);
+    for (let n = 1; n <= 30; n++) out.push(['Idlewild Road', 9000 + n * 2, -79.0 + n * 0.0001, 35.9, 'Durham', 'NC', '27701']);
+    out.push(['Lonely Lane', 1, -81.5, 36.2, 'Unincorporated', 'NC', ''], ['Lonely Lane', 3, -81.5, 36.2001, 'Unincorporated', 'NC', '']);
+    const { index } = build(out, dir);
+    const g = await index.gazetteer();
+    assert.deepEqual(Object.keys(g.towns).sort(), ['CHARLOTTE|NC', 'DURHAM|NC', 'MINT HILL|NC', 'RALEIGH|NC'], 'a town is a name that rows carry; "unincorporated" is not one');
+    assert.deepEqual(Object.keys(g.zips).sort(), ['27601', '27701', '28202', '28227']);
+    const [lon, lat, n] = g.towns['CHARLOTTE|NC'];
+    assert.ok(Math.abs(lon - (-80.8451)) < 1e-4 && lat === 35.23 && n === 50, `${lon},${lat},${n}`);
+    const townAt = (city, state) => { const t = g.towns[`${city}|${state || 'NC'}`]; return t ? [t[0], t[1]] : null; };
+    const zipAt = (zip) => (g.zips[zip] ? [g.zips[zip][0], g.zips[zip][1]] : null);
+    const one = (text, o = { townAt, zipAt }) => index.find(text, o).hits[0];
+
+    // No town on the row: the one near the town asked for, not the one across the state.
+    const tryon = one('420 Tryon St, Charlotte, NC 28202');
+    assert.deepEqual([tryon.how, tryon.lon, tryon.sure], ['exact', -80.838, true]);
+    assert.equal(one('420 Tryon St, Raleigh, NC').lon, -78.638);
+    assert.equal(one('420 Tryon St, Charlotte, NC', {}), undefined, 'and without a list of towns it cannot be told, as before');
+    // The row names the suburb and its ZIP code; the contact says Charlotte and another ZIP code. Close by: taken, and said.
+    const idle = one('9020 Idlewild Rd, Charlotte, NC 28212');
+    assert.deepEqual([idle.how, idle.lon, idle.sure, idle.label], ['exact', -80.699, false, '9020 Idlewild Rd, Mint Hill, NC 28227']);
+    assert.match(idle.note, /^The address data has it under Mint Hill 28227, \d+ km from the middle of Charlotte\.$/);
+    // The right town by name beats one that is merely near, and a town too far away is not offered at all.
+    assert.equal(one('9020 Idlewild Rd, Durham, NC').label, '9020 Idlewild Rd, Durham, NC 27701');
+    assert.equal(one('9020 Idlewild Rd, Raleigh, NC 27601'), undefined, 'Durham is beyond the reach allowed for a row that names another town');
+    // A ZIP code alone places the town.
+    assert.equal(one('420 Tryon St, 27601').lon, -78.638);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
