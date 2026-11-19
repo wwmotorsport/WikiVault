@@ -1925,7 +1925,14 @@ function paintMapSummary(m) {
   b.type = 'button'; b.id = 'map-setup-toggle';
   b.setAttribute('aria-expanded', String(mapSetupOpen));
   b.addEventListener('click', () => { mapSetupOpen = !mapSetupOpen; renderMap(); });
-  box.replaceChildren(...lines, b);
+  box.replaceChildren(...lines);
+  $('map-summary-acts').replaceChildren(b);
+  // One line says what is here; the rest is a click away, so the search, the directions and the saved list come first.
+  const total = (m.places ? m.places.total : 0) + (m.overture ? m.overture.total : 0);
+  const have = [m.map ? `map (${bytes(m.map.bytes)})` : 'no map yet', total ? `${total.toLocaleString()} places` : 'no places', m.addresses ? 'addresses' : 'no addresses', m.routing ? 'directions' : 'no directions'];
+  $('map-about-line').textContent = `On this computer: ${have.join(', ')}`;
+  if (!m.map && !$('map-about').dataset.seen) $('map-about').open = true; // nothing here yet: say so in full
+  $('map-about').dataset.seen = '1';
 }
 
 function paintMapSetup(m) {
@@ -2090,7 +2097,8 @@ function mapSelect(id, { fly = true } = {}) {
   mapDrawHits();
   if (!mapView) return;
   if (mapPopup) mapPopup.remove();
-  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '300px', offset: 10 }).setLngLat([h.o, h.a]).setDOMContent(mapDetails(h)).addTo(mapView);
+  // The card does not take the keyboard: the search box keeps it, for the next search.
+  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '300px', offset: 10, focusAfterOpen: false }).setLngLat([h.o, h.a]).setDOMContent(mapDetails(h)).addTo(mapView);
   mapPopup.on('close', () => { if (mapSelected === id) { mapSelected = null; paintMapResults(); mapDrawHits(); } });
   if (fly) mapView.easeTo({ center: [h.o, h.a], zoom: Math.min(mapView.getMaxZoom(), Math.max(mapView.getZoom(), h.c === 'town' ? 10 : 13)), duration: 600 });
 }
@@ -2179,6 +2187,7 @@ async function mapResolve(which) {
 }
 
 async function mapRoute({ again = false } = {}) {
+  let shown = false;
   if (mapGo.busy) return;
   mapGo.busy = true; paintMapGo();
   try {
@@ -2191,7 +2200,12 @@ async function mapRoute({ again = false } = {}) {
       for (const c of mapGo.route.coords) b.extend(c);
       mapView.fitBounds(b, { padding: 60, maxZoom: Math.min(mapView.getMaxZoom(), 15), duration: 600 });
     }
-  } catch (err) { mapGo.route = null; throw err; } finally { mapGo.busy = false; paintMapGo(); mapDrawRoute(); }
+    shown = !again;
+  } catch (err) { mapGo.route = null; throw err; } finally {
+    mapGo.busy = false; paintMapGo(); mapDrawRoute();
+    // A new route: bring its distance and time, and the first turns, into view.
+    if (shown) { const head = document.querySelector('#map-pane-go .map-route-total'); if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+  }
 }
 
 /** A circle on the ground as a ring of points. */
@@ -2297,6 +2311,7 @@ $('map-tab-find').addEventListener('click', () => { mapGo.tab = 'find'; mapGo.pi
 $('map-tab-go').addEventListener('click', () => { mapGo.tab = 'go'; paintMapGo(); });
 $('map-tab-book').addEventListener('click', () => { mapGo.tab = 'book'; mapGo.picking = null; paintMapGo(); bookLoad(); });
 $('open-hub').addEventListener('click', () => { showView('hub'); render(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && view === 'map' && mapPopup && mapPopup.isOpen() && !document.querySelector('dialog[open]')) { mapPopup.remove(); e.preventDefault(); } });
 $('map-go').addEventListener('submit', (e) => { e.preventDefault(); mapGo.alt = 0; guard(() => mapRoute(), $('map-error')); });
 $('map-route-other').addEventListener('click', () => { mapGo.alt = (mapGo.alt + 1) % 4; guard(() => mapRoute({ again: true }), $('map-error')); });
 $('map-route-clear').addEventListener('click', () => { mapGo.from = null; mapGo.to = null; mapGo.route = null; mapGo.alt = 0; $('map-from').value = ''; $('map-to').value = ''; paintMapGo(); mapDrawRoute(); });
@@ -2556,6 +2571,10 @@ const TOUR_STOPS = [
   [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
 ];
 const WHATS_NEW = {
+  '0.24.2': [
+    'Fixes from a first live test: the Setup page, contact addresses with no house number or ZIP code, sources under answers, a narrow window, and directions wording.',
+    'Map page: the list of what is on the computer folds into one line, and the side panel is wider.',
+  ],
   '0.24.1': [
     'The places download keeps what it has fetched: a run that fails or is stopped carries on where it left off.',
     'More contact addresses are placed on the map, and one that cannot be placed says why.',
@@ -3234,7 +3253,10 @@ function renderGolf() {
   const playing = golfPlaying();
   document.body.classList.toggle('golf-playing', playing);
   for (const id of ['search', 'nav-home', 'nav-random', 'nav-school', 'nav-map', 'lib-select', 'toggle-ask', 'open-library', 'edition-stamp', 'ask']) $(id).inert = playing;
-  $('nav-golf').setAttribute('aria-pressed', String(Boolean(g) || view === 'golf'));
+  $('nav-golf').setAttribute('aria-pressed', String(view === 'golf'));
+  // A round left in progress is marked with a dot, and said, without looking like the page that is open.
+  $('nav-golf').classList.toggle('has-round', Boolean(g) && view !== 'golf');
+  $('nav-golf').title = g && view !== 'golf' ? 'Wiki golf: a round is in progress' : 'Wiki golf: a game for one to six players';
 
   const seen = g ? `${g.holeNumber}:${g.player}:${g.phase}` : null;
   if (seen !== golfSeen) {
@@ -3334,7 +3356,7 @@ function renderAnswer(box, text, passages) {
 
 function sourceList(passages, withText) {
   const ul = el('ul', 'sources');
-  const seen = new Set();
+  const seen = new Map();
   for (const p of passages) {
     const li = el('li', withText ? 'passage' : '');
     const row = el('div');
@@ -3348,8 +3370,9 @@ function sourceList(passages, withText) {
       li.append(row, el('p', 'passage-text', p.text));
     } else {
       const k = `${p.title}|${p.section}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
+      // A second passage from the same section goes on the same row, so every number in the answer has its source.
+      if (seen.has(k)) { seen.get(k).before(n); continue; }
+      seen.set(k, link);
       li.append(n, link);
     }
     ul.append(li);

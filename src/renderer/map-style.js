@@ -24,7 +24,7 @@
   };
   // The same map for a dark room or a night drive: dark ground, roads that still stand apart.
   const NIGHT = {
-    background: '#0d1014', earth: '#1c2026', water: '#12385c',
+    background: '#162433', earth: '#1c2026', water: '#12385c',
     park_a: '#1f2e22', park_b: '#24402a', wood_a: '#1c2d21', wood_b: '#214a2b', scrub_a: '#23301f', scrub_b: '#2c4424',
     pedestrian: '#2a2a26', glacier: '#46505a', sand: '#3a3626', beach: '#3a3626', hospital: '#3a2628', school: '#35301f', industrial: '#2a2a33',
     aerodrome: '#2a2c38', runway: '#4a4d5c', zoo: '#223a2c', military: '#3a2424', pier: '#33312c', buildings: '#343a42',

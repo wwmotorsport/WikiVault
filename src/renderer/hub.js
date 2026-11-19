@@ -67,6 +67,8 @@ function hubItems() {
   if (!aiOn) out.push({ id: 'ai', title: 'Offline answers', state: 'off', detail: 'Switched off under Library. Questions show matching passages instead of a written answer.', bytes: 0 });
   else if (ai.busy || ai.tune) out.push({ id: 'ai', title: 'Offline answers', state: 'working', detail: ai.busy || 'Timing the models on this computer to pick the best one.', bytes: 0 });
   else if (ai.state === 'ready' && (tuned || state.settings.ai.provider !== 'foundry')) out.push({ id: 'ai', title: 'Offline answers', state: 'done', detail: `Set up and tuned to this computer${ai.modelId ? `: ${ai.modelId}${ai.device ? ` on the ${ai.device}` : ''}` : ''}.`, bytes: 0 });
+  // Set up on an earlier day: the model is on the disk and is loaded with the first question, or was put away after a while unused.
+  else if (tuned && (ai.state === 'unknown' || ai.resting)) out.push({ id: 'ai', title: 'Offline answers', state: 'done', detail: 'Set up and tuned to this computer. The model is loaded when the first question is asked.', bytes: 0 });
   else out.push({ id: 'ai', title: 'Offline answers', state: w.ai ? 'todo' : 'off', tick: 'ai', detail: ai.state === 'ready' ? 'A model is installed but has not been tuned: the app can time the models that suit this computer and keep the best.' : 'Installs the local model that writes answers from the articles, then times the models that suit this computer and keeps the best. Needs a few gigabytes; the exact amount depends on the computer.', bytes: null, sizeNote: 'depends on this computer' });
 
   if (active || state.settings.dataDir) {
@@ -203,7 +205,7 @@ function renderHub(force) {
   const unknown = left.filter((it) => it.bytes == null && !it.sizeNote).length;
   const free = state.freeBytes;
   const total = $('hub-total'); total.replaceChildren();
-  if (left.length) total.append(el('p', '', `Still to fetch: about ${bytes(need) || '0 MB'}${unknown ? `, plus ${unknown} not measured yet` : ''}. Free on the library's drive: ${free == null ? 'unknown' : bytes(free)}.`));
+  if (left.length) total.append(el('p', '', `Still to fetch: ${need < 5e6 ? 'very little' : `about ${bytes(need)}`}${unknown ? `, plus ${unknown} not measured yet` : ''}. Free on the library's drive: ${free == null ? 'unknown' : bytes(free)}.`));
   if (free != null && need > free) total.append(el('p', 'map-approx', `That is ${bytes(need - free)} more than there is room for. Untick something, choose less map detail, or make room${state.partition && state.libraryOnPartition ? ': the partition can be made larger from the Library page' : ''}.`));
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));

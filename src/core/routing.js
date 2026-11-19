@@ -94,7 +94,8 @@ function parseRoute(geojson, nameAt = () => '') {
   const total = along[along.length - 1];
   // The road a step leads onto is named from a point a little way past the turn.
   const after = (i) => { const want = along[i] + 40; let j = i; while (j + 1 < coords.length && along[j + 1] < want) j += 1; if (j + 1 >= coords.length) return coords[coords.length - 1]; const t = (want - along[j]) / Math.max(1e-9, along[j + 1] - along[j]); return [coords[j][0] + (coords[j + 1][0] - coords[j][0]) * t, coords[j][1] + (coords[j + 1][1] - coords[j][1]) * t]; };
-  const name = (i) => { try { return String(nameAt(...after(i)) || ''); } catch { return ''; } };
+  // A road with two numbers comes as "I 285;US 52".
+  const name = (i) => { try { return String(nameAt(...after(i)) || '').replace(/\s*;\s*/g, ' / '); } catch { return ''; } };
   const hints = (Array.isArray(p.voicehints) ? p.voicehints : []).filter((h) => Array.isArray(h) && h[0] > 0 && h[0] < coords.length - 1).sort((a, b) => a[0] - b[0]);
   const steps = [];
   const first = name(0);
@@ -105,7 +106,7 @@ function parseRoute(geojson, nameAt = () => '') {
     let text;
     if (cmd === 13 || cmd === 14) text = `At the roundabout, take the ${ORDINALS[exit] || `${exit}th`} exit${road ? ` onto ${road}` : ''}`;
     else if (cmd === 16) text = 'Go straight on towards the next point; no road is mapped here';
-    else if (cmd === 1) { if (!road || road === last) { continue; } text = `Continue onto ${road}`; } else text = `${TURNS[cmd] || 'Continue'}${road ? ` onto ${road}` : ''}`;
+    else if (cmd === 1) { if (!road || road === last) { continue; } text = `Continue onto ${road}`; } else text = road && road === last ? `${TURNS[cmd] || 'Continue'} to stay on ${road}` : `${TURNS[cmd] || 'Continue'}${road ? ` onto ${road}` : ''}`;
     steps.push({ at: coords[index], index, text });
     if (road) last = road;
   }

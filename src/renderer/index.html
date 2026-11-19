@@ -192,11 +192,15 @@
         <aside class="map-side" id="map-side" aria-label="Map tools">
           <header>
             <h1 class="display">Map</h1>
-            <p class="small-print" id="map-credit"></p>
           </header>
           <p class="error" id="map-error" hidden></p>
           <div id="map-job" hidden></div>
-          <div id="map-summary"></div>
+          <details class="map-about" id="map-about">
+            <summary id="map-about-line">What is on this computer</summary>
+            <div id="map-summary"></div>
+            <p class="small-print" id="map-credit"></p>
+          </details>
+          <div id="map-summary-acts"></div>
           <div id="map-setup" hidden></div>
           <details class="map-look" id="map-look" hidden>
             <summary>What the map shows</summary>
@@ -691,14 +695,16 @@
     <section class="acc">
       <h3>Google</h3>
       <p class="small-print" id="acc-google-status"></p>
+      <div class="actions acc-on" id="acc-google-on" hidden>
+        <button type="button" class="btn" id="acc-google-sync" hidden>Read again now</button>
+        <button type="button" class="btn" id="acc-google-off" hidden>Disconnect</button>
+        <button type="button" class="btn" id="acc-google-more" aria-expanded="false">Connect again or another way</button>
+      </div>
+      <div id="acc-google-form">
       <p class="small-print">The simple way is an <b>app password</b>. Turn on 2-Step Verification for the Google Account, then make an app password at <b>myaccount.google.com/apppasswords</b>. Google shows it as four groups of four letters, and it can be withdrawn there at any time. Google does not promise to keep this way open: if it is refused, use the sign-in further down.</p>
       <div class="field"><label class="field-label" for="acc-google-user">Google Account (e-mail address)</label><input type="text" id="acc-google-user" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label class="field-label" for="acc-google-pass">App password</label><input type="password" id="acc-google-pass" autocomplete="off" spellcheck="false" placeholder="xxxx xxxx xxxx xxxx"></div>
-      <div class="actions">
-        <button type="button" class="btn primary" id="acc-google-pass-connect">Connect with an app password</button>
-        <button type="button" class="btn" id="acc-google-sync" hidden>Read again now</button>
-        <button type="button" class="btn" id="acc-google-off" hidden>Disconnect</button>
-      </div>
+      <div class="actions"><button type="button" class="btn primary" id="acc-google-pass-connect">Connect with an app password</button></div>
       <details id="acc-google-how">
         <summary>The other way: sign in through a client of your own (longer to set up)</summary>
         <p class="small-print">Google's official route for a program is a "client" registered with Google. This app cannot carry one for everybody, so you make your own, free.</p>
@@ -714,17 +720,21 @@
         <div class="field"><label class="field-label" for="acc-google-secret">Client secret</label><input type="password" id="acc-google-secret" autocomplete="off" spellcheck="false"></div>
         <div class="actions"><button type="button" class="btn" id="acc-google-connect">Sign in with Google</button></div>
       </details>
+      </div>
     </section>
     <section class="acc">
       <h3>Apple iCloud</h3>
       <p class="small-print" id="acc-icloud-status"></p>
+      <div class="actions acc-on" id="acc-icloud-on" hidden>
+        <button type="button" class="btn" id="acc-icloud-sync" hidden>Read again now</button>
+        <button type="button" class="btn" id="acc-icloud-off" hidden>Disconnect</button>
+        <button type="button" class="btn" id="acc-icloud-more" aria-expanded="false">Connect again</button>
+      </div>
+      <div id="acc-icloud-form">
       <p class="small-print">Apple needs an <b>app-specific password</b>, not your usual one: make it at <b>account.apple.com</b>, under <i>Sign-In and Security, App-Specific Passwords</i>. It can be withdrawn there at any time. Two-factor authentication must be on for the Apple Account.</p>
       <div class="field"><label class="field-label" for="acc-icloud-user">Apple Account (e-mail address)</label><input type="text" id="acc-icloud-user" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label class="field-label" for="acc-icloud-pass">App-specific password</label><input type="password" id="acc-icloud-pass" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx"></div>
-      <div class="actions">
-        <button type="button" class="btn primary" id="acc-icloud-connect">Connect iCloud</button>
-        <button type="button" class="btn" id="acc-icloud-sync" hidden>Read again now</button>
-        <button type="button" class="btn" id="acc-icloud-off" hidden>Disconnect</button>
+      <div class="actions"><button type="button" class="btn primary" id="acc-icloud-connect">Connect iCloud</button></div>
       </div>
     </section>
     <section class="acc">

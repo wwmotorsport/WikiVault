@@ -461,7 +461,8 @@ class MapsLibrary extends EventEmitter {
     const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && this.overture.counts[id]);
     const ids = (chosen ? categories : this.registry.categories.map((c) => c.id)).filter(has);
     let r = { total: 0, hits: [] };
-    if (ids.length && (q.trim() || box || near || ids.length === 1)) {
+    const exact = found.some((h) => h.sure && h.how === 'exact') && /^\s*\d/.test(q);
+    if (!exact && ids.length && (q.trim() || box || near || ids.length === 1)) {
       const all = [];
       for (const id of ids) for (const rec of this.recordsOf(id)) all.push(rec);
       r = places.search(all, { q, near, box, limit: Math.min(2000, Math.max(1, limit)) });
@@ -550,8 +551,15 @@ class MapsLibrary extends EventEmitter {
     if (!loc) return null;
     const z5 = loc.zip ? this.zipAt(loc.zip) : null;
     if (z5) return { a: z5[1], o: z5[0], n: `ZIP code ${addresses.normZip(loc.zip)}${loc.city ? ` (${addresses.title(loc.city)}${loc.state ? `, ${loc.state}` : ''})` : ''}`, by: 'zip' };
-    const t = loc.city ? this.townAt(loc.city, loc.state, near) : null;
-    return t ? { a: t.a, o: t.o, n: `${t.n}${loc.state ? `, ${loc.state}` : ''}`, by: 'town' } : null;
+    // The town may be the last words of a longer run: with no commas, the street's words come before it.
+    const words = String(loc.city || '').split(' ').filter(Boolean);
+    for (let k = 0; k < words.length; k++) {
+      if (k > 0 && words.length - k > 4) continue; // a town's name is a few words at most
+      const t = this.townAt(words.slice(k).join(' '), loc.state, near);
+      if (t) return { a: t.a, o: t.o, n: `${t.n}${loc.state ? `, ${loc.state}` : ''}`, by: 'town' };
+      if (loc.fixed) break; // the town was set apart by a comma: it is all of it or nothing
+    }
+    return null;
   }
 
   /**
@@ -570,7 +578,7 @@ class MapsLibrary extends EventEmitter {
       const t = this.areaOf(loc, near);
       if (t) hits.push({ c: 'address', i: `ad${t.o},${t.a}`, a: t.a, o: t.o, n: t.n, d: `Approximate. ${r.street ? 'That street was not found in this town' : 'That street is not'} in the address data, so this points at the middle of ${t.by === 'zip' ? 'the ZIP code' : 'the town'}.`, kind: 'Address', how: 'town', approx: true, sure: true, km: near ? Math.round(places.km(near[1], near[0], t.a, t.o) * 10) / 10 : null });
     }
-    return { hits, tried: true, street: r.street };
+    return { hits, tried: true, street: r.street, loc: loc || null };
   }
 
   /**
@@ -583,13 +591,17 @@ class MapsLibrary extends EventEmitter {
     if (!this.addressIndex) return { why: 'The street addresses have not been fetched yet. They are on the Setup page.' };
     const r = this.findAddress(text);
     if (r.hits[0]) { const h = r.hits[0]; return { lat: h.a, lon: h.o, how: h.how, why: h.d || '' }; }
-    const loc = addresses.placeIn(text);
+    // The town as the address was read (after its street), or, for something that is no street address, whatever town it names.
+    const loc = r.tried && r.loc && (r.loc.city || r.loc.zip) ? { ...r.loc, fixed: true } : addresses.placeIn(text);
     const t = this.areaOf(loc);
     if (t) return { lat: t.a, lon: t.o, how: 'town', why: r.tried ? `The street is not in the address data, so this points at the middle of ${t.by === 'zip' ? 'its ZIP code' : 'the town'}.` : `This is not a street address the data can place, so it points at the middle of ${t.by === 'zip' ? 'its ZIP code' : 'the town'}.` };
     if (!this.gaz) return { why: 'The list of towns is still being worked out from the address data. This is tried again when it is ready.' };
-    if (loc && !loc.zip && !loc.state && !r.tried) return { why: 'No town or ZIP code that the address data knows could be read from this address.' };
+    if (loc && !loc.zip && !loc.state && !loc.fixed) return { why: 'No town or ZIP code that the address data knows could be read from this address.' };
     if (!loc) return { why: r.tried && r.street ? 'A street of that name is in the address data, but not in a town that could be told from this address. Add the town, state or ZIP code.' : 'No town, state or ZIP code could be read from this address.' };
-    return { why: `Neither the street nor ${loc.zip ? `ZIP code ${loc.zip}` : addresses.title(loc.city)} is in the address data. The data does not cover every state and county, so this area may be missing from it. It can be placed by hand, on the map.` };
+    const town = loc.fixed ? addresses.title(loc.city) : addresses.title(String(loc.city || '').split(' ').slice(-2).join(' '));
+    const what = [loc.zip ? `ZIP code ${loc.zip}` : '', town ? `${town}${loc.state ? `, ${loc.state}` : ''}` : ''].filter(Boolean).join(' nor ');
+    const towns = this.placesInfo && this.placesInfo.counts.town ? '' : ' Fetching the places (towns, water, power and services) on the Setup page adds the towns of every state, which would at least place it at its town.';
+    return { why: `Neither the street nor ${what} is in the address data, which does not cover every state and county.${towns} It can also be placed by hand, on the map.` };
   }
 
   /** Measure what the regions need from Overture: rows and bytes of addresses and of places. Downloads only the files' footers. */

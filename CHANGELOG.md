@@ -2,6 +2,25 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.24.2 (2026-11-18)
+
+From a first test of the app on a real computer, with real contacts.
+
+- The Setup page showed *Offline answers* as still to do when the model was installed and tuned but had not yet been loaded that day. It is now marked done.
+- A contact's address with no house number, or with no ZIP code and a street the data lacks, was read whole as the name of a town: it got no place and a reason that made no sense. The town is now taken from how the address was read, such addresses fall back on their town, and the reason names the town and says that fetching the places adds the towns of every state.
+- A source cited in an answer was missing from the list under it when two cited passages came from the same section. Both numbers are now shown on that source's row.
+- In a narrow window the *Setup* and *Library* buttons were pushed off the end of the top bar. The bar now gives way in the middle.
+- A place found by searching no longer takes the keyboard away from the search box, and Escape closes an open card on the map.
+- An address that is found exactly is no longer followed by places that merely share its words.
+- Directions: a turn that keeps to the same road says "to stay on", a road with two numbers reads "I 285 / US 52", and a new route brings its distance and first turns into view.
+- In the dark map, the area beyond what was fetched is a quiet blue-grey, not black.
+- The Wiki golf button marks a round in progress with a dot and a note, and is only lit on its own page.
+- "Still to fetch: about 1 KB" now reads "very little".
+- Map page: what is on the computer is one line that opens for the detail, so the search, the directions and the saved list come first. The side panel is wider.
+- Setup, search results, School and Library are centred in a wide window.
+- Contacts accounts: once an account is connected, the instructions and boxes for connecting are put away behind *Connect again or another way*.
+- Checked on the packaged app with stand-in data. Not yet seen on the real computer.
+
 ## 0.24.1 (2026-11-18)
 
 The places download, and contacts that would not go on the map.
