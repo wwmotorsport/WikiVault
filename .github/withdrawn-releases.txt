@@ -1,0 +1,3 @@
+# Releases that have been withdrawn: one tag to a line. The build removes each of them, and its tag,
+# the next time it publishes an installer.
+V0.15.0
