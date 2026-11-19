@@ -48,10 +48,34 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A release made here takes its notes from .github/RELEASE-NOTES.md, which is written for the version being tagged.
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
+            if [ -f .github/RELEASE-NOTES.md ]; then
+              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Wikivault ${RELEASE_TAG#[vV]}" --notes-file .github/RELEASE-NOTES.md
+            else
+              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
+            fi
           fi
           gh release upload "$RELEASE_TAG" dist/Wikivault-Setup-*.exe --clobber --repo "$GITHUB_REPOSITORY"
+      # Releases that have been withdrawn are named, one tag to a line, in .github/withdrawn-releases.txt.
+      # They and their tags are removed here, after the new installer is in place, so that there is always one to download.
+      - name: Remove withdrawn releases
+        if: env.RELEASE_TAG != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          list=".github/withdrawn-releases.txt"
+          [ -f "$list" ] || exit 0
+          while IFS= read -r line || [ -n "$line" ]; do
+            tag="$(printf '%s' "${line%%#*}" | tr -d '[:space:]')"
+            if [ -z "$tag" ] || [ "$tag" = "$RELEASE_TAG" ]; then continue; fi
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+              echo "removed the release $tag"
+            fi
+            git push origin ":refs/tags/$tag" > /dev/null 2>&1 || true
+          done < "$list"
       # The download links in the README, DOWNLOAD-INSTALLER.md and the user guide name one exact file.
       # Now that the file is on the release, point them at it, so they never name something that is not there.
       - name: Check out the main branch to update the download links
