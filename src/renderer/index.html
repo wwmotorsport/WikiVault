@@ -210,11 +210,6 @@
           </details>
           <div id="map-summary-acts"></div>
           <div id="map-setup" hidden></div>
-          <details class="map-look" id="map-look" hidden>
-            <summary>What the map shows</summary>
-            <label class="map-check"><input type="checkbox" id="map-dark"><span>Dark map<span class="small-print"> For a dark room or a night drive.</span></span></label>
-            <div id="map-look-groups"></div>
-          </details>
           <div class="map-tabs" id="map-tabs" role="tablist" hidden>
             <button type="button" role="tab" id="map-tab-find" aria-selected="true">Places</button>
             <button type="button" role="tab" id="map-tab-go" aria-selected="false">Directions</button>
@@ -327,10 +322,19 @@
         <div class="map-stage">
           <div class="map-guide" id="map-guide" hidden><b id="map-guide-next"></b><span id="map-guide-rest"></span></div>
           <div id="map-canvas"></div>
-          <aside class="map-key" id="map-key" aria-label="What the map's lines and colours stand for" hidden>
-            <div class="map-key-head"><b id="map-key-title">Key</b><button type="button" class="map-key-toggle" id="map-key-toggle" aria-expanded="true" aria-controls="map-key-list">Hide</button></div>
-            <ul id="map-key-list"></ul>
+          <aside class="map-key" id="map-key" aria-label="Key: what the map's lines and colours stand for, and switches for each kind" hidden>
+            <div class="map-key-head"><b id="map-key-title">Key and layers</b><button type="button" class="map-key-toggle" id="map-key-toggle" aria-expanded="true" aria-controls="map-key-body"><svg class="map-key-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3 2.500 7 10 11l7.500-4L10 3ZM2.500 10.500 10 14.500l7.500-4M2.500 14 10 18l7.500-4"/></svg><span id="map-key-toggle-text">Hide</span></button></div>
+            <div id="map-key-body">
+              <ul id="map-key-fixed"></ul>
+              <div id="map-look-groups"></div>
+              <label class="map-key-row map-key-switch map-key-dark"><input type="checkbox" id="map-dark"><span class="map-look-marks"></span><span class="map-look-name">Dark map<span class="map-key-hint">For a dark room or a night drive</span></span></label>
+              <ul id="map-key-list"></ul>
+            </div>
           </aside>
+          <div class="map-key-tip" id="map-key-tip" role="note" hidden>
+            <p><b>Key and layers.</b> <span id="map-key-tip-text"></span></p>
+            <div class="map-key-tip-acts"><button type="button" class="btn small" id="map-key-tip-ok">Got it</button><button type="button" class="link-btn" id="map-key-tip-never">Don't show this again</button></div>
+          </div>
           <div class="map-empty" id="map-empty" hidden></div>
         </div>
       </section>

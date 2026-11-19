@@ -214,11 +214,11 @@ The folded-map button in the top bar opens an offline map. The tools are on the 
 
 To change the regions or the detail, or to get a newer map, press *Change or update* and do the same again. The map you have stays in use until the new one is complete.
 
-**The key.** A small key in the corner of the map says what each line and colour stands for: Interstates and freeways, main roads, streets, tracks and paths, railways, borders, water, woodland, parks and buildings. It lists only what is switched on, and it adds the app's own marks while they are on the map: your route with its start and destination, pinned and saved places, places found, blocked areas, and where you are. *Hide* folds it to a small button.
+**Key and layers.** A key in the corner of the map says what each line and colour stands for, and it is also where you choose what the map shows. Interstates and freeways and main roads are always drawn. Every other kind has a tick box beside its picture: woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Untick one to take it off the map; it stays in the key, greyed, so it can be ticked again. *Dark map*, at the foot of the list, turns the map dark for a dark room or a night drive. Your choices are kept. Below the switches the key names the app's own marks while they are on the map: your route with its start and destination, pinned and saved places, places found, blocked areas, and where you are.
+
+*Hide* folds the key down to a button, **Key and layers**, which opens it again. The key also folds by itself while the map is waiting for you to click a spot. The first times the pointer comes near the key, a note says what it is for. *Got it* puts the note away until the app is next started; *Don't show this again* puts it away for good.
 
 **Road numbers** are drawn as the signs beside the road: a red, white and blue shield for an Interstate, a white shield for a US highway, and a plain white sign for state and other numbered roads. The map data marks Interstates as such; a US highway is told by how its number is written, so a few may show the plain sign.
-
-**What the map shows.** Under the summary, *What the map shows* opens a list of switches. Beside each switch is a small picture of what it draws, in the colours of the look chosen. *Dark map* turns the map dark for a dark room or a night drive. The others switch kinds of feature off and on: woodland, parks and land use; water; buildings; streets, tracks and paths; railways; borders; road names and numbers; names of towns and places; and the small symbols for shops and sights. Highways and main roads are always drawn. Your choices are kept.
 
 On the map, highways are orange, main roads amber, streets white, and tracks and paths brown and dashed. Roads are drawn heavier as you zoom in.
 

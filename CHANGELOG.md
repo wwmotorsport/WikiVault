@@ -2,6 +2,16 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.26.1 (2026-11-19)
+
+The map's switches move into its key.
+
+- **Key and layers.** The key on the map now has a tick box beside every kind of thing that can be hidden, and one for the dark map. The separate *What the map shows* list in the panel is gone. A kind that is unticked stays in the key, greyed, so it can be ticked again.
+- **A plainer button when folded.** *Hide* folds the key down to a solid **Key and layers** button instead of a small underlined word.
+- **A note on what it is for.** When the pointer comes near the key, a note beside it says what the key does. *Got it* puts it away until the app is next started, and *Don't show this again* for good.
+- The package details name the account, not a person.
+- The example addresses in the guide and in the app are New York ones.
+
 ## 0.26.0 (2026-11-19)
 
 Places arrive sooner, an approximate destination cannot be missed, and School steps aside until it is finished.
