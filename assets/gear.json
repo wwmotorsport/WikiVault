@@ -1,0 +1,9 @@
+{
+ "_": "Hardware the app can point people to. A link is shown only when its url is filled in.",
+ "gps": {
+  "name": "GlobalSat BU-353N5 USB GPS receiver",
+  "url": "https://www.amazon.com/dp/B0B1W1YBZC",
+  "seller": "Amazon",
+  "note": ""
+ }
+}

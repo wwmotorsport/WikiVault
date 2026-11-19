@@ -1769,6 +1769,7 @@ async function schoolLoad(force) {
 
 function renderSchool() {
   const s = state?.school;
+  $('nav-school').hidden = !(state && state.features && state.features.school);
   $('nav-school').disabled = !s || golfPlaying();
   $('nav-school').setAttribute('aria-pressed', String(view === 'school'));
   $('schoolbar').hidden = !(view === 'reader' && schShowing);
@@ -1898,6 +1899,7 @@ function paintMapKey() {
   const mine = [];
   if (mapGo.route) mine.push(['Your route', mapKeyMark({ draw: 'line', color: dark ? '#4da3ff' : '#1a56c4', edge: ring, width: 4 })]);
   if (mapGo.route || mapGo.from || mapGo.to) mine.push(['Start', dot('#1e9e6f', ring, true)], ['Destination', dot(dark ? '#f0f2f4' : '#14263b', ring, true)]);
+  if ((mapGo.from && mapGo.from.approx) || (mapGo.to && mapGo.to.approx)) mine.push(['Approximate: the address was not found exactly', dot(dark ? '#f0f2f4' : '#14263b', MAP_APPROX_RING, true)]);
   const saved = (bookUi.data && bookUi.data.entries) || [];
   if (saved.some((e) => e.lat != null && e.pin)) mine.push(['Pinned place', dot('#e65100', '#ffffff', true)]);
   if (saved.some((e) => e.lat != null && !e.pin)) mine.push(['Saved place', dot('#8e24aa', '#ffffff')]);
@@ -1965,7 +1967,7 @@ function mapAddOverlays(map) {
   map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': dark ? '#4da3ff' : '#1a56c4', 'line-width': 6 } });
   map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#d93025', dark ? '#ffd84a' : '#14304d'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': dark ? '#ffe9a6' : '#14304d', 'text-halo-color': dark ? '#0b0d10' : '#ffffff', 'text-halo-width': 1.5 } });
-  map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e9e6f', dark ? '#f0f2f4' : '#14263b'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 3 } });
+  map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e9e6f', dark ? '#f0f2f4' : '#14263b'], 'circle-stroke-color': ['case', ['boolean', ['get', 'approx'], false], MAP_APPROX_RING, dark ? '#0b0d10' : '#ffffff'], 'circle-stroke-width': ['case', ['boolean', ['get', 'approx'], false], 4, 3] } });
   gpsOverlay(map);
   bookOverlay(map);
   mapDrawHits();
@@ -2001,7 +2003,7 @@ function mapJobView(j) {
     else if (j.stage === 'index') { title = 'Building the address index'; value = j.done || 0; max = j.total || 100; detail = 'Sorting the addresses by street. This part needs no connection.'; }
     else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
   }
-  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: pieces are asked for two at a time and kept as they arrive, so a run that stops carries on from here.`; }
+  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: small pieces are asked for, nearest first, and kept as they arrive, so a run that stops carries on from here. What has arrived can be searched already.`; }
   const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
   return { title, detail, value, max, bytesNow: inBytes && max ? j.downloaded || 0 : null };
 }
@@ -2024,7 +2026,8 @@ function paintMapSummary(m) {
   const lines = [];
   if (m.map) lines.push(el('p', '', `${mapLevelName(m, m.map.maxZoom)}. ${mapRegionNames(m, m.map.regions)}. ${bytes(m.map.bytes)}, from the world map built on ${mapDay(m.map.built)}.`));
   else lines.push(el('p', '', 'No map is on this computer yet. Choose what to cover, see how big each level of detail would be, and then download.'));
-  if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
+  if (m.places && m.places.partial) lines.push(el('p', '', `${m.places.total.toLocaleString()} places so far, from ${m.places.partial.done} of ${m.places.partial.total} pieces${m.job && m.job.kind === 'places' ? '' : '. Fetch the places again to carry on'}. They can be searched already; the nearest pieces come first.`));
+  else if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
   else lines.push(el('p', '', 'No places have been fetched yet. They can be fetched with or without the map.'));
   if (m.overture) lines.push(el('p', '', `${m.overture.total.toLocaleString()} more places from Overture Maps (release ${m.overture.release}), shown where OpenStreetMap has none.`));
   if (m.addresses) lines.push(el('p', '', `${m.addresses.addresses.toLocaleString()} addresses on ${m.addresses.streets.toLocaleString()} streets, ${bytes(m.addresses.bytes)}, from Overture Maps release ${m.addresses.release}.`));
@@ -2098,7 +2101,7 @@ function paintMapSetup(m) {
   placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above. Fetching them takes a while and a few hundred megabytes at most.'));
   const getPlaces = el('button', m.places ? 'btn small' : 'btn primary', m.places ? 'Update the places' : 'Fetch the places');
   getPlaces.type = 'button'; getPlaces.id = 'map-places'; getPlaces.disabled = busy || !picked.length;
-  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked), $('map-error')));
+  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked, typeof gpsPoint === 'function' ? gpsPoint() : null), $('map-error')));
   placesBox.append(getPlaces);
   parts.push(placesBox);
   const routeBox = el('fieldset', 'map-field');
@@ -2261,6 +2264,23 @@ async function mapFind({ moved = false } = {}) {
 
 // ---- directions
 
+const MAP_APPROX_RING = '#f08c00';
+/**
+ * What to say of an end of the trip whose address was not found exactly. When all that is known is the town or
+ * the ZIP code, the directions do not end at the address at all, and that is said as a warning.
+ */
+function mapApproxText(which, p) {
+  const why = String(p.approx || '').replace(/^Approximate\. /, '');
+  if (p.how === 'town') return { lead: which === 'from' ? 'These directions do not start at the address.' : 'These directions do not end at the address.', rest: `The exact address could not be found. ${why}`, rough: true };
+  return { lead: '', rest: `${which === 'from' ? 'The start' : 'The destination'} is approximate, so the last part of these directions may be off. ${why}`, rough: false };
+}
+function mapApproxNote(which, p) {
+  const t = mapApproxText(which, p);
+  const note = el('p', t.rough ? 'map-approx map-approx-rough' : 'map-approx');
+  if (t.lead) note.append(el('b', '', t.lead), ' ');
+  note.append(t.rest);
+  return note;
+}
 const mapGo = { from: null, to: null, blocks: [], alt: 0, route: null, picking: null, busy: false, tab: 'find' };
 const tripMiles = (m) => (m < 160 ? `${Math.max(50, Math.round((m * 3.28084) / 50) * 50)} feet` : m < 16093 ? `${(m / 1609.344).toFixed(1)} miles` : `${Math.round(m / 1609.344)} miles`);
 const tripTime = (s) => { const min = Math.max(1, Math.round(s / 60)); return min < 60 ? `${min} minutes` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`; };
@@ -2278,8 +2298,8 @@ function mapSetPoint(which, point) {
 /** A found place or address as an end of a route. An address that was not found exactly carries the reason, to warn with. */
 function mapPointOf(h, typed = '') {
   if (h.c === 'spot') return mapSpot(h.o, h.a);
-  if (h.c === 'address') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.d } : {}) };
-  if (h.c === 'saved') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.why || 'Its address was not found exactly in the address data.' } : {}) };
+  if (h.c === 'address') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.d, how: h.how } : {}) };
+  if (h.c === 'saved') return { lon: h.o, lat: h.a, label: h.n, ...(h.approx ? { approx: h.why || 'Its address was not found exactly in the address data.', how: h.how } : {}) };
   return { lon: h.o, lat: h.a, label: h.d ? `${h.n}, ${h.d}` : h.n || typed || `${h.a.toFixed(5)}, ${h.o.toFixed(5)}` };
 }
 
@@ -2335,8 +2355,8 @@ function mapDrawRoute() {
   mapView.getSource('route').setData({ type: 'FeatureCollection', features: r ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.coords } }] : [] });
   mapView.getSource('blocks').setData({ type: 'FeatureCollection', features: mapGo.blocks.map((b) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [mapCircle(b.lon, b.lat, b.radius)] } })) });
   const ends = [];
-  if (mapGo.from) ends.push({ type: 'Feature', properties: { end: 'from' }, geometry: { type: 'Point', coordinates: [mapGo.from.lon, mapGo.from.lat] } });
-  if (mapGo.to) ends.push({ type: 'Feature', properties: { end: 'to' }, geometry: { type: 'Point', coordinates: [mapGo.to.lon, mapGo.to.lat] } });
+  if (mapGo.from) ends.push({ type: 'Feature', properties: { end: 'from', approx: Boolean(mapGo.from.approx) }, geometry: { type: 'Point', coordinates: [mapGo.from.lon, mapGo.from.lat] } });
+  if (mapGo.to) ends.push({ type: 'Feature', properties: { end: 'to', approx: Boolean(mapGo.to.approx) }, geometry: { type: 'Point', coordinates: [mapGo.to.lon, mapGo.to.lat] } });
   mapView.getSource('ends').setData({ type: 'FeatureCollection', features: ends });
 }
 
@@ -2391,7 +2411,7 @@ function paintMapGo() {
   const head = el('div', 'map-route-head');
   head.append(el('p', 'map-route-total', `${tripMiles(r.meters)}, about ${tripTime(r.seconds)}`));
   head.append(el('p', 'small-print', `${(m.modes.find((x) => x.id === r.mode) || mode).name}${r.alt ? `, route ${r.alt + 1} of up to 4` : ''}${mapGo.blocks.length ? `, keeping clear of ${mapGo.blocks.length} blocked ${mapGo.blocks.length === 1 ? 'area' : 'areas'}` : ''}. Times assume open roads.`));
-  for (const [which, label] of [['from', 'The start'], ['to', 'The destination']]) if (mapGo[which] && mapGo[which].approx) head.append(el('p', 'map-approx', `${label} is approximate, so the last part of these directions may be off. ${mapGo[which].approx.replace(/^Approximate\. /, '')}`));
+  for (const which of ['from', 'to']) if (mapGo[which] && mapGo[which].approx) head.append(mapApproxNote(which, mapGo[which]));
   if (!r.named) head.append(el('p', 'small-print', 'Road names are missing: the map on this computer has none for these roads at its level of detail.'));
   const steps = el('ol', 'map-steps');
   r.steps.forEach((st) => {
@@ -2689,6 +2709,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.26.0': [
+    'Places are fetched in smaller pieces, the nearest to home first, and can be searched as they arrive.',
+    'Directions to an address that could only be placed by its town now say plainly that they do not end at the address.',
+    'School is being finished and is not in this version. It returns in a later one; files already downloaded are kept.',
+  ],
   '0.25.0': [
     'Setup page: each row shows how much is still to download and how much is here, with the sums and a bar of the room on the disk.',
     'A row that is downloading shows its progress, speed and time left on the Setup page itself.',

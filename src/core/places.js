@@ -29,17 +29,19 @@ function inRing(ring, x, y) {
   return inside;
 }
 const inRings = (rings, lon, lat) => rings.some((r) => inRing(r, lon, lat));
+/** Whether any of the outlines reaches into a box [south, west, north, east]. */
+const boxTouches = (rings, box) => rings.some((ring) => [[box[1], box[0]], [box[3], box[0]], [box[3], box[2]], [box[1], box[2]]].some(([x, y]) => inRing(ring, x, y)) || ring.some(([x, y]) => x >= box[1] && x <= box[3] && y >= box[0] && y <= box[2]));
 
 /** Split a box into four. */
 const quarter = ([s, w, n, e]) => { const my = (s + n) / 2; const mx = (w + e) / 2; return [[s, w, my, mx], [s, mx, my, e], [my, w, n, mx], [my, mx, n, e]]; };
 
 /** One Overpass question: everything in a box that belongs to any of the categories. */
-function queryFor(categories, box, { timeout = 300 } = {}) {
+function queryFor(categories, box, { timeout = 300, maxsize = 0 } = {}) {
   const b = box.join(',');
   const seen = new Set();
   const lines = [];
   for (const c of categories) for (const [k, v] of c.filters) { const key = `${k}=${v}`; if (!seen.has(key)) { seen.add(key); lines.push(`  nwr["${k}"="${v}"](${b});`); } }
-  return `[out:json][timeout:${timeout}];\n(\n${lines.join('\n')}\n);\nout center tags qt;`;
+  return `[out:json][timeout:${timeout}]${maxsize ? `[maxsize:${maxsize}]` : ''};\n(\n${lines.join('\n')}\n);\nout center tags qt;`;
 }
 
 /** The category an element belongs to: the first whose filter its tags meet. */
@@ -144,4 +146,4 @@ function fresh(base, extra, reach = 0.15) {
   return out;
 }
 
-module.exports = { boxesOf, quarter, queryFor, categoryOf, recordOf, inRings, km, search, fresh, sameName };
+module.exports = { boxesOf, quarter, boxTouches, queryFor, categoryOf, recordOf, inRings, km, search, fresh, sameName };

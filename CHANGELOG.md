@@ -2,6 +2,17 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.26.0 (2026-11-19)
+
+Places arrive sooner, an approximate destination cannot be missed, and School steps aside until it is finished.
+
+- **School is not in this version.** It is still being built, so it is switched off in the released app: no button, no Setup row, nothing downloaded. It continues on the `school` branch and returns in a later version. School files that an earlier version downloaded are left where they are and still move with the library. The switch is one line (`wikivault.features.school` in `package.json`); one computer can turn it on for itself with `"features": { "school": true }` in its `settings.json`.
+- **Places: asked for in a way the servers answer sooner.** The log of a real run showed 12 of 133 pieces arriving in an hour and three quarters, with most of the time lost to questions that were refused as too busy or ran past five and a half minutes. Pieces are now a quarter of the size, each question claims little of the server's time and memory (so it is let in sooner, and one that is too big says so within two minutes instead of five), and answers are sent compressed. The servers' rules allow one question at a time from a program, so the app still asks one of each server at a time. Pieces left unfinished by an older version are cut to the new size, and what had arrived is kept.
+- **Places: nearest first, and usable as they arrive.** The pieces around your GPS position, or else around the place pinned as Home, are fetched first, and what has arrived can be searched before the rest is in. A complete set already in use still stays until its replacement is whole.
+- **Directions to an approximate place say so more plainly.** When only the town or ZIP code of an address could be found, a red note above the turns says the directions do not end at the address. The end of the route has an orange ring on the map, named in the key, and with a GPS receiver the app says you have reached the approximate position, or the middle of the town, instead of "You have arrived". The amber note for a house number placed between its neighbours is unchanged.
+- **A link to a GPS receiver.** *No receiver yet?* on the Setup page's GPS row and in the map's GPS box opens the shop page of a USB receiver (the GlobalSat BU-353N5, on Amazon) in the web browser. The link is kept in one file, `assets/gear.json`. The app has not yet been tried with this receiver, or any real one: so far it has only read a recorded drive.
+- Not yet seen on the real computer: checked with stand-in servers. Whether the smaller questions are in fact let in sooner by the real, busy places servers is what a run on the real machine will show; the log now records how long the answers take.
+
 ## 0.25.0 (2026-11-19)
 
 The Setup page shows sizes, progress and room; a guide for every page; a key on the map.

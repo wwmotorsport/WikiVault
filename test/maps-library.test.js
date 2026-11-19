@@ -95,15 +95,17 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     let body = '';
     req.on('data', (d) => { body += d; }).on('end', () => {
       const q = decodeURIComponent(body.replace(/^data=/, ''));
-      asked.push({ q, agent: req.headers['user-agent'] });
+      asked.push({ q, agent: req.headers['user-agent'], gzip: req.headers['accept-encoding'] });
       if (busy > 0) { busy -= 1; res.writeHead(429); res.end(); return; }
       const m = /\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(q);
       const [s, w, n, e] = m.slice(1).map(Number);
       if (fail && fail(w)) { res.writeHead(500); res.end(); return; }
-      if (slow > 0 && e - w > 4) { slow -= 1; res.end(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out in "query" at line 3 after 301 seconds.' })); return; }
+      if (slow > 0 && e - w > 2) { slow -= 1; res.end(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out in "query" at line 3 after 301 seconds.' })); return; }
       // Like the real server: everything in the box, and the same thing again from a neighbouring box now and then.
       const inBox = all.filter((x) => { const lat = x.lat ?? x.center.lat; const lon = x.lon ?? x.center.lon; return lat >= s && lat <= n && lon >= w && lon <= e; });
-      res.end(JSON.stringify({ elements: [...inBox, all[0]] }));
+      // Compressed, as the real servers send it when asked.
+      res.writeHead(200, { 'content-encoding': 'gzip' });
+      res.end(require('node:zlib').gzipSync(JSON.stringify({ elements: [...inBox, all[0]] })));
     });
   };
   const server = http.createServer(answer);
@@ -118,11 +120,12 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     lib.on('progress', () => seen.push({ ...lib.status().job }));
     const info = await lib.downloadPlaces(['east']);
     assert.equal(asked[0].agent, 'Wikivault/test');
-    assert.match(asked[0].q, /^\[out:json\]\[timeout:300\];/);
-    assert.match(asked[0].q, /nwr\["amenity"="hospital"\]\(30,-90,35,-85\);/, 'the region is asked for in pieces of five degrees');
+    assert.match(asked[0].q, /^\[out:json\]\[timeout:120\]\[maxsize:268435456\];/, 'a question claims little of the server, so that it is let in sooner');
+    assert.equal(asked[0].gzip, 'gzip', 'the answer is asked for compressed');
+    assert.match(asked[0].q, /nwr\["amenity"="hospital"\]\(30,-90,32\.5,-87\.5\);/, 'the region is asked for in pieces of two and a half degrees');
     assert.match(asked[0].q, /out center tags qt;$/);
     assert.ok(waits.includes(15000), 'a busy server is waited for');
-    const pieces = require('../src/core/places').boxesOf(lib.rings(['east']), 5).length;
+    const pieces = require('../src/core/places').boxesOf(lib.rings(['east']), 2.5).length;
     assert.equal(asked.length, pieces + 1 + 4, 'every piece once, one asked again after the server was busy, and one that timed out asked again as four smaller ones');
     assert.ok(!fs.existsSync(path.join(dir, 'places.work')), 'the working files are gone once the places are in');
     assert.equal(lib.status().placesKept, null);
@@ -181,5 +184,68 @@ test('places are fetched box by box, cut to the region, and searched', async () 
     fail = null; asked.length = 0;
     await again.downloadPlaces(['west']).catch(() => null);
     assert.ok(asked.length >= 1 && again.status().placesKept === null);
+  } finally { await new Promise((r) => server.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('places: the pieces nearest home come first, what has arrived is in use before the rest, and larger pieces left by an older version are cut down', async () => {
+  const el = (id, lat, lon, tags) => ({ type: 'node', id, lat, lon, tags });
+  const all = [el(1, 35.2, -80.8, { amenity: 'hospital', name: 'Atrium Health Mercy' }), el(2, 31.0, -89.0, { amenity: 'hospital', name: 'Far Away General' }), el(3, 39.0, -76.0, { amenity: 'pharmacy', name: 'Corner Pharmacy' })];
+  const asked = []; let fail = null;
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; }).on('end', () => {
+      const [s, w, n, e] = /\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(decodeURIComponent(body)).slice(1).map(Number);
+      asked.push([s, w, n, e]);
+      if (fail && fail(s, w, n, e)) { res.writeHead(500); res.end(); return; }
+      res.end(JSON.stringify({ elements: all.filter((x) => x.lat >= s && x.lat <= n && x.lon >= w && x.lon <= e) }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const dir = tmp();
+  try {
+    const lib = new MapsLibrary({ dir, registry: registry(origin), pause: () => Promise.resolve(), agent: 'Wikivault/test' });
+    await lib.init();
+    const total = places.boxesOf(lib.rings(['east']), 2.5).length;
+    // The far south-west fails for now: the run stops part of the way, with the pieces around home already in.
+    fail = (s, w) => s < 32.5 && w < -87.5;
+    await assert.rejects(lib.downloadPlaces(['east'], { near: { lat: 35.2, lon: -80.8 } }), /carries on from there/);
+    assert.deepEqual(asked[0], [35, -82.5, 37.5, -80], 'the piece home is in is asked for first');
+    const km = (b) => places.km(35.2, -80.8, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2);
+    assert.ok(km(asked[1]) <= km(asked[5]) && km(asked[5]) <= km(asked[asked.length - 1]), 'and the others in order of distance');
+    const part = lib.status().places;
+    assert.ok(part && part.partial && part.partial.done >= 1 && part.partial.done < part.partial.total && part.partial.total === total, JSON.stringify(part));
+    assert.deepEqual(lib.search({ q: 'mercy' }).hits.map((h) => h.n), ['Atrium Health Mercy'], 'what has arrived can be searched before the rest is here');
+    assert.equal(lib.search({ q: 'far away' }).total, 0);
+    // Opened again and carried on: the set becomes whole, and is no longer marked as part of one.
+    const again = new MapsLibrary({ dir, registry: registry(origin), pause: () => Promise.resolve(), agent: 'Wikivault/test' });
+    await again.init();
+    assert.ok(again.status().places.partial, 'the part that is in use is remembered');
+    fail = null; asked.length = 0;
+    const info = await again.downloadPlaces(['east'], { near: { lat: 35.2, lon: -80.8 } });
+    assert.ok(asked.length >= 1 && asked.length < total, 'only what was missing is asked for');
+    assert.equal(info.partial, undefined);
+    assert.deepEqual([info.total, again.search({ q: 'far away' }).total], [3, 1]);
+    // A whole set in use is not replaced by part of a new one.
+    fail = (s, w) => s < 32.5 && w < -87.5; asked.length = 0;
+    await assert.rejects(again.downloadPlaces(['east']), /carries on from there/);
+    assert.equal(again.status().places.partial, undefined);
+    assert.equal(again.search({ q: 'far away' }).total, 1);
+
+    // Pieces of five degrees, left unfinished by an older version, are cut into today's size; the one that had arrived is kept.
+    const dir2 = tmp();
+    try {
+      const old = new MapsLibrary({ dir: dir2, registry: registry(origin), pause: () => Promise.resolve(), agent: 'Wikivault/test' });
+      await old.init();
+      const big = places.boxesOf(old.rings(['east']), 5);
+      fs.mkdirSync(path.join(dir2, 'places.work'), { recursive: true });
+      fs.writeFileSync(path.join(dir2, 'places.work', 'p0.json'), JSON.stringify([]));
+      fs.writeFileSync(path.join(dir2, 'places.work', 'state.json'), JSON.stringify({ v: 1, key: old.placesKey(['east']), regions: ['east'], next: 1, found: 0, done: ['p0.json'], todo: big.slice(1).map((box) => ({ box, depth: 0 })) }));
+      fail = null; asked.length = 0;
+      const got = await old.downloadPlaces(['east']);
+      assert.equal(asked.length, (big.length - 1) * 4);
+      assert.ok(asked.every(([s, w, n, e]) => Math.abs(n - s - 2.5) < 1e-6 && Math.abs(e - w - 2.5) < 1e-6));
+      assert.ok(got.total >= 2 && !got.partial);
+    } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
   } finally { await new Promise((r) => server.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
 });

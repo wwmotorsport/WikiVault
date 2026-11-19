@@ -62,7 +62,7 @@ async function askMap(entry, plan, question) {
     const r = mapGo.route;
     const mode = (state.maps.modes.find((x) => x.id === r.mode) || {}).name || '';
     status.textContent = `${tripMiles(r.meters)}, about ${tripTime(r.seconds)}${mode ? ` (${mode.toLowerCase()})` : ''}. The route is drawn on the map, with ${r.steps.length} turns listed beside it.`;
-    for (const [which, label] of [['from', 'The start'], ['to', 'The destination']]) if (plan[which].approx) say(`${label} is approximate, so the last part of the directions may be off. ${String(plan[which].approx).replace(/^Approximate\. /, '')}`, 'small-print');
+    for (const which of ['from', 'to']) if (plan[which].approx) { const t = mapApproxText(which, plan[which]); say(`${t.lead ? `${t.lead} ` : ''}${t.rest}`, t.rough ? 'map-approx map-approx-rough' : 'map-approx'); }
     add('Show the route again', () => { showView('map'); mapGo.tab = 'go'; paintMapGo(); });
   } catch (err) {
     status.textContent = `The places were found, but no route could be made: ${err.message}`;

@@ -75,7 +75,7 @@ const MEET = /^(?:meeting (?:point|place|spot)|meet(?:ing)?[- ]?up (?:point|plac
 const THING = /\s+(house|home|place|address|home address|apartment|flat|cabin|farm|office|work|workplace|job|work address|school)$/;
 
 const nameOf = (e) => (e.label ? `${e.name} (${e.label})` : e.name);
-const pointOf = (e) => ({ lon: e.lon, lat: e.lat, label: nameOf(e), ...(e.how && e.how !== 'exact' && e.how !== 'manual' ? { approx: e.why || 'Its address was not found exactly in the address data.' } : {}) });
+const pointOf = (e) => ({ lon: e.lon, lat: e.lat, label: nameOf(e), ...(e.how && e.how !== 'exact' && e.how !== 'manual' ? { approx: e.why || 'Its address was not found exactly in the address data.', how: e.how } : {}) });
 const hitOf = (e) => ({ c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: nameOf(e), d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why || '' });
 
 /** Of one person's or one pin's entries, the one meant: a wanted label first, then a home, then any with a place. */
@@ -150,9 +150,9 @@ function place(text, ctx) {
   // 3. an address, a place or a town from the map data
   const hit = ctx.search ? ctx.search(raw.replace(/^(?:my|our|the)\s+/i, '')) : null;
   if (!hit) return null;
-  if (hit.c === 'saved') return { point: { lon: hit.o, lat: hit.a, label: hit.n, ...(hit.approx ? { approx: hit.why || 'Its address was not found exactly in the address data.' } : {}) }, hit, via: 'name', own: true, said: hit.n, others: [] };
+  if (hit.c === 'saved') return { point: { lon: hit.o, lat: hit.a, label: hit.n, ...(hit.approx ? { approx: hit.why || 'Its address was not found exactly in the address data.', how: hit.how } : {}) }, hit, via: 'name', own: true, said: hit.n, others: [] };
   const label = hit.c === 'address' ? hit.n : hit.d ? `${hit.n}, ${hit.d}` : hit.n;
-  return { point: { lon: hit.o, lat: hit.a, label, ...(hit.c === 'address' && hit.approx ? { approx: hit.d } : {}) }, hit, via: hit.c === 'address' ? 'address' : 'place', own: false, said: label, others: [] };
+  return { point: { lon: hit.o, lat: hit.a, label, ...(hit.c === 'address' && hit.approx ? { approx: hit.d, how: hit.how } : {}) }, hit, via: hit.c === 'address' ? 'address' : 'place', own: false, said: label, others: [] };
 }
 
 const PROMPT = 'You sort one request typed into an offline atlas with an address book. Reply with one line of JSON and nothing else: {"intent":"route"|"where"|"none","from":"","to":""}\n'

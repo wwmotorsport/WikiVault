@@ -104,9 +104,9 @@ function hubItems() {
       const moreDone = Boolean(m.overture && hubSame(m.overture.regions, regs));
       out.push({ id: 'more', title: 'Places: shops, fuel, hospitals and more', state: jobOf(['overture:places']) ? 'working' : moreDone ? 'done' : w.more && regs.length ? 'todo' : 'off', tick: moreDone ? null : 'more',
         detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
-      const plDone = Boolean(m.places && hubSame(m.places.regions || [], regs));
+      const plDone = Boolean(m.places && !m.places.partial && hubSame(m.places.regions || [], regs));
       out.push({ id: 'places', title: 'Places: towns, water, power and services', state: jobOf(['places']) ? 'working' : plDone ? 'done' : w.places && regs.length ? 'todo' : 'off', tick: plDone ? null : 'places',
-        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} pieces were fetched before it stopped, and are kept. Fetching again carries on from there.` : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from a free, shared server in pieces, two at a time. Pieces that arrive are kept, so a run that fails carries on where it stopped.',
+        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} pieces were fetched before it stopped, and are kept. Fetching again carries on from there.` : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from free, shared servers in small pieces, the nearest to home first. What has arrived can be searched straight away, and is kept, so a run that fails carries on where it stopped.',
         bytes: plDone ? 0 : null, sizeNote: 'small' });
     }
     // 5. Other libraries
@@ -119,7 +119,8 @@ function hubItems() {
   }
   // 6. Things that are set up, not downloaded
   out.push({ id: 'gps', title: 'GPS receiver', state: 'info', detail: gps.status === 'fix' ? 'Connected, with a position.' : gps.status === 'waiting' ? 'Connected, waiting for a position.' : 'A USB receiver shows where you are on the map and leads you turn by turn. Plug it in and press the button.',
-    bytes: 0, done: gps.status === 'fix' || gps.status === 'waiting', action: m && m.routing ? { label: gps.status === 'off' || gps.status === 'lost' ? 'Find my GPS receiver' : 'Open the map', run: () => { hubClosePop(); mapGo.tab = 'go'; showView('map'); render(); if (gps.status === 'off' || gps.status === 'lost') gpsFind(); } } : null, note: m && m.routing ? '' : 'Needs the map and the directions first.' });
+    bytes: 0, done: gps.status === 'fix' || gps.status === 'waiting', action: m && m.routing ? { label: gps.status === 'off' || gps.status === 'lost' ? 'Find my GPS receiver' : 'Open the map', run: () => { hubClosePop(); mapGo.tab = 'go'; showView('map'); render(); if (gps.status === 'off' || gps.status === 'lost') gpsFind(); } } : null, note: m && m.routing ? '' : 'Needs the map and the directions first.',
+    link: (gps.status === 'off' || gps.status === 'lost') && typeof gpsBuy === 'function' ? gpsBuy() : null });
   const b = state.book;
   if (b) {
     const acc = [b.accounts.google ? 'Google' : '', b.accounts.icloud ? 'iCloud' : ''].filter(Boolean);
@@ -289,6 +290,12 @@ function renderHub(force) {
       btn.addEventListener('click', it.action.run);
       li.append(btn);
     }
+    if (it.link) {
+      const p = el('p', 'small-print hub-link', `${it.link.text} `);
+      const a = el('button', 'link-btn', it.link.label); a.type = 'button'; a.id = `hub-link-${it.id}`;
+      a.addEventListener('click', () => api.openExternal(it.link.url));
+      p.append(a); li.append(p);
+    }
     return li;
   }));
   if (focused && focused.id && $(focused.id)) $(focused.id).focus();
@@ -374,7 +381,7 @@ async function hubRun() {
     // The places server often fails part of the way. What arrived is kept, so it is simply asked again a few times.
     await step('places', async () => {
       for (let round = 0; ; round++) {
-        try { await hubMapJob(() => api.mapsPlaces(w.regions)); return; } catch (err) {
+        try { await hubMapJob(() => api.mapsPlaces(w.regions, typeof gpsPoint === 'function' ? gpsPoint() : null)); return; } catch (err) {
           if (hub.stopAsked || round >= 3 || !/carries on from there/.test(err.message)) throw err;
           await new Promise((r) => setTimeout(r, 30000));
         }
