@@ -1,12 +1,16 @@
 # Builds the Windows installer on GitHub's own Windows machine and attaches it to the release.
-# Runs when a version tag is pushed (v0.15.0 or V0.15.0), which is what creating a release in the
-# GitHub pages does. It can also be run by hand from the Actions tab: give it the tag of a release
-# that already exists and it builds that version and attaches the installer to it.
+# It runs in three ways:
+#   - when a version tag is pushed (v0.26.1 or V0.26.1), which is what creating a release in the GitHub pages does;
+#   - when a branch named release/<tag> is pushed (release/v0.26.1): the release and its tag are then made here,
+#     at that branch's newest commit, and the branch is removed afterwards;
+#   - by hand from the Actions tab: give it the tag of a release that already exists and it builds that version
+#     and attaches the installer to it.
 name: Build installer
 
 on:
   push:
     tags: ['v*', 'V*']
+    branches: ['release/v*', 'release/V*']
   workflow_dispatch:
     inputs:
       tag:
@@ -20,9 +24,22 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
     steps:
+      # Which release this build is for: the tag given by hand, the tag pushed, or the name after release/.
+      - name: Work out the release
+        shell: bash
+        env:
+          GIVEN_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$GIVEN_TAG"
+          if [ -z "$tag" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/*) tag="${GITHUB_REF#refs/tags/}" ;;
+              refs/heads/release/*) tag="${GITHUB_REF#refs/heads/release/}" ;;
+            esac
+          fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "release: ${tag:-none, build only}"
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
@@ -50,10 +67,13 @@ jobs:
         run: |
           # A release made here takes its notes from .github/RELEASE-NOTES.md, which is written for the version being tagged.
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # From a release/<tag> branch the tag does not exist yet: it is made with the release, at this commit.
+            at="--verify-tag"
+            case "$GITHUB_REF" in refs/heads/release/*) at="--target $GITHUB_SHA" ;; esac
             if [ -f .github/RELEASE-NOTES.md ]; then
-              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Wikivault ${RELEASE_TAG#[vV]}" --notes-file .github/RELEASE-NOTES.md
+              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" $at --title "Wikivault ${RELEASE_TAG#[vV]}" --notes-file .github/RELEASE-NOTES.md
             else
-              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
+              gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" $at --title "$RELEASE_TAG" --notes "See CHANGELOG.md for what changed in this version."
             fi
           fi
           gh release upload "$RELEASE_TAG" dist/Wikivault-Setup-*.exe --clobber --repo "$GITHUB_REPOSITORY"
@@ -95,3 +115,8 @@ jobs:
             git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "Point the download links at $RELEASE_TAG"
             git push origin HEAD:main
           fi
+      # A release/<tag> branch has done its work once the release is up.
+      - name: Remove the release branch
+        if: startsWith(github.ref, 'refs/heads/release/')
+        shell: bash
+        run: git push origin --delete "${GITHUB_REF#refs/heads/}" || true
