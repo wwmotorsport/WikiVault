@@ -2,6 +2,21 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.27.0 (2026-11-19)
+
+Places come from regional extracts: minutes for the area around home, not hours.
+
+- **Places are read out of regional OpenStreetMap extracts.** Instead of asking shared servers for the places a small area at a time, the app downloads the extract of each state or province (published daily by Geofabrik), reads the places out of it on this computer, and deletes it. The contiguous United States is 49 files and about 11 GB to download, of which a few hundred megabytes at most are kept. The reading is quick: a test file of 27 million nodes and 4 million ways was read in five seconds.
+- **Nearest first, usable at once.** The files nearest your GPS position, or the place pinned as Home, come first, and what has been read can be searched while the rest arrives.
+- **Carries on where it stopped.** What has been read is kept, and so is the part of a file that had arrived. A file is fetched from the dated copy the server sends on to, so a download begun one day can be finished the next.
+- **Checked.** Each file is compared with the checksum published beside it, where there is one. A file that is cut short or is not an extract is refused in plain words.
+- **Room while it works** is the size of the largest file, not of the whole download. The Setup page shows the download in *Still to download*, counts only what stays in the disk bar, and warns if the largest file will not fit.
+- **Measure first.** *Measure the download* on the map page, and the Setup page by itself, ask the server how big the files are without downloading any.
+- **The old way is still there**, under *Another way*: small pieces from the Overpass servers, with very little to download, for when the connection or the disk does not allow the large one.
+- Pieces fetched the old way by an earlier version are not carried over: the new way starts afresh, and the places already in use stay until the first file has been read.
+- New files: `core/osm-pbf.js` reads the extract format without any added library.
+- Not yet seen on the real computer or against the real server: checked here against a small real extract (compared, thing for thing, with the standard reader), made-up extracts and a stand-in server. The file names of the 49 states and the other regions are as Geofabrik publishes them, but none has been fetched from here; a name that is wrong is reported by name, and the rest are fetched.
+
 ## 0.26.1 (2026-11-19)
 
 The map's switches move into its key.

@@ -18,6 +18,7 @@ const { EventEmitter } = require('node:events');
 const extract = require('./map-extract');
 const crypto = require('node:crypto');
 const places = require('./places');
+const placesExtract = require('./places-extract');
 const routing = require('./routing');
 const pm = require('./pmtiles');
 const mvt = require('./mvt');
@@ -45,6 +46,19 @@ async function readJson(file) { try { return JSON.parse(await fsp.readFile(file,
 // its claim says so quickly and is cut into four.
 const PLACES_CLAIM = { timeout: 120, maxsize: 256 * 1024 * 1024 };
 const PLACES_WAIT = 170000;
+
+/** Free bytes on the drive a folder is on, or null when that cannot be asked. */
+async function freeAt(dir) {
+  try { const s = await fsp.statfs(dir); const free = Number(s.bavail) * Number(s.bsize); return Number.isFinite(free) ? free : null; } catch { return null; }
+}
+const bytesText = (n) => (n >= 1e9 ? `${Math.round(n / 1e8) / 10} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`);
+/** The MD5 of a file, read in pieces. */
+function md5Of(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('md5');
+    fs.createReadStream(file).on('data', (c) => hash.update(c)).on('error', reject).on('end', () => resolve(hash.digest('hex')));
+  });
+}
 
 class MapsLibrary extends EventEmitter {
   /**
@@ -79,7 +93,8 @@ class MapsLibrary extends EventEmitter {
     if (this.routing && !fs.existsSync(this.segmentsDir)) this.routing = null;
     // Leftovers of an update that did not finish are not kept, except a map download that can carry on.
     await fsp.rm(path.join(this.dir, 'places.new'), { recursive: true, force: true });
-    { const st = await readJson(path.join(this.dir, 'places.work', 'state.json')); this.placesKept = st && st.v === 1 && st.done && st.done.length ? { regions: st.regions || [], done: st.done.length, total: st.done.length + st.todo.length } : null; } // a fetch of the places that did not finish
+    this.placesDone = new Set(); this.placesMeasured = null; this.placesSizes = null;
+    { const st = await readJson(path.join(this.dir, 'places.work', 'state.json')); if (st && st.v === 2 && st.done) this.placesDone = new Set(Object.keys(st.done)); this.placesKept = st && st.v === 2 && st.done && Object.keys(st.done).length ? { regions: st.regions || [], done: Object.keys(st.done).length, total: st.total || Object.keys(st.done).length, how: 'extract' } : st && st.v === 1 && st.done && st.done.length ? { regions: st.regions || [], done: st.done.length, total: st.done.length + st.todo.length } : null; } // a fetch of the places that did not finish
     await fsp.rm(path.join(this.dir, 'overture.new'), { recursive: true, force: true });
     await fsp.rm(path.join(this.dir, 'addresses.new.dat'), { force: true });
     this.loadOverture();
@@ -99,6 +114,8 @@ class MapsLibrary extends EventEmitter {
       map: this.map,
       places: this.placesInfo,
       placesKept: this.placesKept || null,
+      placesMeasured: this.placesMeasured ? { ...this.placesMeasured, left: this.placesLeft() } : null,
+      placesHow: this.registry.extracts ? 'extract' : 'pieces',
       measured: this.measured,
       routing: this.routing, routingMeasured: this.routingMeasured, routingCredit: this.registry.routing.credit,
       overture: this.overture, addresses: this.addresses, addressTowns: this.gaz ? { towns: Object.keys(this.gaz.towns).length, zips: Object.keys(this.gaz.zips).length, ...(this.gaz.stats || {}) } : null, overtureMeasured: this.overtureMeasured, overtureCredit: this.registry.overture.credit,
@@ -222,8 +239,13 @@ class MapsLibrary extends EventEmitter {
    * small pieces, a short time limit, and an answer that is sent compressed. The pieces nearest `near` ({lat, lon})
    * come first, and while no complete set is in use, what has arrived is put to use as it comes.
    */
-  async downloadPlaces(regionIds, { near = null } = {}) {
-    const job = this.begin('places', { done: 0, total: 0, found: 0 });
+  async downloadPlaces(regionIds, { near = null, how = null, free = null } = {}) {
+    const via = how === 'pieces' || how === 'extract' ? how : this.registry.extracts ? 'extract' : 'pieces';
+    return via === 'extract' ? this.downloadPlacesExtracts(regionIds, { near, free }) : this.downloadPlacesPieces(regionIds, { near });
+  }
+
+  async downloadPlacesPieces(regionIds, { near = null } = {}) {
+    const job = this.begin('places', { how: 'pieces', done: 0, total: 0, found: 0 });
     const fresh = path.join(this.dir, 'places.new');
     const work = path.join(this.dir, 'places.work');
     const stateFile = path.join(work, 'state.json');
@@ -323,6 +345,222 @@ class MapsLibrary extends EventEmitter {
     }
   }
 
+  // ---------------------------------------------------------------- places, from regional extracts
+
+  /** The extract files that hold these regions: [{ id, name, url, at: [lat, lon] }]. */
+  extractsFor(regionIds) {
+    const x = this.registry.extracts;
+    if (!x) throw new Error('This version has no list of regional extracts.');
+    const out = [];
+    for (const id of regionIds) for (const e of (x.regions[id] || [])) if (!out.some((o) => o.id === e.id)) out.push({ id: e.id, name: e.name, url: x.base + e.path, at: e.at });
+    if (!out.length) throw new Error('Choose at least one region.');
+    return out;
+  }
+
+  /** How many bytes of the measured extracts are still to download: what was measured, less the files already read. */
+  placesLeft() {
+    const m = this.placesMeasured;
+    if (!m) return null;
+    let left = 0;
+    for (const [id, bytes] of Object.entries(m.per)) if (!this.placesDone || !this.placesDone.has(id)) left += bytes;
+    return left;
+  }
+
+  /**
+   * Ask the server where today's copy of each extract is and how big it is. Nothing is downloaded.
+   * Returns { id: { dated, bytes } | { missing: true } }. An answer less than an hour old is used again.
+   */
+  async extractSizes(files, signal, onOne = () => {}) {
+    const fresh = this.placesSizes && Date.now() - this.placesSizes.at < 3600000 ? this.placesSizes.by : {};
+    const by = {};
+    let n = 0;
+    for (const f of files) {
+      if (signal.aborted) throw new Error('Stopped.');
+      if (fresh[f.id] && !fresh[f.id].missing) by[f.id] = fresh[f.id];
+      else {
+        const res = await this.fetch(this.rewrite(f.url), { method: 'HEAD', signal, timeoutMs: 30000, headers: { 'user-agent': this.agent } });
+        drop(res);
+        const bytes = Number(res.headers.get('content-length'));
+        if (res.status === 404) by[f.id] = { missing: true };
+        else if (!res.ok || !(bytes > 0)) throw new Error(`The extract server could not say how big ${f.name} is (it answered ${res.status}). Try again later.`);
+        else by[f.id] = { dated: res.url || this.rewrite(f.url), bytes };
+      }
+      onOne(++n);
+    }
+    this.placesSizes = { at: Date.now(), by: { ...fresh, ...by } };
+    return by;
+  }
+
+  /** How much there is to download for the places of these regions. Reads no map data. */
+  async measurePlaces(regionIds) {
+    const files = this.extractsFor(regionIds);
+    const job = this.begin('places-measure', { done: 0, total: files.length });
+    try {
+      const by = await this.extractSizes(files, job.controller.signal, (done) => this.progress({ done }));
+      const per = {}; const missing = [];
+      for (const f of files) { if (by[f.id].missing) missing.push(f.name); else per[f.id] = by[f.id].bytes; }
+      const sizes = Object.values(per);
+      this.placesMeasured = { regions: regionIds, files: files.length, bytes: sizes.reduce((a, b) => a + b, 0), largest: sizes.length ? Math.max(...sizes) : 0, per, missing, date: new Date().toISOString() };
+      this.end();
+      return { ...this.placesMeasured, left: this.placesLeft() };
+    } catch (err) { const r = this.end(err); if (r.stopped) return null; throw err; }
+  }
+
+  /**
+   * Fetch the places from regional OpenStreetMap extracts: one file to a state or province, downloaded whole,
+   * read on this computer, and deleted. A download server is glad to send a whole file, where the servers that
+   * answer questions are slow and often busy; so this is quicker by far, at the price of downloading much more
+   * than is kept. The files nearest `near` come first, and (while no complete set is in use) what has been read
+   * is put to use as it comes. A run that stops keeps what it has read and the part of a file it had fetched.
+   */
+  async downloadPlacesExtracts(regionIds, { near = null } = {}) {
+    const job = this.begin('places', { how: 'extract', stage: 'sizes', done: 0, total: 0, found: 0 });
+    const work = path.join(this.dir, 'places.work');
+    const stateFile = path.join(work, 'state.json');
+    try {
+      const rings = this.rings(regionIds);
+      const cats = this.registry.categories;
+      const signal = job.controller.signal;
+      const key = `x:${this.placesKey(regionIds)}`;
+      const files = this.extractsFor(regionIds);
+      let state = await readJson(stateFile);
+      if (!state || state.v !== 2 || state.key !== key) {
+        await fsp.rm(work, { recursive: true, force: true });
+        await fsp.mkdir(work, { recursive: true });
+        state = { v: 2, how: 'extract', key, regions: regionIds, total: files.length, next: 0, found: 0, at: {}, done: {} };
+        await writeJson(stateFile, state);
+      } else if (Object.keys(state.done).length) this.log(`places: carrying on, ${Object.keys(state.done).length} of ${files.length} extracts already read`);
+      state.total = files.length;
+      this.placesDone = new Set(Object.keys(state.done));
+      const save = () => writeJson(stateFile, state);
+      const count = () => Object.keys(state.done).length;
+      const tell = (patch = {}) => { this.placesKept = count() ? { regions: regionIds, done: count(), total: files.length, how: 'extract' } : null; this.progress({ done: count(), total: files.length, found: state.found, ...patch }); };
+      // Nearest first: the places around home are the ones wanted soonest.
+      const todo = files.filter((f) => !state.done[f.id]);
+      if (near && Number.isFinite(near.lat) && Number.isFinite(near.lon)) todo.sort((a, b) => places.km(near.lat, near.lon, a.at[0], a.at[1]) - places.km(near.lat, near.lon, b.at[0], b.at[1]));
+      // Where today's copy of each file is, and how big. A file part-fetched on an earlier day is carried on from the copy it came from.
+      tell({ stage: 'sizes', sized: 0, sizes: todo.length });
+      const asked = await this.extractSizes(todo.filter((f) => !(state.at[f.id] && fs.existsSync(path.join(work, `${f.id}.osm.pbf.part`)))), signal, (sized) => this.progress({ sized }));
+      for (const [id, v] of Object.entries(asked)) state.at[id] = v;
+      await save();
+      const sizeOf = (f) => (state.at[f.id] && state.at[f.id].bytes) || 0;
+      const bytes = todo.reduce((a, f) => a + sizeOf(f), 0);
+      let downloaded = 0;
+      const early = !this.placesInfo || Boolean(this.placesInfo.partial);
+      let shown = this.placesInfo && this.placesInfo.partial && this.placesInfo.partial.key === key ? this.placesInfo.partial.done : 0;
+      const every = Math.max(3, Math.ceil(files.length / 10));
+      const started = Date.now();
+      const failed = new Map(); // file id -> why
+
+      const one = async (f) => {
+        let info = state.at[f.id];
+        const dest = path.join(work, `${f.id}.osm.pbf`);
+        const before = downloaded;
+        // Room for the file while it is read: it is deleted straight after.
+        const room = await freeAt(this.dir);
+        let have = 0;
+        try { have = (await fsp.stat(`${dest}.part`)).size; } catch { have = 0; }
+        if (room != null && info.bytes - have + 300 * 1024 * 1024 > room) throw Object.assign(new Error(`There is not enough free space to fetch ${f.name}: it needs ${bytesText(info.bytes - have)} while it is read, and ${bytesText(room)} is free. Free some space, or fetch the places the slow way, which needs very little.`), { fatal: true, stop: true });
+        tell({ stage: 'download', file: f.name, fileBytes: info.bytes, bytes, downloaded: downloaded + have });
+        downloaded += have;
+        let whole = false; // fetched on an earlier run, and not yet read
+        try { whole = (await fsp.stat(dest)).size === info.bytes; } catch { whole = false; }
+        if (whole) { downloaded += info.bytes; this.progress({ downloaded }); }
+        else try {
+          await this.fetchFile(this.rewrite(info.dated), dest, info.bytes, signal, (n) => { downloaded += n; this.progress({ downloaded }); }, 'extract');
+        } catch (err) {
+          if (err.status !== 404 || signal.aborted) throw err;
+          // The copy this was coming from has been taken off the server: begin again from today's.
+          await fsp.rm(`${dest}.part`, { force: true });
+          this.placesSizes = null;
+          info = (await this.extractSizes([f], signal))[f.id];
+          state.at[f.id] = info; await save();
+          if (info.missing) throw Object.assign(new Error(`${f.name} is not on the extract server.`), { fatal: true });
+          downloaded = before;
+          await this.fetchFile(this.rewrite(info.dated), dest, info.bytes, signal, (n) => { downloaded += n; this.progress({ downloaded }); }, 'extract');
+        }
+        // The server publishes a checksum beside each file. When it is there, the file must match it.
+        this.progress({ stage: 'check' });
+        const sum = await this.fetch(`${this.rewrite(info.dated)}.md5`, { signal, timeoutMs: 30000, headers: { 'user-agent': this.agent } }).then(async (res) => (res.ok ? /^[0-9a-f]{32}/i.exec((await res.text()).trim()) : (drop(res), null))).catch(() => null);
+        if (sum && (await md5Of(dest)) !== sum[0].toLowerCase()) { await fsp.rm(dest, { force: true }); throw new Error(`${f.name} arrived damaged (it does not match the server's checksum).`); }
+        this.progress({ stage: 'read', readDone: 0, readTotal: 1 });
+        const name = `p${state.next++}.json`;
+        let result = null;
+        try { result = await this.runExtract({ file: dest, out: path.join(work, name), categories: cats, rings }, job); } catch (err) {
+          if (!signal.aborted) await fsp.rm(dest, { force: true }); // a file that cannot be read is no use: fetched again next time
+          throw err;
+        }
+        await fsp.rm(dest, { force: true });
+        state.done[f.id] = name; state.found += result.count; delete state.at[f.id];
+        await save();
+        this.placesDone.add(f.id);
+        this.log(`places: ${f.name}: ${result.count} places from ${result.nodes} nodes, ${result.ways} ways and ${result.relations} relations, read in ${Math.round(result.ms / 100) / 10} s${result.unplaced ? `; ${result.unplaced} had no position in this extract` : ''}${sum ? '' : '; no checksum was on the server'}`);
+        tell();
+        if (early && count() < files.length && (!shown || count() - shown >= every)) {
+          shown = count();
+          await this.putPlaces(work, Object.values(state.done), cats, regionIds, { key, done: count(), total: files.length }).catch((err) => this.log(`places: what is here could not be put to use yet: ${err.message}`));
+        }
+      };
+
+      // Each file in turn. One that fails is left for a second go after the others; what cannot be had even then is named.
+      for (const round of [1, 2]) {
+        for (const f of todo) {
+          if (signal.aborted) throw new Error('Stopped.');
+          if (state.done[f.id]) continue;
+          if (!state.at[f.id] || state.at[f.id].missing) { failed.set(f.id, `${f.name} is not on the extract server`); continue; }
+          if (round === 2 && !failed.has(f.id)) continue;
+          try { await one(f); failed.delete(f.id); } catch (err) {
+            if (signal.aborted) throw err;
+            if (err.stop) throw err;
+            failed.set(f.id, `${f.name}: ${err.message}`);
+            this.log(`places: ${f.name} failed (go ${round} of 2): ${err.message}`);
+            downloaded = todo.filter((x) => state.done[x.id]).reduce((a, x) => a + sizeOf(x), 0);
+            if (round === 1 && !err.fatal) await this.pause(5000);
+          }
+        }
+        if (!failed.size) break;
+      }
+      if (failed.size) {
+        if (count() && early) await this.putPlaces(work, Object.values(state.done), cats, regionIds, { key, done: count(), total: files.length }).catch(() => {});
+        const why = [...failed.values()];
+        throw new Error(`${failed.size} of the ${files.length} files could not be fetched (${why.slice(0, 3).join('; ')}${why.length > 3 ? '; and others' : ''}). What was read is kept: fetch the places again to carry on.`);
+      }
+      // Every file is read: put the pieces together.
+      await this.putPlaces(work, Object.values(state.done), cats, regionIds, null);
+      await fsp.rm(work, { recursive: true, force: true }).catch(() => {});
+      this.placesKept = null; this.placesDone = new Set();
+      this.log(`places: finished, ${this.placesInfo.total} places from ${files.length} extracts in ${Math.round((Date.now() - started) / 60000)} min`);
+      this.end();
+      return this.placesInfo;
+    } catch (err) {
+      const r = this.end(err);
+      if (r.stopped) return null;
+      throw err;
+    }
+  }
+
+  /** Read one extract, off the main thread where that is possible. */
+  runExtract(data, job, inline) {
+    const signal = job.controller.signal;
+    const onProgress = (p) => this.progress({ readDone: p.done, readTotal: p.total });
+    if (inline) return placesExtract.run(data, onProgress);
+    return new Promise((resolve, reject) => {
+      // In the installed app the worker's files are kept outside the archive the rest of the app is in.
+      let file = path.join(__dirname, 'places-extract-worker.js');
+      const outside = file.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+      if (outside !== file && fs.existsSync(outside)) file = outside;
+      let worker = null; let settled = false; let heard = false;
+      const onAbort = () => { if (worker) worker.terminate(); settle(reject, new Error('Stopped.')); };
+      const settle = (fn, v) => { if (settled) return; settled = true; signal.removeEventListener('abort', onAbort); fn(v); };
+      const fallBack = (why) => { this.log(`maps: the worker thread could not start (${why}); reading the extract on the main thread`); settle(resolve, this.runExtract(data, job, true)); };
+      try { worker = new Worker(file, { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 4096 } }); } catch (err) { fallBack(err.message); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+      worker.on('message', (m) => { heard = true; if (m.type === 'progress') onProgress(m.patch); else if (m.type === 'done') settle(resolve, m.result); else settle(reject, new Error(m.message)); });
+      worker.on('error', (err) => { if (!heard) fallBack(err.message); else settle(reject, err); });
+      worker.on('exit', (code) => settle(reject, new Error(`Reading the extract stopped unexpectedly (code ${code}).`)));
+    });
+  }
+
   /**
    * Put the pieces named together as the places in use. A place on the edge of two pieces came twice.
    * `partial` ({key, done, total}) marks a set that is not whole yet.
@@ -390,7 +628,7 @@ class MapsLibrary extends EventEmitter {
   }
 
   /** One file, carried on from where a stopped download left it. */
-  async fetchFile(url, dest, bytes, signal, onBytes) {
+  async fetchFile(url, dest, bytes, signal, onBytes, what = 'routing data') {
     const part = `${dest}.part`;
     for (let attempt = 0; ; attempt++) {
       let have = 0;
@@ -399,7 +637,7 @@ class MapsLibrary extends EventEmitter {
       if (have === bytes) break;
       try {
         const res = await this.fetch(url, { signal, timeoutMs: 60000, headers: { 'user-agent': this.agent, ...(have ? { range: `bytes=${have}-` } : {}) } });
-        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) { drop(res); throw Object.assign(new Error(`The routing data server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403 }); }
+        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) { drop(res); throw Object.assign(new Error(`The ${what} server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403, status: res.status }); }
         const fd = await fsp.open(part, have ? 'a' : 'w');
         try { for await (const chunk of res.body) { await fd.write(chunk); onBytes(chunk.length); if (signal.aborted) throw new Error('Stopped.'); } } finally { await fd.close(); }
       } catch (err) {

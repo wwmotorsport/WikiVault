@@ -2035,8 +2035,19 @@ function mapJobView(j) {
     else if (j.stage === 'index') { title = 'Building the address index'; value = j.done || 0; max = j.total || 100; detail = 'Sorting the addresses by street. This part needs no connection.'; }
     else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
   }
-  if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: small pieces are asked for, nearest first, and kept as they arrive, so a run that stops carries on from here. What has arrived can be searched already.`; }
-  const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
+  if (j.kind === 'places-measure') { title = 'Asking how big the places download is'; value = j.done || 0; max = j.total || 1; detail = `File ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. Nothing is downloaded yet.`; }
+  if (j.kind === 'places' && j.how === 'extract') {
+    // From regional extracts: a file to a state, downloaded, read here and deleted.
+    title = 'Fetching the places';
+    const so = `${j.done || 0} of ${j.total || 0} files read, ${(j.found || 0).toLocaleString()} places so far.`;
+    if (j.stage === 'sizes') { value = j.sized || 0; max = j.sizes || null; detail = `Asking where today's files are and how big they are. ${so}`; }
+    else {
+      if (j.bytes) { value = Math.min(j.downloaded || 0, j.bytes); max = j.bytes; }
+      const pct = j.readTotal ? ` (${Math.round(((j.readDone || 0) / j.readTotal) * 100)}%)` : '';
+      detail = `${j.file || 'The next file'}: ${j.stage === 'download' ? `downloading, ${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)} in all` : j.stage === 'check' ? 'checking it arrived whole' : `reading the places out of it${pct}`}. ${so} Each file is deleted once it is read, the nearest come first, and what has been read can be searched already. If this is stopped, it carries on from here next time.`;
+    }
+  } else if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: small pieces are asked for, nearest first, and kept as they arrive, so a run that stops carries on from here. What has arrived can be searched already.`; }
+  const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'places' && j.how === 'extract' && j.stage && j.stage !== 'sizes') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
   return { title, detail, value, max, bytesNow: inBytes && max ? j.downloaded || 0 : null };
 }
 
@@ -2058,7 +2069,7 @@ function paintMapSummary(m) {
   const lines = [];
   if (m.map) lines.push(el('p', '', `${mapLevelName(m, m.map.maxZoom)}. ${mapRegionNames(m, m.map.regions)}. ${bytes(m.map.bytes)}, from the world map built on ${mapDay(m.map.built)}.`));
   else lines.push(el('p', '', 'No map is on this computer yet. Choose what to cover, see how big each level of detail would be, and then download.'));
-  if (m.places && m.places.partial) lines.push(el('p', '', `${m.places.total.toLocaleString()} places so far, from ${m.places.partial.done} of ${m.places.partial.total} pieces${m.job && m.job.kind === 'places' ? '' : '. Fetch the places again to carry on'}. They can be searched already; the nearest pieces come first.`));
+  if (m.places && m.places.partial) lines.push(el('p', '', `${m.places.total.toLocaleString()} places so far, from ${m.places.partial.done} of ${m.places.partial.total} parts${m.job && m.job.kind === 'places' ? '' : '. Fetch the places again to carry on'}. They can be searched already; the nearest parts come first.`));
   else if (m.places) lines.push(el('p', '', `${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}.`));
   else lines.push(el('p', '', 'No places have been fetched yet. They can be fetched with or without the map.'));
   if (m.overture) lines.push(el('p', '', `${m.overture.total.toLocaleString()} more places from Overture Maps (release ${m.overture.release}), shown where OpenStreetMap has none.`));
@@ -2130,11 +2141,29 @@ function paintMapSetup(m) {
   }
   const placesBox = el('fieldset', 'map-field');
   placesBox.append(el('legend', '', 'Places'));
-  placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above. Fetching them takes a while and a few hundred megabytes at most.'));
-  const getPlaces = el('button', m.places ? 'btn small' : 'btn primary', m.places ? 'Update the places' : 'Fetch the places');
+  placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above.'));
+  const whole = m.places && !m.places.partial;
+  const getPlaces = el('button', whole ? 'btn small' : 'btn primary', whole ? 'Update the places' : m.places || m.placesKept ? 'Carry on fetching the places' : 'Fetch the places');
   getPlaces.type = 'button'; getPlaces.id = 'map-places'; getPlaces.disabled = busy || !picked.length;
-  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked, typeof gpsPoint === 'function' ? gpsPoint() : null), $('map-error')));
-  placesBox.append(getPlaces);
+  const nearNow = () => (typeof gpsPoint === 'function' ? gpsPoint() : null);
+  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked, nearNow()), $('map-error')));
+  if (m.placesHow === 'extract') {
+    // The quick way: a regional extract to a state, downloaded whole, read here, and deleted.
+    const pm = m.placesMeasured && m.placesMeasured.regions.slice().sort().join() === picked.slice().sort().join() ? m.placesMeasured : null;
+    placesBox.append(el('p', 'small-print', `They are read out of regional OpenStreetMap extracts, one file to a state or province: each is downloaded, read on this computer and deleted, the nearest to home first. ${pm ? `${pm.files} files, ${bytes(pm.left)} still to download; the largest is ${bytes(pm.largest)}, which is the room needed while it works. Only a small part of that is kept.` : 'That is a large download for what is kept (about 11 GB for the contiguous United States), but a quick and dependable one.'}${pm && pm.missing.length ? ` Not on the server: ${pm.missing.join(', ')}.` : ''}`));
+    const size = el('button', 'btn small', pm ? 'Measure again' : 'Measure the download');
+    size.type = 'button'; size.id = 'map-places-measure'; size.disabled = busy || !picked.length;
+    size.addEventListener('click', () => guard(() => api.mapsPlacesMeasure(picked), $('map-error')));
+    const row = el('div', 'actions'); row.append(getPlaces, size);
+    const slow = document.createElement('details'); slow.className = 'map-places-slow';
+    slow.append(el('summary', '', 'Another way, with very little to download'));
+    slow.append(el('p', 'small-print', 'The same places can be asked for in small pieces from free, shared servers. Almost nothing is downloaded beyond what is kept, but the servers are slow and often busy: the whole country can take many hours. Use it when the connection or the room on the disk does not allow the large download.'));
+    const slowGo = el('button', 'btn small', 'Fetch the places in small pieces');
+    slowGo.type = 'button'; slowGo.id = 'map-places-slow'; slowGo.disabled = busy || !picked.length;
+    slowGo.addEventListener('click', () => guard(() => api.mapsPlaces(picked, nearNow(), 'pieces'), $('map-error')));
+    slow.append(slowGo);
+    placesBox.append(row, slow);
+  } else placesBox.append(getPlaces);
   parts.push(placesBox);
   const routeBox = el('fieldset', 'map-field');
   routeBox.append(el('legend', '', 'Directions'));
@@ -2746,6 +2775,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.27.0': [
+    'Places now come from regional extracts: about 11 GB is downloaded for the lower 48 states, a state at a time, read here and deleted.',
+    'The states nearest home come first, and what has been read can be searched at once. It carries on where it stopped.',
+    'The old, slow way is still there under "Another way", for when a large download is not possible.',
+  ],
   '0.26.1': [
     'Map: the key now has a tick box beside each kind of thing, to show or hide it. It replaces "What the map shows".',
     'Places are fetched in smaller pieces, the nearest to home first, and can be searched as they arrive.',

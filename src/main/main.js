@@ -1882,7 +1882,7 @@ function registerIpc() {
     const free = await freeAt(settings.dataDir);
     return mapJob('map', maps.downloadMap(mapRegions(a), Number(a.zoom), { free }));
   }));
-  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a), { near: placesNear(a) }).then((r) => { if (r) refreshPlacing(); return r; })); }));
+  handle('maps:places', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places', maps.downloadPlaces(mapRegions(a), { near: placesNear(a), how: a && (a.how === 'pieces' || a.how === 'extract') ? a.how : null }).then((r) => { if (r) refreshPlacing(); return r; })); }));
   handle('maps:cancel', inMaps(() => { maps.cancel(); return true; }));
   handle('maps:search', inMaps((a) => {
     const r = maps.search({ q: String(a.q || ''), categories: Array.isArray(a.categories) ? a.categories.map(String) : null, near: Array.isArray(a.near) ? a.near.map(Number) : null, box: Array.isArray(a.box) ? a.box.map(Number) : null, around: Array.isArray(a.around) ? a.around.map(Number) : null, limit: Number(a.limit) || 50 });
@@ -1890,6 +1890,7 @@ function registerIpc() {
     const saved = String(a.q || '').trim() && !(Array.isArray(a.categories) && a.categories.length) && !a.box ? bookHits(String(a.q)) : [];
     return saved.length ? { total: r.total + saved.length, hits: [...saved, ...r.hits] } : r;
   }));
+  handle('maps:places-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places sizes', maps.measurePlaces(mapRegions(a))); }));
   handle('maps:routing-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('routing sizes', maps.measureRouting(mapRegions(a))); }));
   handle('maps:routing-download', inMaps(async (a) => {
     if (!libraryChosen()) throw new Error('Choose where the library lives first, on the Setup page. The routing data is kept in the same library.');
