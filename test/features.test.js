@@ -12,6 +12,6 @@ test('a part of the app is on or off by the build, then the computer, then the t
   assert.deepEqual(features({ settings: { features: { school: 'yes', other: true } } }), { school: false }, 'only true and false count, and only for parts that exist');
 });
 
-test('the build that is released leaves School out', () => {
-  assert.equal(features({ pkg: require('../package.json') }).school, false);
+test('on the school branch, School is switched on', () => {
+  assert.equal(features({ pkg: require('../package.json') }).school, true);
 });

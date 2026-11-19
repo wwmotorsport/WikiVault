@@ -89,7 +89,7 @@
   },
   "wikivault": {
     "features": {
-      "school": false
+      "school": true
     }
   }
 }
