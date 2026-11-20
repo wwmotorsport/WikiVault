@@ -15,7 +15,7 @@ const stamp = () => new Date().toISOString().slice(11, 19);
 (async () => {
   const dir = path.resolve(arg('--work', 'places-work')); const out = path.resolve(arg('--out', 'places-out'));
   fs.mkdirSync(dir, { recursive: true });
-  const lib = new MapsLibrary({ dir, agent: `Wikivault places build ${pkg.version} (github.com/wwmotorsport/wikivault)`, log: (line) => console.log(`${stamp()} ${line}`) });
+  const lib = new MapsLibrary({ dir, agent: `Wikivault places build ${pkg.version} (github.com/wwmotorsport/WikiVault)`, log: (line) => console.log(`${stamp()} ${line}`) });
   await lib.init();
   const known = lib.registry.regions.map((r) => r.id).filter((id) => lib.registry.extracts && lib.registry.extracts.regions[id]);
   const regions = arg('--regions') ? arg('--regions').split(',').filter((id) => known.includes(id)) : known;
