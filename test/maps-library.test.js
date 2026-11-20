@@ -250,3 +250,23 @@ test('places: the pieces nearest home come first, what has arrived is in use bef
     } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
   } finally { await new Promise((r) => server.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('places: of Overture\'s "hospitals", only those named as hospitals are hospitals; offices and parts of hospitals are listed with the clinics', async () => {
+  const yes = ['Mercy General Hospital', 'Riverside Medical Center', 'Hôpital Général de Montréal', 'Hospital General Leon', 'Clínica y Hospital Santa Julia', 'Northside Emergency Room', "St. Mary's Children's Hospital"];
+  const no = ['Lakeside Family Medicine', 'Riverside Medical Center Suite 200', 'St. Luke Hospital Sleep Center', 'Oak Animal Hospital', 'Valley Rehabilitation Hospital', 'County Hospital Gift Shop', 'Pine Health Primary Care', 'Harbor Heart & Vascular Institute', 'Pine Health', ''];
+  for (const n of yes) assert.equal(places.isHospitalName(n), true, n);
+  for (const n of no) assert.equal(places.isHospitalName(n), false, n);
+  const dir = tmp();
+  try {
+    fs.mkdirSync(path.join(dir, 'overture'), { recursive: true });
+    const rec = (i, n, a) => ({ i: `ov${i}`, n, a, o: -80.8, d: '', s: 'ov' });
+    fs.writeFileSync(path.join(dir, 'overture', 'hospital.json'), JSON.stringify({ v: 1, items: [rec(1, 'Lakeside Family Medicine', 35.21), rec(2, 'Pine Health Physical Therapy', 35.22), rec(3, 'Riverside Medical Center', 35.30), rec(4, 'Oak Animal Hospital', 35.23)] }));
+    fs.writeFileSync(path.join(dir, 'overture', 'clinic.json'), JSON.stringify({ v: 1, items: [rec(5, 'Elm Urgent Care', 35.24)] }));
+    fs.writeFileSync(path.join(dir, 'overture.json'), JSON.stringify({ release: 'test', regions: ['east'], date: new Date().toISOString(), total: 5, counts: { hospital: 4, clinic: 1 }, bytes: 1 }));
+    const lib = new MapsLibrary({ dir, registry: registry('http://127.0.0.1:1') });
+    await lib.init();
+    // Asked for the hospitals nearest a spot just south of them all: the real one, not the three offices that are nearer.
+    assert.deepEqual(lib.search({ categories: ['hospital'], near: [-80.8, 35.2], limit: 10 }).hits.map((h) => h.n), ['Riverside Medical Center']);
+    assert.deepEqual(lib.search({ categories: ['clinic'], near: [-80.8, 35.2], limit: 10 }).hits.map((h) => `${h.n}:${h.c}`), ['Lakeside Family Medicine:clinic', 'Pine Health Physical Therapy:clinic', 'Oak Animal Hospital:clinic', 'Elm Urgent Care:clinic']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

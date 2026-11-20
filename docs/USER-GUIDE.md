@@ -522,6 +522,8 @@ The kinds are the ones in the map's *Kind of place* list, under the words people
 
 The answer lists them nearest first, each with its distance and direction in a straight line, its address and telephone where known, and whether a hospital has an emergency room. The same places are put on the map's *Places* tab and drawn on the map. Each row has *Show on the map* and *Directions*. For the first three, the distance and time by road are worked out too, and if the nearest by road is not the nearest in a straight line, the answer says so.
 
+Hospitals are the ones OpenStreetMap marks as hospitals, plus the places from Overture Maps whose names say they are hospitals. Overture files many doctors' offices and hospital departments under "hospital"; those are listed with the clinics instead, so that they do not crowd out the hospitals.
+
 Two things to know. The list is only as good as the places on the computer: fetch both the OpenStreetMap places and the Overture places on the Setup page. And a question that is not about places ("what is the nearest star to the sun") is left to the articles.
 
 This part does not use the model. It works by rule, at once, and before answers are set up. When the wording is loose ("I need to be driving over to see Rosa, what is the way to go?") and answers are on, the model is asked to pick out the places.
