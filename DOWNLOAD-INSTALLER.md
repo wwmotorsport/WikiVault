@@ -1,9 +1,9 @@
 # Download Wikivault
 
 <!-- download:start -->
-### [Download the installer: Wikivault-Setup-0.26.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.26.1/Wikivault-Setup-0.26.1.exe)
+### [Download the installer: Wikivault-Setup-0.30.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.30.1/Wikivault-Setup-0.30.1.exe)
 
-Version 0.26.1, 139 MB, for Windows 10 and 11 (64-bit). Clicking the link starts the download.
+Version 0.30.1, 139 MB, for Windows 10 and 11 (64-bit). Clicking the link starts the download.
 <!-- download:end -->
 
 The installer is too large for GitHub to show in the list of files, so it is kept on the [Releases](../../releases) page. The link above goes straight to the newest one.
