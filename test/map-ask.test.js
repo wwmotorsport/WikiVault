@@ -278,3 +278,25 @@ test('ask: the nearest of a kind is found around home, a person, a town or "ther
     assert.equal(ask.windOf({ lat: 35, lon: -80 }, { lat: 35, lon: -81 }), 'west');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('near: large and small are asked of the kind, by the ground a place covers', () => {
+  const p = (t) => { const a = ask.parseNear(t); return a && [a.cats && a.cats.join(), a.size || null, Boolean(a.bySize), a.at]; };
+  assert.deepEqual(p('nearest large army base'), ['military', 'large', false, null]);
+  assert.deepEqual(p('what is the nearest small airfield to home'), ['airfield', 'small', false, 'home']);
+  assert.deepEqual(p('large hospitals within 20 miles of home'), ['hospital', 'large', false, 'home']);
+  assert.deepEqual(p('the biggest military base within 100 miles'), ['military', 'large', true, null]);
+  assert.deepEqual(p('hospitals near Little Rock'), ['hospital', null, false, 'little rock'], 'a word of the place is not a size');
+  assert.equal(ask.parseNear('Big Lots near me').size, undefined, 'nor is a word of a name');
+  assert.deepEqual([ask.areaText(900), ask.areaText(45000), ask.areaText(650000000)], ['9,700 square feet', '11 acres', '251 square miles']);
+  const home = { lat: 35.2, lon: -80.8, label: 'Home', own: true };
+  const base = (i, n, km, m) => ({ i, n, a: 35.2 + km / 111, o: -80.8, km, c: 'military', kind: 'Military sites', ...(m ? { m } : {}) });
+  const all = [base('a', 'Reserve Lot', 3, 4000), base('b', 'Unsized Post', 5), base('c', 'Camp Middling', 20, 900000), base('d', 'Fort Vast', 60, 400000000), base('e', 'Fort Far', 300, 900000000)];
+  const ctx = { saved: (q) => (/^home$/i.test(q) ? [home] : []), contacts: () => [], search: () => [], gps: () => null, kinds: { military: 'Military sites' }, nearby: ({ limit }) => all.slice(0, limit), sizes: () => ({ small: 10000, large: 800000 }) };
+  const large = ask.plan(ask.parseNear('nearest large army base to home'), ctx);
+  assert.deepEqual(large.hits.map((h) => [h.n, h.area]), [['Camp Middling', '222 acres'], ['Fort Vast', '154 square miles'], ['Fort Far', '347 square miles']]);
+  assert.match(large.notes.join(' '), /Large means 198 acres or more of ground, which is the largest third of this kind\. 1 nearby place is drawn as a point, with no size, and is not counted\./);
+  assert.deepEqual(ask.plan(ask.parseNear('small military sites near home'), ctx).hits.map((h) => h.n), ['Reserve Lot']);
+  assert.deepEqual(ask.plan(ask.parseNear('the biggest military base within 100 miles of home'), ctx).hits.map((h) => h.n), ['Fort Vast', 'Camp Middling'], 'largest first, within the distance');
+  const none = ask.plan(ask.parseNear('nearest large army base to home'), { ...ctx, sizes: () => null });
+  assert.equal(none.hits.length, 5); assert.match(none.notes.join(' '), /do not carry sizes/);
+});

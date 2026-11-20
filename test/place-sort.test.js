@@ -26,7 +26,7 @@ test('each kind keeps what belongs, moves what belongs elsewhere, marks the less
     ['department', 'Aldi', 'supermarket'], ['department', 'Save A Lot', 'supermarket'], ['department', 'Dollar General', 'department'], ['department', 'DG Market', 'supermarket'], ['department', 'Dollar General Market', 'department'], ['department', 'BanCoppel', 'out'], ['department', 'Walmart Supercenter', 'department'],
     ['supermarket', 'Walmart Grocery Pickup and Delivery', 'out'], ['supermarket', "Fry's Fuel Center", 'fuel'], ['supermarket', 'H-E-B Fuel', 'fuel'], ['supermarket', 'Body Fuel Organics', 'supermarket'], ['supermarket', 'Tacos Chava', 'out'], ['supermarket', 'Jerusalem Bakery & Grocery', 'supermarket'], ['supermarket', 'Kroger', 'supermarket'], ['supermarket', 'Abarrotes Lourdes', 'supermarket'],
     ['airfield', 'Gate B38', 'out'], ['airfield', 'Concourse A', 'out'], ['airfield', 'United Airlines', 'out'], ['airfield', 'Denver International Airport', 'airfield'], ['airfield', 'Moraine Airpark', 'airfield'], ['airfield', 'Terminal 1, Example International Airport', 'airfield'], ['airfield', 'Signature Aviation', 'airfield'],
-    ['military', 'US Army Recruiting', 'out'], ['military', 'Armed Forces Career Center', 'out'], ['military', 'American Legion Post 1461', 'out'], ['military', 'Army National Guard Armory', 'military'], ['military', 'Fort Example', 'military'],
+    ['military', 'US Army Recruiting', 'out'], ['military', 'Armed Forces Career Center', 'out'], ['military', 'American Legion Post 1461', 'out'], ['military', 'Army National Guard Armory', 'military (lesser)'], ['military', 'US Army Reserve Center', 'military (lesser)'], ['military', 'Fort Example', 'military'], ['military', 'Example Air National Guard Base', 'military'], ['military', 'Army ROTC', 'out'], ['military', 'Military Entrance Processing Station', 'out'], ['military', 'Tiddsrackshack', 'out'], ['military', 'Marine Corps Recruit Depot Parris Island', 'military'],
     ['campsite', 'Shady Oaks Mobile Home Park', 'out'], ['campsite', 'Shady Oaks RV Park', 'campsite'], ['campsite', 'Our Kids Day Camp', 'out'], ['campsite', 'Lakeside Campground', 'campsite'], ['campsite', 'Pines Mobile Home & RV Park', 'campsite'],
     ['fire', 'Osburn Police Department', 'police'], ['fire', 'Union Beach Fire Co. #1', 'fire'], ['fire', 'Peerless Tires', 'out'], ['fire', 'Pacific Coastal Fire Protection Inc.', 'out'], ['fire', 'South Madison County Fire Protection District', 'fire'], ['fire', 'Pelham Professional Firefighters Local 2546', 'out'], ['fire', 'Clinton Fire Department', 'fire'],
     ['police', 'Bryant Fire Department', 'fire'], ['police', 'Union County Sheriff', 'police'], ['police', 'Union City Police Department', 'police'], ['police', 'Fraternal Order of Police Lodge 20', 'out'], ['police', 'Peel Regional Police Association', 'out'], ['police', 'Department of Public Safety Fire Marshal', 'police'], ['police', 'Royal Canadian Mounted Police', 'police'],
@@ -41,6 +41,17 @@ test('OpenStreetMap is taken as it is, but for shoe, team and golf shops among i
   for (const n of ['Finish Line', 'Champs Sports', 'JD Sports', 'Golf Galaxy', 'Nike Factory Store']) assert.equal(keepsOsm('outdoor', n), false, n);
   for (const n of ["Dick's Sporting Goods", 'REI', 'Academy Sports + Outdoors', 'Bass Pro Shops', 'Some Shop', 'Golf & Guns', '']) assert.equal(keepsOsm('outdoor', n), true, n);
   assert.equal(keepsOsm('hospital', 'Golf Clinic'), true);
+});
+
+test('OpenStreetMap\'s military land: recruiting offices and cadet units are not listed, halls and small lots are a lesser sort', () => {
+  const { osmLesser } = require('../src/core/place-sort');
+  for (const n of ['Army Career Center', 'ROTC and Military Training area for Hill High', 'Armed Forces Recruiting', 'University of Example ROTC']) assert.equal(keepsOsm('military', n), false, n);
+  for (const n of ['Fort Example', 'Marine Corps Recruit Depot', 'National Guard', 'Example Naval Air Station']) assert.equal(keepsOsm('military', n), true, n);
+  assert.deepEqual(osmLesser('military', { n: 'United States Army Reserve Center' }), { kind: 'Reserve or National Guard hall' });
+  assert.deepEqual(osmLesser('military', { n: 'Signal Site 4', m: 3000 }), { kind: 'Small military site' });
+  assert.equal(osmLesser('military', { n: 'Fort Example', m: 90000000 }), null);
+  assert.equal(osmLesser('military', { n: 'Fort Example' }), null, 'a place with no size is not called small');
+  assert.equal(osmLesser('hospital', { n: 'Reserve Center Hospital', m: 10 }), null);
 });
 
 test('a kind is read from its own list and from the lists its places were fetched under', () => {

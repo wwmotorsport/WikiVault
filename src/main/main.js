@@ -2120,6 +2120,7 @@ function registerIpc() {
           // The places of some kinds (or, with no kind, of some name), nearest first, each with its distance.
           nearby: maps ? ({ cats, q = '', near, limit = 50 }) => { try { return maps.search({ categories: cats && cats.length ? cats : maps.registry.categories.map((c) => c.id), q, near, limit }).hits; } catch { return []; } } : null,
           kinds: maps ? Object.fromEntries(maps.registry.categories.map((c) => [c.id, c.name])) : {},
+          sizes: maps ? (cats) => maps.sizeBands(cats) : null,
           last: lastMapPlace,
           model: settings.ai.enabled ? async () => { emit('status', { text: 'Getting the local model ready' }); await llm.prepare({ signal: ac.signal, onStatus: (text) => emit('status', { text }) }); pushState(); return llm; } : null,
         });

@@ -82,3 +82,15 @@ test('extract: the records written are the ones the places code uses, and only t
     assert.deepEqual([mercy.a, mercy.o, mercy.d, mercy.p, mercy.x], [35.2, -80.8, '2001 Vale Avenue, Riverton, NC 28207', '+1 555 0100', { emergency: 'yes', beds: '185' }]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('extract: a way or relation drawn as an outline carries the ground it covers', async () => {
+  const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'maps', 'registry.json'), 'utf8'));
+  const els = [];
+  await osm.extract(path.join(__dirname, 'fixtures', 'east-a.osm.pbf'), { filters: registry.categories.flatMap((c) => c.filters || []), onElement: (e) => els.push(e) });
+  const outlines = els.filter((e) => e.type !== 'node');
+  assert.ok(outlines.length >= 2 && outlines.every((e) => e.size > 100 && e.size < 1e7), JSON.stringify(outlines.map((e) => e.size)));
+  assert.ok(els.filter((e) => e.type === 'node').every((e) => e.size === undefined));
+  const places = require('../src/core/places');
+  const rec = places.recordOf(registry.categories, outlines[0]);
+  assert.ok(rec.m > 0 && String(rec.m).replace(/0+$/, '').length <= 2, `kept to two figures: ${rec.m}`);
+});

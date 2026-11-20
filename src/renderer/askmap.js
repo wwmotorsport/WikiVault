@@ -53,7 +53,8 @@ async function askMap(entry, plan, question) {
     const nameOf = (h) => h.n || 'One with no name recorded';
     const dist = (h) => `${h.far}${h.wind ? ` to the ${h.wind}` : ''}`;
     const several = plan.cats && plan.cats.length > 1;
-    say(plan.radius ? `${plan.names} within ${plan.radius} of ${where}` : `${plan.names} nearest to ${where}`, 'qa-near-title');
+    const sizeWord = plan.size ? `${plan.size === 'large' ? 'Large' : 'Small'} ` : '';
+    say(plan.radius ? `${sizeWord}${sizeWord ? plan.names.toLowerCase() : plan.names} within ${plan.radius} of ${where}` : `${sizeWord}${sizeWord ? plan.names.toLowerCase() : plan.names} ${plan.bySize ? 'around' : 'nearest to'} ${where}`, 'qa-near-title');
     if (plan.how === 'count') say(`${plan.total === 1 ? 'There is 1' : `There are ${plan.total}`}${plan.radius ? ` within ${plan.radius}` : ' in the places on this computer near there'}.${plan.total > plan.hits.length ? ` The nearest ${plan.hits.length} are listed.` : ''}`);
     else say(`The nearest is ${nameOf(first)}, ${dist(first)} of ${where} in a straight line.${plan.total > plan.hits.length ? ` ${plan.total} were found${plan.radius ? ` within ${plan.radius}` : ''}; the nearest ${plan.hits.length} are listed.` : ''}`);
     const hits = plan.hits.map((h) => ({ ...h, kmFrom: where }));
@@ -89,7 +90,7 @@ async function askMap(entry, plan, question) {
     for (const h of hits) {
       const li = el('li');
       li.append(el('b', '', nameOf(h)));
-      const facts = [dist(h), several ? h.kind : '', h.less && h.x && h.x.kind ? h.x.kind : '', h.x && h.x.emergency === 'yes' ? 'emergency room' : h.x && h.x.emergency === 'no' && h.x.listed ? 'no emergency room' : '', h.x && h.x.listed ? 'on the Medicare list' : '', h.s === 'ov' ? 'from Overture Maps' : ''].filter(Boolean).join(' · ');
+      const facts = [dist(h), several ? h.kind : '', h.less && h.x && h.x.kind ? h.x.kind : '', h.area ? `about ${h.area}` : '', h.x && h.x.emergency === 'yes' ? 'emergency room' : h.x && h.x.emergency === 'no' && h.x.listed ? 'no emergency room' : '', h.x && h.x.listed ? 'on the Medicare list' : '', h.s === 'ov' ? 'from Overture Maps' : ''].filter(Boolean).join(' · ');
       li.append(el('span', 'qa-near-far', facts));
       if (h.d) li.append(el('span', 'qa-near-line', h.d));
       if (h.p) li.append(el('span', 'qa-near-line', h.p));
