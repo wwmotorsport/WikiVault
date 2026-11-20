@@ -18,6 +18,8 @@ const { EventEmitter } = require('node:events');
 const extract = require('./map-extract');
 const crypto = require('node:crypto');
 const places = require('./places');
+const placeSort = require('./place-sort');
+const read1 = (dir, kind) => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'overture', `${kind}.json`), 'utf8')).items; } catch { return []; } };
 const placesExtract = require('./places-extract');
 const routing = require('./routing');
 const pm = require('./pmtiles');
@@ -756,12 +758,12 @@ class MapsLibrary extends EventEmitter {
   recordsOf(id) {
     if (!this.loaded.has(id)) {
       const read = (folder) => { try { return JSON.parse(fs.readFileSync(path.join(this.dir, folder, `${id}.json`), 'utf8')).items; } catch { return []; } };
-      const items = this.placesInfo ? read('places') : [];
-      // Overture's "hospitals" are mostly offices and parts of hospitals (see places.isHospitalName): only those named
-      // as hospitals are hospitals here, and the others are listed with the clinics.
-      let more = this.overture && this.overture.counts[id] ? read('overture') : [];
-      if (id === 'hospital') more = more.filter((r) => places.isHospitalName(r.n));
-      if (id === 'clinic' && this.overture && this.overture.counts.hospital) { try { more = more.concat(JSON.parse(fs.readFileSync(path.join(this.dir, 'overture', 'hospital.json'), 'utf8')).items.filter((r) => !places.isHospitalName(r.n))); } catch { /* none */ } }
+      let items = this.placesInfo ? read('places') : [];
+      if (id === 'outdoor') items = items.filter((r) => placeSort.keepsOsm(id, r.n));
+      // Overture's places are put under the right kind first (see place-sort.js): a doctor's office fetched as a
+      // "hospital" is a clinic, a gun shop fetched as "sporting goods" is a gun shop, an airport gate is nothing.
+      const ov = this.overture ? (kind) => (this.overture.counts[kind] ? read1(this.dir, kind) : []) : null;
+      const more = ov ? placeSort.sorted(id, ov) : [];
       // Places from Overture are added only where OpenStreetMap has no place of a like name close by.
       const extra = more.length ? places.fresh(items, more) : [];
       const all = extra.length ? items.concat(extra) : items;
@@ -776,7 +778,8 @@ class MapsLibrary extends EventEmitter {
     const chosen = Boolean(categories && categories.length);
     // `around` is where the map is looking: of two streets of one name, the nearer is listed first.
     const found = !chosen && !box && q.trim() ? this.findAddress(q, around || near).hits : [];
-    const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && this.overture.counts[id]);
+    // A kind has places when either source has some, or when Overture has places fetched under another kind that belong to it.
+    const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && (this.overture.counts[id] || (placeSort.FROM[id] || []).some((src) => this.overture.counts[src])));
     const ids = (chosen ? categories : this.registry.categories.map((c) => c.id)).filter(has);
     let r = { total: 0, hits: [] };
     const exact = found.some((h) => h.sure && h.how === 'exact') && /^\s*\d/.test(q);

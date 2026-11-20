@@ -2309,7 +2309,7 @@ function paintMapResults() {
     const li = el('li', h.i === mapSelected ? 'on' : '');
     const b = el('button', '', '');
     b.type = 'button';
-    b.append(el('span', 'map-hit-name', h.n || 'No name recorded'), el('span', 'map-hit-kind', [h.kind, h.km != null ? `${(h.km * 0.621371).toFixed(1)} mi` : ''].filter(Boolean).join(', ')));
+    b.append(el('span', 'map-hit-name', h.n || 'No name recorded'), el('span', 'map-hit-kind', [h.less && h.x && h.x.kind ? h.x.kind : h.kind, h.km != null ? `${(h.km * 0.621371).toFixed(1)} mi` : ''].filter(Boolean).join(', ')));
     if (h.c === 'address') { if (h.approx) b.append(el('span', 'map-hit-approx', h.how === 'town' ? 'Approximate: the town only' : h.how === 'street' ? 'The street, not a house' : 'Approximate position')); } else if (h.d) b.append(el('span', 'map-hit-addr', h.d));
     b.addEventListener('click', () => mapSelect(h.i));
     li.append(b);
@@ -2810,6 +2810,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.28.3': [
+    'Places from Overture Maps are now sorted into the right kinds: offices out of Hospitals, builders out of Hardware, gun shops into Gun shops, and more.',
+    'Propane: cylinder exchange cages are marked as such, and the nearest suppliers are always listed with them.',
+    'Nothing needs fetching again: the sorting happens when the places are read.',
+  ],
   '0.28.2': [
     'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
     'Hospitals: doctors\' offices that Overture Maps files as hospitals are now listed with the clinics, so real hospitals are not crowded out.',
