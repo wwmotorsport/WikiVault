@@ -506,6 +506,23 @@ Each place named is looked for in this order: your pins ("my house", "home", "wo
 
 The map then opens on the Directions tab with both ends filled in and the route drawn, as if you had typed them there; blocked areas already marked are kept clear of. The Ask panel says how it read the request ("Understood as: ...") and gives the distance and time. When a place cannot be found it says which one and why, for instance that a contact has no address or that nobody is marked as your sister yet.
 
+### Asking for the nearest places of a kind
+
+Ask also finds the places of a kind near somewhere, from the places fetched for the map:
+
+- "What is the nearest hospital to home?", "Which pharmacy is closest to my mother-in-law's house?", "Where is the closest emergency room to 350 5th Ave, New York NY?"
+- "Nearest gas station", "Hospitals near me", "Is there anywhere to get propane around here?" With no place named, distances are measured from your GPS position if a receiver is connected, otherwise from the place pinned as Home, and the answer says which.
+- "List the hospitals within a 10 mile radius of home", "Pharmacies within 15 km of work", "How many fire stations are within twenty miles of work?"
+- "The five closest supermarkets to home", "Hospitals in Concord", "How far is the nearest hospital?"
+- "Where is the nearest hospital to there?" after another request: *there* is the place the last request was about (the place shown, the destination, or the nearest one found).
+- "Directions to the nearest hospital", "Take me to the closest gas station": the nearest one is used as the destination.
+
+The kinds are the ones in the map's *Kind of place* list, under the words people use for them: hospital, emergency room or ER; clinic, urgent care or doctor; pharmacy or drug store; vet; fire station; police or sheriff; water, drinking water, spring or well; water tower; water treatment; power plant; substation; gas, fuel or gas station; propane; grocery, supermarket or food; food bank; hardware or building supply; farm supply or feed store; sporting goods; gun shop or ammunition; airport; rest area; campground; ranger station; military base; town hall or courthouse; towns. A shop asked for by its name ("the nearest Walmart to home") is looked for by name within fifty miles.
+
+The answer lists them nearest first, each with its distance and direction in a straight line, its address and telephone where known, and whether a hospital has an emergency room. The same places are put on the map's *Places* tab and drawn on the map. Each row has *Show on the map* and *Directions*. For the first three, the distance and time by road are worked out too, and if the nearest by road is not the nearest in a straight line, the answer says so.
+
+Two things to know. The list is only as good as the places on the computer: fetch both the OpenStreetMap places and the Overture places on the Setup page. And a question that is not about places ("what is the nearest star to the sun") is left to the articles.
+
 This part does not use the model. It works by rule, at once, and before answers are set up. When the wording is loose ("I need to be driving over to see Rosa, what is the way to go?") and answers are on, the model is asked to pick out the places.
 
 Wording that could be either kind of question, such as "Where is Jordan?" or "How far is it from the Earth to the Moon?", goes to the map only when a place it names is one of your own pins, relationships or contacts. To be sure of the map, say *directions*, *route*, *take me to* or *on the map*. A map answer always has a *Search the articles instead* button.
