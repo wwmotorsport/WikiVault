@@ -1,0 +1,51 @@
+name: Places data
+
+# Builds the ready-made set of places that the app fetches in place of 13 GB of extracts, and publishes it as the
+# files of the release "places-data". It runs every week; by hand from the Actions page; and when a branch named
+# places-build/... is pushed (the branch is deleted afterwards). See src/core/central-places.js.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+  push:
+    branches: ['places-build/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: places-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --omit=dev --ignore-scripts
+      - name: Build the places
+        shell: bash
+        run: node scripts/build-central-places.js --work "$RUNNER_TEMP/places" --out "$RUNNER_TEMP/out" 2>&1 | tee "$RUNNER_TEMP/build-log.txt"
+      - name: Publish
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view places-data >/dev/null 2>&1 || gh release create places-data --title "Places data (fetched by the app)" --notes-file .github/PLACES-DATA.md --latest=false --target "$GITHUB_SHA"
+          if [ -f "$RUNNER_TEMP/out/places-manifest.json" ]; then
+            # The data first, and last the list that names them: the app reads the list and then the files it names.
+            gh release upload places-data "$RUNNER_TEMP"/out/*.json.gz --clobber
+            gh release upload places-data "$RUNNER_TEMP/out/places-manifest.json" --clobber
+            gh release edit places-data --notes-file .github/PLACES-DATA.md --latest=false
+          fi
+          [ -f "$RUNNER_TEMP/build-log.txt" ] && gh release upload places-data "$RUNNER_TEMP/build-log.txt" --clobber || true
+      - name: Remove the branch that asked for this
+        if: always() && startsWith(github.ref, 'refs/heads/places-build/')
+        shell: bash
+        run: git push origin --delete "${GITHUB_REF#refs/heads/}" || true

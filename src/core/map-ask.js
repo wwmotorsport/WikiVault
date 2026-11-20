@@ -104,7 +104,21 @@ const NEARME = /^(?:here|me|us|my (?:current |present )?(?:location|position|spo
  * `sure` only when the kind is one the map knows: "the nearest star to the sun" is not for the map.
  */
 function parseNear(text) {
-  let f = fold(text).replace(/[’]/g, "'").replace(/[?!.]+$/, '').replace(/\s+/g, ' ').trim();
+  const all = fold(text).replace(/[’]/g, "'").replace(/[?!.]+$/, '').replace(/\s+/g, ' ').trim();
+  // A size asked for: "the nearest large hospital", "small hardware shops near work", "the biggest airfield within 50 miles".
+  const sized = /\b(large|big|major|main|huge|larger|bigger|small|little|tiny|minor|smaller|largest|biggest|smallest)\b/.exec(all);
+  // The word belongs to the kind only when it comes before any word that begins the place ("hospitals near Little Rock" asks for no size).
+  const before = sized ? all.slice(0, sized.index) : '';
+  if (!sized || /\b(?:near|nearby|of|to|in|around|from|at|by|within)\b/.test(before.replace(/\b(?:what|which|where) (?:is|are)\b|\bis there\b/g, ''))) return parseNearPlain(all);
+  const out = parseNearPlain(all.replace(sized[0], ' ').replace(/\s+/g, ' ').trim());
+  // The word may have meant nothing of the kind ("Big Lots near me", "Little Rock"): without it the request must still stand, and name a kind.
+  if (!out || !out.cats) return parseNearPlain(all);
+  const w = sized[1];
+  return { ...out, size: /^(?:small|little|tiny|minor|smaller|smallest)$/.test(w) ? 'small' : 'large', bySize: /est$/.test(w) };
+}
+
+function parseNearPlain(text) {
+  let f = text;
   if (!f) return null;
   let how = 'list';
   const lead = /^(?:(?:what|which)(?:'s| is| are| would be)?|where (?:can|do|could|would|should|might) (?:i|we|you|one) (?:find|get|buy|go for|go to get|go to)|where(?:'s| is| are)?|is there|are there|do you (?:know|have)(?: of)?|find|show|list|name|locate|look up|look for|search for|get|give|display|map|how (?:far|close|near)(?: away)? (?:is|are)|how many)\s+/.exec(f);
@@ -333,6 +347,15 @@ function originOf(ask, ctx) {
 }
 
 /** Carry out a request for the places of a kind near somewhere. */
+/** An area in words a person in North America uses: square feet for a building, acres for land, square miles for a base. */
+function areaText(m2) {
+  const acres = m2 / 4046.86;
+  if (acres >= 640) { const mi = acres / 640; return `${mi >= 10 ? Math.round(mi).toLocaleString('en-US') : Math.round(mi * 10) / 10} square miles`; }
+  if (acres >= 1) return `${acres >= 10 ? Math.round(acres).toLocaleString('en-US') : Math.round(acres * 10) / 10} acres`;
+  const ft = m2 * 10.7639; const p = 10 ** Math.max(0, Math.floor(Math.log10(ft)) - 1);
+  return `${(Math.round(ft / p) * p).toLocaleString('en-US')} square feet`;
+}
+
 function planNear(ask, ctx) {
   if (!ctx.nearby) return null;
   const o = originOf(ask, ctx);
@@ -345,20 +368,33 @@ function planNear(ask, ctx) {
   const at = o.point;
   const reach = ask.radiusKm || (ask.cats ? null : 80);
   const want = ask.count || (ask.radiusKm ? 25 : ask.one ? 5 : 10);
-  let found = ctx.nearby({ cats: ask.cats, q: ask.cats ? '' : ask.what, near: [at.lon, at.lat], limit: 400 });
+  let found = ctx.nearby({ cats: ask.cats, q: ask.cats ? '' : ask.what, near: [at.lon, at.lat], limit: ask.size ? 2000 : 400 });
   if (reach) found = found.filter((h) => h.km <= reach);
+  // Large or small: by the ground each place's outline covers, against the other places of its kind. The largest
+  // third of a kind is large and the smallest third small. A place drawn as a point has no size and is left out.
+  const sizeNotes = [];
+  if (ask.size) {
+    const bands = ctx.sizes ? ctx.sizes(ask.cats) : null;
+    if (!bands) sizeNotes.push('The places on this computer do not carry sizes, so large and small could not be told apart. Fetch the places again to get them.');
+    else {
+      const unsized = found.filter((h) => !h.m).length;
+      found = found.filter((h) => h.m && (ask.size === 'large' ? h.m >= bands.large : h.m <= bands.small));
+      if (ask.bySize) { found = found.filter((h) => h.km <= (reach || 80)).sort((a, b) => (ask.size === 'large' ? b.m - a.m : a.m - b.m)); }
+      sizeNotes.push(`${ask.size === 'large' ? `Large means ${areaText(bands.large)} or more` : `Small means ${areaText(bands.small)} or less`} of ground, which is the ${ask.size === 'large' ? 'largest' : 'smallest'} third of this kind.${ask.bySize ? ` Listed ${ask.size === 'large' ? 'largest' : 'smallest'} first, within ${milesText(reach || 80)}.` : ''}${unsized ? ` ${unsized} nearby ${unsized === 1 ? 'place is' : 'places are'} drawn as a point, with no size, and ${unsized === 1 ? 'is' : 'are'} not counted.` : ''}`);
+    }
+  }
   // One building can be in the data twice (drawn as a point and as an outline): the same name within 300 m is one place.
   const hits = [];
   for (const h of found) {
     const name = fold(h.n || '');
     if (name && hits.some((x) => fold(x.n || '') === name && Math.hypot((x.a - h.a) * 111, (x.o - h.o) * 111 * Math.cos(h.a * Math.PI / 180)) < 0.3)) continue;
-    hits.push({ ...h, miles: Math.round(h.km * MI * 10) / 10, far: milesText(h.km), wind: h.km < 0.05 ? '' : windOf(at, { lat: h.a, lon: h.o }) });
+    hits.push({ ...h, ...(h.m ? { area: areaText(h.m) } : {}), miles: Math.round(h.km * MI * 10) / 10, far: milesText(h.km), wind: h.km < 0.05 ? '' : windOf(at, { lat: h.a, lon: h.o }) });
   }
   if (!hits.length) {
     if (!ask.cats) return ask.sure ? { kind: 'near', error: `Nothing named "${ask.what}" was found within ${milesText(reach)} of ${at.label}. The map knows places by kind (hospitals, pharmacies, fuel, water, supermarkets, hardware and more) and by the names in its data.`, said } : null;
     return { kind: 'near', error: ask.radiusKm ? `No ${names.toLowerCase()} are within ${milesText(ask.radiusKm)} of ${at.label} in the places on this computer.` : `No ${names.toLowerCase()} are in the places on this computer. They are fetched on the Setup page, under Places.`, said };
   }
-  const notes = [];
+  const notes = [...sizeNotes];
   if (o.note) notes.push(o.note);
   if (o.others && o.others.length) notes.push(`${o.others.length === 1 ? 'Another person also fits' : 'Other people also fit'}: ${o.others.slice(0, 4).join(', ')}. ${at.label} was used.`);
   if (at.approx) notes.push(`The position of ${at.label} is approximate, so the distances are too. ${String(at.approx).replace(/^Approximate\. /, '')}`);
@@ -384,7 +420,7 @@ function planNear(ask, ctx) {
     }
   }
   return {
-    kind: 'near', at, what: ask.what, cats: ask.cats, names, one: Boolean(ask.one), how: ask.how, radius: ask.radiusKm ? milesText(ask.radiusKm) : null,
+    kind: 'near', at, what: ask.what, cats: ask.cats, names, size: ask.size || null, bySize: Boolean(ask.bySize), one: Boolean(ask.one), how: ask.how, radius: ask.radiusKm ? milesText(ask.radiusKm) : null,
     total: hits.length, hits: list, notes,
     said: `${ask.cats ? names : `Places named "${ask.what}"`} ${ask.radiusKm ? `within ${milesText(ask.radiusKm)} of` : 'nearest to'} ${o.said}`,
   };
@@ -452,4 +488,4 @@ async function understand(text, ctx) {
   return plan({ ...read, mode: modeOf(text), sure: true }, ctx);
 }
 
-module.exports = { parse, parseNear, kindsOf, place, plan, understand, readModel, hint, modeOf, windOf, PROMPT };
+module.exports = { parse, parseNear, kindsOf, place, plan, understand, readModel, hint, modeOf, windOf, PROMPT, areaText };

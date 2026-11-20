@@ -70,6 +70,8 @@ function recordOf(categories, el) {
   if (addr) r.d = addr;
   const phone = clean(t.phone || t['contact:phone'] || '');
   if (phone) r.p = phone;
+  // The ground its outline covers, in square metres, to two figures: enough to tell large from small.
+  if (el.size >= 1) { const p = 10 ** Math.max(0, Math.floor(Math.log10(el.size)) - 1); r.m = Math.round(el.size / p) * p; }
   if (t.opening_hours) r.h = clean(t.opening_hours);
   if (t.operator && clean(t.operator) !== name) r.w = clean(t.operator);
   const x = {};

@@ -108,9 +108,10 @@ function hubItems() {
 // Read out of regional extracts: a large download of which little is kept. `bytes` is what is still to
       // download; `keeps` what stays on the disk, a guess until it is done; `room` adds the largest file, held while it is read.
       const pm = m.placesHow === 'extract' && m.placesMeasured && hubSame(m.placesMeasured.regions, regs) ? m.placesMeasured : null;
-      const plKeeps = pm ? Math.round(pm.left * 0.02) : null;
+      const plKeeps = pm ? (pm.how === 'central' ? Math.round(pm.bytes * 3.5) : Math.round(pm.left * 0.02)) : null;
       out.push({ id: 'places', title: 'Places: towns, water, power and services', state: jobOf(['places']) ? 'working' : plDone ? 'done' : w.places && regs.length ? 'todo' : 'off', tick: plDone ? null : 'places',
         detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} ${m.placesKept.how === 'extract' ? 'files were read' : 'pieces were fetched'} before it stopped, and what they held is kept. Fetching again carries on from there.`
+          : pm && pm.how === 'central' ? `A ready-made set of places from OpenStreetMap and Overture Maps, already sorted into kinds, built on ${String(pm.built).slice(0, 10)} and rebuilt every week. It takes the place of hours of downloading and sorting on this computer.`
           : m.placesHow === 'extract' ? `Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Read out of regional extracts, one file to a state: each is downloaded, read here and deleted, the nearest to home first, so most of what is downloaded is not kept.${pm ? ` Needs ${bytes(pm.largest)} of room while it works.` : ''} What has been read can be searched straight away.`
             : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from free, shared servers in small pieces, the nearest to home first.',
         bytes: plDone ? 0 : pm ? pm.left : null, keeps: plDone ? 0 : plKeeps, room: plDone ? 0 : pm ? plKeeps + pm.largest : null, sizeNote: m.placesHow === 'extract' ? '' : 'small' });

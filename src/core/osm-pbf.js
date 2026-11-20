@@ -337,7 +337,8 @@ function readRelations(buf, wanted, onMatch, most = 4) {
 
 /**
  * Everything in a file whose tags meet one of `filters` ([[key, value], ...]), as the elements the places
- * code already knows: { type: 'node', id, lat, lon, tags } and { type: 'way' | 'relation', id, center: { lat, lon }, tags }.
+ * code already knows: { type: 'node', id, lat, lon, tags } and { type: 'way' | 'relation', id, center: { lat, lon }, size?, tags }
+ * (`size` is the ground the outline covers, in square metres, roughly).
  * The centre of a way or a relation is the middle of the box around a few of its nodes.
  *
  * @param {string} file
@@ -408,7 +409,7 @@ function extract(file, { filters, onElement, onProgress = () => {}, stop = () =>
     }
     scratch = null;
     // The middle of the box around the nodes that were found.
-    const centre = (refs) => {
+    const centre = (refs, ring) => {
       let s = Infinity; let n = -Infinity; let w = Infinity; let e = -Infinity;
       for (const id of refs) {
         let a = 0; let z = need.length;
@@ -416,14 +417,34 @@ function extract(file, { filters, onElement, onProgress = () => {}, stop = () =>
         if (a >= need.length || need[a] !== id || Number.isNaN(lat[a])) continue;
         if (lat[a] < s) s = lat[a]; if (lat[a] > n) n = lat[a]; if (lon[a] < w) w = lon[a]; if (lon[a] > e) e = lon[a];
       }
-      return s === Infinity ? null : { lat: (s + n) / 2, lon: (w + e) / 2 };
+      if (s === Infinity) return null;
+      const out = { lat: (s + n) / 2, lon: (w + e) / 2 };
+      // Its size on the ground, in square metres, when it is an outline: the area inside the sampled corners of a
+      // closed way, or for a relation six tenths of the box around it. A dozen corners of a parking-lot-shaped
+      // outline give its area within a few percent; of a ragged one, somewhat less than the truth. It is a measure
+      // for telling a base from an office and a superstore from a kiosk, not for surveying.
+      const my = 111320; const mx = 111320 * Math.cos((out.lat * Math.PI) / 180);
+      if (ring && refs.length >= 4 && refs[0] === refs[refs.length - 1]) {
+        let sum = 0; let px = null; let py = null; let fx = null; let fy = null;
+        for (const id of refs) {
+          let a = 0; let z = need.length;
+          while (a < z) { const mid = (a + z) >> 1; if (need[mid] < id) a = mid + 1; else z = mid; }
+          if (a >= need.length || need[a] !== id || Number.isNaN(lat[a])) continue;
+          const x = (lon[a] - out.lon) * mx; const y = (lat[a] - out.lat) * my;
+          if (px === null) { fx = x; fy = y; } else sum += px * y - x * py;
+          px = x; py = y;
+        }
+        if (px !== null) sum += px * fy - fx * py;
+        if (Math.abs(sum) / 2 >= 1) out.size = Math.abs(sum) / 2;
+      } else if (!ring) { const box = (n - s) * my * (e - w) * mx * 0.6; if (box >= 1) out.size = box; }
+      return out;
     };
     for (const [type, list] of [['way', ways], ['relation', rels]]) {
       for (const x of list) {
-        const c = centre(x.refs);
+        const c = centre(x.refs, type === 'way');
         if (!c) { stats.unplaced += 1; continue; } // its nodes lie outside this extract
         stats.matched += 1;
-        onElement({ type, id: x.id, center: c, tags: x.tags });
+        onElement({ type, id: x.id, center: { lat: c.lat, lon: c.lon }, ...(c.size ? { size: c.size } : {}), tags: x.tags });
       }
     }
     return stats;

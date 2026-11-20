@@ -2038,6 +2038,9 @@ function mapJobView(j) {
     else { title = j.what === 'addresses' ? 'Fetching the addresses' : 'Fetching more places'; if (j.bytes) { value = j.downloaded || 0; max = j.bytes; } detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. ${(j.kept || 0).toLocaleString()} ${j.what === 'addresses' ? 'addresses' : 'places'} kept so far. If this is stopped, it carries on from here next time.`; }
   }
   if (j.kind === 'places-measure') { title = 'Asking how big the places download is'; value = j.done || 0; max = j.total || 1; detail = `File ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. Nothing is downloaded yet.`; }
+  if (j.kind === 'places' && j.how === 'central') {
+    return j.stage === 'read' ? { text: `Putting the places to use: ${j.readDone || 0} of ${j.readTotal || 0} files`, value: j.readTotal ? (j.readDone || 0) / j.readTotal : null } : { text: `Fetching the ready-made places: file ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 0}, ${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}`, value: j.bytes ? (j.downloaded || 0) / j.bytes : null };
+  }
   if (j.kind === 'places' && j.how === 'extract') {
     // From regional extracts: a file to a state, downloaded, read here and deleted.
     title = 'Fetching the places';
@@ -2049,7 +2052,7 @@ function mapJobView(j) {
       detail = `${j.file || 'The next file'}: ${j.stage === 'download' ? `downloading, ${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)} in all` : j.stage === 'check' ? 'checking it arrived whole' : `reading the places out of it${pct}`}. ${so} Each file is deleted once it is read, the nearest come first, and what has been read can be searched already. If this is stopped, it carries on from here next time.`;
     }
   } else if (j.kind === 'places') { title = 'Fetching the places'; value = j.done || 0; max = j.total || 1; detail = `${j.done || 0} of ${j.total || 1} pieces fetched, ${(j.found || 0).toLocaleString()} places so far. The server is free and shared: small pieces are asked for, nearest first, and kept as they arrive, so a run that stops carries on from here. What has arrived can be searched already.`; }
-  const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'places' && j.how === 'extract' && j.stage && j.stage !== 'sizes') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
+  const inBytes = (j.kind === 'map' && j.stage === 'tiles') || (j.kind === 'routing' && j.stage === 'files') || (j.kind === 'places' && j.how === 'central' && j.stage === 'files') || (j.kind === 'places' && j.how === 'extract' && j.stage && j.stage !== 'sizes') || (j.kind === 'overture' && j.stage !== 'measure' && j.stage !== 'list' && j.stage !== 'index');
   return { title, detail, value, max, bytesNow: inBytes && max ? j.downloaded || 0 : null };
 }
 
@@ -2169,13 +2172,21 @@ function paintMapSetup(m) {
   if (m.placesHow === 'extract') {
     // The quick way: a regional extract to a state, downloaded whole, read here, and deleted.
     const pm = m.placesMeasured && sameAreas(m.placesMeasured.regions, picked) ? m.placesMeasured : null;
-    placesBox.append(el('p', 'small-print', `They are read out of regional OpenStreetMap extracts, one file to a state or province: each is downloaded, read on this computer and deleted, the nearest to home first. ${pm ? `${pm.files} files, ${bytes(pm.left)} still to download; the largest is ${bytes(pm.largest)}, which is the room needed while it works. Only a small part of that is kept.` : 'That is a large download for what is kept (about 11 GB for the contiguous United States), but a quick and dependable one.'}${pm && pm.missing.length ? ` Not on the server: ${pm.missing.join(', ')}.` : ''}`));
+    if (pm && pm.how === 'central') placesBox.append(el('p', 'small-print', `A ready-made set is fetched: ${bytes(pm.bytes)}, built on ${mapDay(pm.built)} from OpenStreetMap and Overture Maps by the app's own code on GitHub, and rebuilt every week. It holds ${(pm.osm + pm.overture).toLocaleString()} places for all of North America, already sorted into kinds and with their sizes; the ones in your regions are kept. It replaces the added places from Overture as well.`));
+    else placesBox.append(el('p', 'small-print', `${m.placesCentralWhy ? `The ready-made set of places could not be used (${m.placesCentralWhy}), so they are built here. ` : ''}They are read out of regional OpenStreetMap extracts, one file to a state or province: each is downloaded, read on this computer and deleted, the nearest to home first. ${pm ? `${pm.files} files, ${bytes(pm.left)} still to download; the largest is ${bytes(pm.largest)}, which is the room needed while it works. Only a small part of that is kept.` : 'That is a large download for what is kept (about 11 GB for the contiguous United States), but a quick and dependable one.'}${pm && pm.missing.length ? ` Not on the server: ${pm.missing.join(', ')}.` : ''}`));
     const size = el('button', 'btn small', pm ? 'Measure again' : 'Measure the download');
     size.type = 'button'; size.id = 'map-places-measure'; size.disabled = busy || !picked.length;
     size.addEventListener('click', () => guard(() => api.mapsPlacesMeasure(picked), $('map-error')));
     const row = el('div', 'actions'); row.append(getPlaces, size);
     const slow = document.createElement('details'); slow.className = 'map-places-slow';
-    slow.append(el('summary', '', 'Another way, with very little to download'));
+    if (pm && pm.how === 'central') {
+      slow.append(el('summary', '', 'Other ways: build the places on this computer'));
+      slow.append(el('p', 'small-print', 'The same places can be built here from regional OpenStreetMap extracts, one file to a state or province: about 13 GB to download for the United States, Canada and Mexico, of which little is kept. The result is the same as the ready-made set, made from this hour\'s data.'));
+      const own = el('button', 'btn small', 'Build the places here from extracts');
+      own.type = 'button'; own.id = 'map-places-extract'; own.disabled = busy || !picked.length;
+      own.addEventListener('click', () => guard(() => api.mapsPlaces(picked, nearNow(), 'extract'), $('map-error')));
+      slow.append(own);
+    } else slow.append(el('summary', '', 'Another way, with very little to download'));
     slow.append(el('p', 'small-print', 'The same places can be asked for in small pieces from free, shared servers. Almost nothing is downloaded beyond what is kept, but the servers are slow and often busy: the whole country can take many hours. Use it when the connection or the room on the disk does not allow the large download.'));
     const slowGo = el('button', 'btn small', 'Fetch the places in small pieces');
     slowGo.type = 'button'; slowGo.id = 'map-places-slow'; slowGo.disabled = busy || !picked.length;
@@ -2257,7 +2268,7 @@ function mapDetails(h) {
   row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
   if (h.s === 'ov') box.append(el('p', 'small-print', 'From Overture Maps, not OpenStreetMap. It may have moved or closed.'));
   if (h.c === 'saved') box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.how === 'manual' ? 'From your address book. You placed it on the map yourself.' : h.approx ? `From your address book. ${h.why || 'The position is approximate.'}` : 'From your address book.'));
-  const words = { listed: 'Listed on', emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
+  const words = { size: 'Ground covered', listed: 'Listed on', emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
   if (h.km != null) row(h.kmFrom ? `From ${h.kmFrom}, in a straight line` : 'From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
@@ -2810,6 +2821,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.30.0': [
+    'Places are now fetched ready-made: tens of megabytes in place of 13 GB, built weekly on GitHub by the app\'s own code. Update the places to get them.',
+    'Ask understands large and small: "the nearest large hospital", "the biggest military base within 100 miles".',
+    'Military sites: recruiting offices and school cadet units are gone; reserve and Guard halls no longer crowd out bases.',
+  ],
   '0.29.0': [
     'Places are now sorted as they are fetched: by each chain\'s brand, by Overture\'s own exact kind, and only then by name.',
     'Hospitals in the United States are checked against Medicare\'s official list, which also says whether each has an emergency room.',

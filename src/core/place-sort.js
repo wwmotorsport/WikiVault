@@ -64,7 +64,13 @@ const IN_AIRPORT = words("gates?|terminals?|concourses?|baggage|arrivals?|depart
 const AIRFIELD = words("airports?|aeropuertos?|aeroport|aerodromes?|aerodromo|airfields?|airparks?|air park|airstrips?|heliports?|helipads?|helipuerto|seaplane base|air ?base|afb|field|aviation|fbo");
 
 // Military sites. 900 were recruiting offices in shopping streets; others were clubs and memorials.
-const NOT_BASE = words("recruiting|recruiters?|recruitment|career cent(?:er|re)|careers|legion|vfw|veterans?|amvets|memorials?|museums?|surplus|cemetery|monument|rotc|jrotc|cadets?|academy of|school");
+const NOT_BASE = words("recruiting|recruiters?|recruitment|retention|career cent(?:er|re)|careers|entrance processing|meps|legion|vfw|veterans?|amvets|memorials?|museums?|surplus|cemetery|monument|rotc|jrotc|cadets?|academy of|school|high|college|university");
+// A recruit depot trains recruits; it is a base.
+const BASE_ALL_THE_SAME = words("recruit depot|recruit training|military academy|naval academy|air force academy|coast guard academy");
+// Overture's military kind holds nicknames and odd listings: a place from it must say what it is.
+const MILITARY = words("army|navy|naval|air force|afb|marines?|marine corps|usmc|coast guard|uscg|national guard|guard|fort|camp|base|reserve|armory|armoury|arsenal|depot|military|militar|barracks|proving ground|range|training|command|battalion|brigade|squadron|regiment|division|airfield|air station|station|garrison|readiness|defen[cs]e|forces?|cfb|bfc|zona militar|cuartel");
+// Places where part-time units meet, and offices: military, but not what someone asking for a base is after.
+const UNIT_HALL = words("reserve cent(?:er|re)|reserve training cent(?:er|re)|army reserve|navy reserve|marine corps reserve|armory|armoury|readiness cent(?:er|re)|national guard|guard|recruit sustainment|training command|corps of engineers");
 
 // Campsites. 1,200 were places people live in all year, or day camps for children.
 const NOT_CAMP = words("mobile home|manufactured home|mhp|mobile estates?|mobile village|mobile court|apartments?|residential|properties|realty|day camp|summer camp|camp galileo|scouts canada|shopping");
@@ -120,7 +126,10 @@ function sortPlace(cat, name) {
       if (FUEL.test(n) || FUEL_END.test(n)) return keep('fuel');
       return EATING.test(n) && !/\b(?:market|mercado|grocery|groceries|supermarket|abarrotes|foods?|tienda|carniceria|deli)\b/.test(n) ? null : keep('supermarket');
     case 'airfield': return IN_AIRPORT.test(n) && !AIRFIELD.test(n) ? null : keep('airfield');
-    case 'military': return NOT_BASE.test(n) ? null : keep('military');
+    case 'military':
+      if (NOT_BASE.test(n) && !BASE_ALL_THE_SAME.test(n)) return null;
+      if (!MILITARY.test(n)) return null;
+      return UNIT_HALL.test(n) && !/\b(?:base|fort|camp|air national guard base|joint)\b/.test(n) ? lesser('military', 'Reserve or National Guard hall') : keep('military');
     case 'campsite': return NOT_CAMP.test(n) && !/\b(?:rv|campground|camping|koa)\b/.test(n) ? null : keep('campsite');
     case 'farm_supply': return NOT_FARM_SHOP.test(n) && !FARM_SHOP.test(n) ? null : keep('farm_supply');
     case 'fire':
@@ -136,13 +145,28 @@ function sortPlace(cat, name) {
 }
 
 /**
- * OpenStreetMap's places are tagged by hand and are taken as they are, with one exception: its "sports shop" is as wide
+ * OpenStreetMap's places are tagged by hand and are taken as they are, with two exceptions. Its "sports shop" is as wide
  * as Overture's, so a shop whose name says it sells shoes, team clothes or golf clubs is not listed as an outdoor shop.
+ * And its military land includes recruiting offices and school cadet units, which are not military sites to anyone looking for one.
  */
 function keepsOsm(cat, name) {
-  if (cat !== 'outdoor') return true;
   const n = fold(name);
+  if (cat === 'military') return !(NOT_BASE.test(n) && !BASE_ALL_THE_SAME.test(n));
+  if (cat !== 'outdoor') return true;
   return !(NOT_OUTDOOR.test(n) && !OUTDOOR.test(n) && !GUNS.test(n));
+}
+
+/**
+ * A lesser sort among OpenStreetMap's places, told by name or by size: `{ kind }` or null. Military land is mapped
+ * down to single buildings and half-acre lots; a hall where a reserve unit meets is not a base, and nor is anything
+ * under five acres.
+ */
+function osmLesser(cat, r) {
+  if (cat !== 'military') return null;
+  const n = fold(r.n);
+  if (UNIT_HALL.test(n) && !/\b(?:base|fort|camp|joint)\b/.test(n)) return { kind: 'Reserve or National Guard hall' };
+  if (r.m && r.m < 20000) return { kind: 'Small military site' };
+  return null;
 }
 
 // ---- Brands -------------------------------------------------------------------------------------------------------
@@ -277,4 +301,4 @@ function sorted(id, read, brands = null) {
   return out;
 }
 
-module.exports = { sortPlace, sorted, settle, byBrand, reduceBrands, foldBrand, keepsOsm, isHospitalName, FROM, TRUSTED };
+module.exports = { sortPlace, sorted, settle, byBrand, reduceBrands, foldBrand, keepsOsm, osmLesser, isHospitalName, FROM, TRUSTED };

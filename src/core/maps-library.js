@@ -20,6 +20,7 @@ const crypto = require('node:crypto');
 const places = require('./places');
 const placeSort = require('./place-sort');
 const hospitals = require('./hospitals');
+const central = require('./central-places');
 const read1 = (dir, kind) => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'overture', `${kind}.json`), 'utf8')).items; } catch { return []; } };
 const placesExtract = require('./places-extract');
 const routing = require('./routing');
@@ -118,8 +119,9 @@ class MapsLibrary extends EventEmitter {
       map: this.map,
       places: this.placesInfo,
       placesKept: this.placesKept || null,
-      placesMeasured: this.placesMeasured ? { ...this.placesMeasured, left: this.placesLeft() } : null,
+      placesMeasured: this.placesMeasured ? { ...this.placesMeasured, left: this.placesMeasured.how === 'central' ? this.placesMeasured.bytes : this.placesLeft() } : null,
       placesHow: this.registry.extracts ? 'extract' : 'pieces',
+      placesCentralWhy: this.centralWhy || null,
       measured: this.measured,
       routing: this.routing, routingMeasured: this.routingMeasured, routingCredit: this.registry.routing.credit,
       overture: this.overture, addresses: this.addresses, addressTowns: this.gaz ? { towns: Object.keys(this.gaz.towns).length, zips: Object.keys(this.gaz.zips).length, ...(this.gaz.stats || {}) } : null, overtureMeasured: this.overtureMeasured, overtureCredit: this.registry.overture.credit,
@@ -244,6 +246,12 @@ class MapsLibrary extends EventEmitter {
    * come first, and while no complete set is in use, what has arrived is put to use as it comes.
    */
   async downloadPlaces(regionIds, { near = null, how = null, free = null } = {}) {
+    // The ready-made set first, when there is one for these regions; else the places are built here from extracts.
+    if (how === null || how === 'central') {
+      const m = await this.centralManifest(regionIds);
+      if (m) return this.downloadPlacesCentral(regionIds, m);
+      if (how === 'central') throw new Error(`The ready-made set of places could not be used (${this.centralWhy || 'it could not be reached'}). The places can still be built on this computer: see Another way.`);
+    }
     const via = how === 'pieces' || how === 'extract' ? how : this.registry.extracts ? 'extract' : 'pieces';
     return via === 'extract' ? this.downloadPlacesExtracts(regionIds, { near, free }) : this.downloadPlacesPieces(regionIds, { near });
   }
@@ -404,7 +412,65 @@ class MapsLibrary extends EventEmitter {
   }
 
   /** How much there is to download for the places of these regions. Reads no map data. */
+  /**
+   * The manifest of the ready-made set of places (see central-places.js), or null when there is none that this
+   * version can use for these regions; `this.centralWhy` then says why, for the log and the window.
+   */
+  async centralManifest(regionIds, signal = null) {
+    const c = this.registry.central; this.centralWhy = null;
+    if (!c || !c.manifest) { this.centralWhy = 'this version has no address for it'; return null; }
+    try {
+      const res = await this.fetch(this.rewrite(c.manifest), { signal, timeoutMs: 20000, headers: { 'user-agent': this.agent } });
+      if (!res.ok) { this.centralWhy = `the server answered ${res.status}`; return null; }
+      const m = await res.json();
+      const why = central.unusable(m, regionIds, c.maxAgeDays || 60);
+      if (why) { this.centralWhy = why; return null; }
+      return m;
+    } catch (err) { if (signal && signal.aborted) throw err; this.centralWhy = `it could not be reached (${err.message})`; return null; } finally { if (this.centralWhy) this.log(`places: no ready-made set (${this.centralWhy}); they will be built here`); }
+  }
+
+  /** Fetch the ready-made set of places and put it to use. A few dozen small files, each checked against the list. */
+  async downloadPlacesCentral(regionIds, m) {
+    const job = this.begin('places', { how: 'central', stage: 'files', done: 0, total: m.files.length, bytes: m.bytes, downloaded: 0, left: m.bytes, found: 0 });
+    const work = path.join(this.dir, 'places.central');
+    try {
+      const signal = job.controller.signal;
+      const rings = this.rings(regionIds);
+      await fsp.mkdir(work, { recursive: true });
+      const base = this.registry.central.manifest.replace(/[^/]+$/, '');
+      let got = 0;
+      for (const [n, f] of m.files.entries()) {
+        if (signal.aborted) throw new Error('Stopped.');
+        const dest = path.join(work, f.name);
+        // A file already here from a try that was stopped is kept when it is the file the list describes.
+        const have = await fsp.readFile(dest).then((b) => central.sha256(b), () => null);
+        if (have !== f.sha256) {
+          await fsp.rm(dest, { force: true });
+          await this.fetchFile(this.rewrite(base + f.name), dest, f.bytes, signal, (b) => this.progress({ downloaded: got + b, left: Math.max(0, m.bytes - got - b) }), 'places');
+          if (central.sha256(await fsp.readFile(dest)) !== f.sha256) { await fsp.rm(dest, { force: true }); throw new Error(`${f.name} arrived damaged (it does not match its checksum). Fetch the places again.`); }
+        }
+        got += f.bytes; this.progress({ done: n + 1, downloaded: got, left: m.bytes - got });
+      }
+      this.progress({ stage: 'read', readDone: 0, readTotal: m.files.length });
+      const all = (m.regions || []).every((r) => regionIds.includes(r));
+      const out = await central.install({ dir: this.dir, from: work, manifest: m, regionIds, inside: all ? null : (lon, lat) => places.inRings(rings, lon, lat), onProgress: (p) => this.progress(p) });
+      await fsp.rm(work, { recursive: true, force: true }).catch(() => {});
+      await fsp.rm(path.join(this.dir, 'places.work'), { recursive: true, force: true }).catch(() => {});
+      this.placesInfo = out.places; this.placesKept = null;
+      this.log(`places: the ready-made set of ${String(m.built).slice(0, 10)}: ${out.places.total} places from OpenStreetMap${out.overture ? ` and ${out.overture.total} from Overture Maps (release ${out.overture.release})` : ''}, ${m.bytes} bytes fetched`);
+      this.loadOverture();
+      this.end();
+      return this.placesInfo;
+    } catch (err) { const r = this.end(err); if (r.stopped) return null; throw err; }
+  }
+
   async measurePlaces(regionIds) {
+    // The ready-made set, when there is one: its size is in its list.
+    const m = await this.centralManifest(regionIds);
+    if (m) {
+      this.placesMeasured = { regions: regionIds, how: 'central', files: m.files.length, bytes: m.bytes, largest: Math.max(...m.files.map((f) => f.raw || f.bytes)), per: {}, missing: [], date: new Date().toISOString(), built: m.built, osm: m.osm.total, overture: m.overture ? m.overture.total : 0 };
+      return { ...this.placesMeasured, left: m.bytes };
+    }
     const files = this.extractsFor(regionIds);
     const job = this.begin('places-measure', { done: 0, total: files.length });
     try {
@@ -620,7 +686,7 @@ class MapsLibrary extends EventEmitter {
     await fsp.rename(fresh, live);
     this.placesInfo = { regions: regionIds, date: new Date().toISOString(), total: seen.size, counts, bytes, ...(partial ? { partial } : {}) };
     await writeJson(path.join(this.dir, 'places.json'), this.placesInfo);
-    this.loaded.clear(); this.hospitalList = undefined;
+    this.loaded.clear(); this.hospitalList = undefined; this.bands = null;
     return this.placesInfo;
   }
 
@@ -766,7 +832,8 @@ class MapsLibrary extends EventEmitter {
     {
       const read = (folder) => { try { return JSON.parse(fs.readFileSync(path.join(this.dir, folder, `${id}.json`), 'utf8')).items; } catch { return []; } };
       let items = this.placesInfo ? read('places') : [];
-      if (id === 'outdoor') items = items.filter((r) => placeSort.keepsOsm(id, r.n));
+      if (id === 'outdoor' || id === 'military') items = items.filter((r) => placeSort.keepsOsm(id, r.n));
+      if (id === 'military') items = items.map((r) => { const l = placeSort.osmLesser(id, r); return l ? { ...r, less: true, x: { ...(r.x || {}), kind: l.kind } } : r; });
       // Overture's places are put under the right kind first (see place-sort.js): a doctor's office fetched as a
       // "hospital" is a clinic, a gun shop fetched as "sporting goods" is a gun shop, an airport gate is nothing.
       // Places fetched since 0.29 were sorted as they were fetched; older ones are sorted here, by brand and name.
@@ -778,6 +845,22 @@ class MapsLibrary extends EventEmitter {
       for (const it of all) it.c = id;
       return all;
     }
+  }
+
+  /**
+   * What counts as large and small among the places of these kinds: the sizes that mark off the largest and the
+   * smallest third of those that have a size. Null when fewer than thirty have one.
+   */
+  sizeBands(cats) {
+    const key = (cats || []).slice().sort().join(',');
+    if (!this.bands) this.bands = new Map();
+    if (!this.bands.has(key)) {
+      const sizes = [];
+      for (const id of cats || []) { try { for (const r of this.recordsOf(id)) if (r.m) sizes.push(r.m); } catch { /* none of this kind */ } }
+      sizes.sort((a, b) => a - b);
+      this.bands.set(key, sizes.length < 30 ? null : { small: sizes[Math.floor(sizes.length / 3)], large: sizes[Math.floor((sizes.length * 2) / 3)], sized: sizes.length });
+    }
+    return this.bands.get(key);
   }
 
   /** Medicare's list of the hospitals of the United States, when it has been fetched (see hospitals.js). */
@@ -833,7 +916,7 @@ class MapsLibrary extends EventEmitter {
     // The towns and ZIP codes of the address data, worked out from it once (see buildGazetteer).
     const gaz = this.addresses ? readJsonSync(path.join(this.dir, 'address-towns.json')) : null;
     this.setGazetteer(gaz && gaz.v === 1 && gaz.of === this.gazStamp() ? gaz : null);
-    this.loaded.clear(); this.hospitalList = undefined;
+    this.loaded.clear(); this.hospitalList = undefined; this.bands = null;
   }
   gazStamp() { return this.addresses ? `${this.addresses.addresses}:${this.addresses.date || ''}:${this.addresses.bytes || ''}` : ''; }
   setGazetteer(gaz) {
