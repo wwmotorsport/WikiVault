@@ -37,7 +37,8 @@ const routing = require('../core/routing');
 const { RouteEngine } = require('../core/route-engine');
 const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
-const { fetchText } = require('../core/httpx');
+const { fetchText, open: openRequest, readBody } = require('../core/httpx');
+const geocode = require('../core/geocode-online');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -71,7 +72,9 @@ const DEFAULTS = {
   enginePath: null,
   tour: { hide: false, seenVersion: null }, // the guided tour: switched off? and the version it was last shown in
   hub: { seenVersion: null, want: null, running: false }, // the Setup page: the version it last opened itself in, what was ticked, and whether "download all" is under way
-  contacts: { everyHours: 24 }, // how often the contacts accounts are read again
+  // everyHours: how often the contacts accounts are read again. lookup: whether addresses the downloaded data cannot
+  // place may be looked up online (null until the user has been asked, then true or false).
+  contacts: { everyHours: 24, lookup: null },
   ai: {
     enabled: true,
     provider: 'foundry',
@@ -850,6 +853,7 @@ function refreshPlacing(always = true) {
     const r = book.locateAll();
     log(`address book: entries placed again, ${r.found} more now on the map (${r.located} of ${r.withAddress} with an address)`);
     pushState();
+    lookupAddresses().catch(() => {});
   });
 }
 const mapsBytes = () => (maps ? maps.status().bytes : 0);
@@ -1726,8 +1730,40 @@ function initBook() {
 function bookState() {
   if (!book) return null;
   const s = readSecrets();
-  return { ...book.summary(), busy: bookBusy, everyHours: settings.contacts.everyHours, accounts: { google: Boolean(s.google), googleBy: s.google ? (s.google.refreshToken ? 'sign-in' : 'app password') : null, googleUser: s.google && s.google.user ? s.google.user : null, icloud: s.icloud ? s.icloud.user : null }, addressData: Boolean(maps && maps.status().addresses) };
+  return { ...book.summary(), busy: bookBusy, everyHours: settings.contacts.everyHours, lookup: settings.contacts.lookup, lookupLast: lookupLast, accounts: { google: Boolean(s.google), googleBy: s.google ? (s.google.refreshToken ? 'sign-in' : 'app password') : null, googleUser: s.google && s.google.user ? s.google.user : null, icloud: s.icloud ? s.icloud.user : null }, addressData: Boolean(maps && maps.status().addresses) };
 }
+/**
+ * Look up online the addresses the downloaded data could not place, when the user has agreed to that. Street
+ * addresses only are sent, to the United States Census Bureau, as the body of one request. Nothing about the
+ * addresses is written to the log. `loud` makes a failure an error for the caller; otherwise it waits for next time.
+ */
+let lookupLast = null; // { date, asked, placed } or { date, error }: how the last lookup went, for the page
+let lookupRunning = false;
+async function lookupAddresses(loud = false) {
+  if (!book || settings.contacts.lookup !== true || lookupRunning) return null;
+  const asked = book.toLookUp();
+  if (!asked.length) return { asked: 0, placed: 0 };
+  lookupRunning = true;
+  if (!bookBusy) bookBusy = `Looking up ${asked.length === 1 ? 'one address' : `${asked.length} addresses`} online`; pushState();
+  try {
+    const post = async (url, body, headers, signal) => {
+      const { res } = await openRequest(url, { method: 'POST', body, signal, timeoutMs: 120000, headers: { ...headers, 'Content-Length': String(body.length) } });
+      if (res.statusCode !== 200) { res.resume(); throw new Error(`The lookup service answered ${res.statusCode}.`); }
+      return (await readBody(res, 8 * 1024 * 1024)).toString('utf8');
+    };
+    const { found } = await geocode.lookup(asked, { post, url: process.env.WIKIVAULT_GEOCODE_URL || geocode.URL_BATCH });
+    const r = book.applyLookup(asked, found);
+    lookupLast = { date: new Date().toISOString(), ...r };
+    log(`address book: ${r.asked} address${r.asked === 1 ? '' : 'es'} looked up online, ${r.placed} placed`);
+    return r;
+  } catch (err) {
+    lookupLast = { date: new Date().toISOString(), error: err.message };
+    log(`address book: the online lookup did not work: ${err.message}`);
+    if (loud) throw new Error(`The addresses could not be looked up: ${err.message} Nothing was changed, and it is tried again later.`);
+    return null;
+  } finally { lookupRunning = false; if (bookBusy && bookBusy.startsWith('Looking up')) bookBusy = null; pushState(); }
+}
+
 /** Read one account's contacts into the book. `loud` makes a failure an error for the caller; otherwise it is noted in the book. */
 async function syncContacts(source, loud = false) {
   const name = source.startsWith('google') ? 'Google' : 'iCloud';
@@ -1742,6 +1778,7 @@ async function syncContacts(source, loud = false) {
       : await contactsSync.icloudContacts({ ...s, ...(contactsBase() ? { base: `${contactsBase()}/dav/` } : {}) });
     const out = book.importContacts(contacts, into, s.user ? { account: s.user } : {});
     log(`contacts: ${name}: ${out.contacts} contacts, ${out.entries} entries, ${out.located} placed`);
+    setTimeout(() => lookupAddresses().catch(() => {}), 50); // once this reading is over
     return out;
   } catch (err) {
     log(`contacts: ${name}: ${err.message}`);
@@ -1768,7 +1805,7 @@ function bookHits(q) {
   if (!book) return [];
   return book.search(q, 6).filter((e) => e.lat != null).map((e) => ({
     c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: [e.pin ? `Pinned as ${e.pinName || relations.pinName(e.pin)}` : 'Saved', e.tie || relations.groupName(e.group)].filter(Boolean).join(', '),
-    how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why || '',
+    how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual' && e.how !== 'online'), why: e.why || '',
   }));
 }
 
@@ -1914,9 +1951,14 @@ function registerIpc() {
   });
 
   handle('book:list', () => ({ entries: book.list(), ...bookState() }));
-  handle('book:put', (e) => { const r = book.put(e || {}); pushState(); return r; });
+  handle('book:put', (e) => { const r = book.put(e || {}); pushState(); lookupAddresses().catch(() => {}); return r; });
   handle('book:remove', ({ id }) => { const r = book.remove(String(id)); pushState(); return r; });
-  handle('book:locate-all', () => { const r = book.locateAll(); pushState(); return r; });
+  handle('book:locate-all', () => { const r = book.locateAll(); pushState(); lookupAddresses().catch(() => {}); return r; });
+  // The user's answer to "may addresses be looked up online?", and the lookup itself when the answer is yes.
+  handle('book:lookup', async ({ allow }) => {
+    settings.contacts.lookup = Boolean(allow); saveSettings(); pushState();
+    return allow ? lookupAddresses(true) : null;
+  });
   handle('book:import-file', async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a contacts file', properties: ['openFile'], filters: [{ name: 'Contacts (vCard or CSV)', extensions: ['vcf', 'vcard', 'csv'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
@@ -1924,6 +1966,7 @@ function registerIpc() {
     if (!contacts.length) throw new Error('No contacts were found in that file. It should be a vCard (.vcf) file, or a CSV file exported from Google Contacts or Outlook.');
     const out = book.importContacts(contacts, 'file', { name: path.basename(r.filePaths[0]) });
     pushState();
+    lookupAddresses().catch(() => {});
     return out;
   });
   handle('book:google-connect', async ({ clientId, clientSecret }) => {
@@ -2312,6 +2355,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     setTimeout(() => contactsDue().catch(() => {}), 45000);
     setInterval(() => contactsDue().catch(() => {}), 3600 * 1000).unref();
+    setTimeout(() => lookupAddresses().catch(() => {}), 60000); // addresses still unplaced from a time with no connection
     await reapOrphanEngine();
     // Keep the window's idea of the power state current.
     powerMonitor.on('on-ac', pushState);

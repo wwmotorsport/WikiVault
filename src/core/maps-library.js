@@ -986,18 +986,44 @@ class MapsLibrary extends EventEmitter {
     if (this.placesInfo && this.placesInfo.counts.town) {
       // With the state known, the town of that name there comes first: the address data says where that is.
       const there = st && known ? known.find((g) => g[0] === st) : null;
+      const mid = st ? this.stateMiddles().get(st) || null : null;
       let best = null;
       for (const t of this.recordsOf('town')) {
         if (addresses.normCity(t.n) !== want) continue;
         const pop = t.x && t.x.population ? Number(String(t.x.population).replace(/\D/g, '')) || 0 : 0;
-        const score = there ? -places.km(there[2], there[1], t.a, t.o) : near ? -places.km(near[1], near[0], t.a, t.o) : pop;
+        // A state the address data does not cover yet still says which town of that name is meant: the one in that
+        // state, never a namesake across the country (Portland, Maine is not Portland, Oregon).
+        if (!there && mid && !this.inState(st, t.a, t.o)) continue;
+        const score = there ? -places.km(there[2], there[1], t.a, t.o) : mid ? -places.km(mid[0], mid[1], t.a, t.o) : near ? -places.km(near[1], near[0], t.a, t.o) : pop;
         if (!best || score > best.score) best = { score, t };
       }
       if (best) return best.t;
+      if (!there && mid) return null; // no town of that name in the state named
     }
     if (!known) return null;
     const pick = st ? known.find((g) => g[0] === st) || null : known.slice().sort((x, y) => (near ? places.km(near[1], near[0], x[2], x[1]) - places.km(near[1], near[0], y[2], y[1]) : y[3] - x[3]))[0];
     return pick ? { a: pick[2], o: pick[1], n: addresses.title(want) } : null;
+  }
+  /** The middle of each state the app knows: a Map from 'NC' to [lat, lon]. */
+  stateMiddles() {
+    if (!this.mids) {
+      this.mids = new Map();
+      const groups = (this.registry.extracts && this.registry.extracts.regions) || {};
+      for (const list of Object.values(groups)) for (const r of list) { const code = addresses.normState(r.name); if (/^[A-Z]{2}$/.test(code) && r.at) this.mids.set(code, r.at); }
+    }
+    return this.mids;
+  }
+  /**
+   * Whether a point can be in a state, told from the middles of the states alone: it is when no other state's
+   * middle is much nearer to it than the named state's. Rough at the borders, which is all a namesake needs.
+   */
+  inState(st, lat, lon) {
+    const mids = this.stateMiddles(); const mid = mids.get(st);
+    if (!mid) return true;
+    const d = places.km(mid[0], mid[1], lat, lon);
+    let nearest = d;
+    for (const m of mids.values()) nearest = Math.min(nearest, places.km(m[0], m[1], lat, lon));
+    return d <= 1.6 * nearest + 150;
   }
   /** The middle of a ZIP code's addresses: [lon, lat], or null. */
   zipAt(zip) { const z5 = addresses.normZip(zip); const g = this.gaz && this.gaz.zips[z5]; return g ? [g[0], g[1]] : null; }

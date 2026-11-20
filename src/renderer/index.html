@@ -287,6 +287,15 @@
           </div>
           <div id="map-pane-book" hidden>
             <p class="small-print" id="book-status"></p>
+            <div class="book-lookup" id="book-lookup" hidden>
+              <p id="book-lookup-text"></p>
+              <div class="actions">
+                <button type="button" class="btn small primary" id="book-lookup-yes">Look them up online</button>
+                <button type="button" class="btn small" id="book-lookup-no">No, never send addresses</button>
+              </div>
+            </div>
+            <p class="small-print" id="book-lookup-line" hidden><span id="book-lookup-state"></span> <button type="button" class="link-btn" id="book-lookup-change"></button></p>
+            <p class="error" id="book-lookup-error" role="alert" hidden></p>
             <div class="actions">
               <button type="button" class="btn small primary" id="book-add">Add a person or place</button>
               <button type="button" class="btn small" id="book-accounts">Contacts accounts</button>
@@ -305,6 +314,7 @@
                 <option value="address">With an address</option>
                 <option value="map">With a place on the map</option>
                 <option value="rough">Placed approximately</option>
+                <option value="online">Placed by looking up online</option>
                 <option value="miss">Address not on the map yet</option>
                 <option value="none">No address (telephone only)</option>
               </select>
@@ -784,7 +794,7 @@
       <p class="small-print" id="acc-file-status">A vCard (.vcf) file from any contacts program, or a CSV file exported from Google Contacts or Outlook. Importing again replaces what the last file brought in.</p>
       <div class="actions"><button type="button" class="btn" id="acc-file">Import a contacts file</button></div>
     </section>
-    <p class="small-print">Sign-ins are kept encrypted by Windows for your user account on this computer, in the app's own data folder, and are sent only to Google or Apple. Contacts are not sent anywhere.</p>
+    <p class="small-print">Sign-ins are kept encrypted by Windows for your user account on this computer, in the app's own data folder, and are sent only to Google or Apple. Contacts are not sent anywhere. The one exception is yours to allow: if you say yes to looking addresses up online, in the address book, the street addresses that the downloaded data cannot place (and nothing else about the contact) go to the United States Census Bureau's address service.</p>
     <div class="actions"><button type="button" class="btn" id="book-acc-close">Close</button></div>
   </dialog>
 

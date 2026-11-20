@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('api', {
   bookPut: (entry) => call('book:put', entry),
   bookRemove: (id) => call('book:remove', { id }),
   bookLocateAll: () => call('book:locate-all'),
+  bookLookup: (allow) => call('book:lookup', { allow }),
   bookImportFile: () => call('book:import-file'),
   bookGoogleConnect: (clientId, clientSecret) => call('book:google-connect', { clientId, clientSecret }),
   bookIcloudConnect: (user, password) => call('book:icloud-connect', { user, password }),

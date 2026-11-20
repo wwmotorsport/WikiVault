@@ -9,11 +9,37 @@ const BOOK_TIES = ['wife', 'husband', 'partner', 'mother', 'father', 'son', 'dau
 const bookRel = (e) => [BOOK_GROUPS[e.group] || '', e.tie || ''].filter(Boolean).join(': ');
 const bookKeep = (key, value) => { try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch { /* not kept, that is all */ } return null; };
 const bookLine = (s) => String(s || '').replace(/\s*\n\s*/g, ', ');
-const bookStamp = () => { const b = state?.book; return b ? `${b.count}:${b.located}:${b.pinned}:${b.related}:${Object.values(b.sources || {}).map((s) => s.date || '').join()}` : ''; };
+const bookStamp = () => { const b = state?.book; return b ? `${b.count}:${b.located}:${b.pinned}:${b.related}:${b.online || 0}:${b.approximate || 0}:${Object.values(b.sources || {}).map((s) => s.date || '').join()}` : ''; };
 
 async function bookLoad() {
   try { bookUi.data = await api.bookList(); bookUi.stamp = bookStamp(); } catch { bookUi.data = { entries: [] }; }
   paintBook(); bookDraw();
+}
+
+/**
+ * Looking addresses up online: the question, asked once when there is something to look up, and after that a
+ * line saying what was decided, with a way to change it. Nothing is sent before the user says yes.
+ */
+function paintBookLookup(b) {
+  const n = b.lookable || 0;
+  const ask = b.lookup == null && n > 0;
+  $('book-lookup').hidden = !ask;
+  if (ask) $('book-lookup-text').textContent = `${n === 1 ? 'One address is' : `${n.toLocaleString()} addresses are`} complete but ${n === 1 ? 'is' : 'are'} not in the downloaded address data, so ${n === 1 ? 'it is' : 'they are'} placed roughly or not at all. While there is a connection, Wikivault can look ${n === 1 ? 'it' : 'them'} up with the United States Census Bureau's free address service and put ${n === 1 ? 'it' : 'them'} on the map. Only the street addresses are sent: no names, telephone numbers or anything else. If you say yes, new addresses are looked up the same way from now on.`;
+  const line = $('book-lookup-line');
+  line.hidden = b.lookup == null;
+  if (b.lookup == null) return;
+  const last = b.lookupLast;
+  $('book-lookup-state').textContent = b.lookup
+    ? `Addresses the downloaded data cannot place are looked up online with the Census Bureau (street addresses only).${last && last.error ? ' The last try did not get through, and it is tried again later.' : last && last.asked ? ` Last time: ${last.placed} of ${last.asked} placed.` : ''}${n > 0 && !b.busy ? ` ${n} still to look up.` : ''}`
+    : 'Addresses are never looked up online.';
+  $('book-lookup-change').textContent = b.lookup ? 'Stop looking addresses up' : 'Allow it';
+}
+async function bookLookupSet(allow) {
+  const err = $('book-lookup-error'); err.hidden = true;
+  $('book-lookup-yes').disabled = true; $('book-lookup-no').disabled = true;
+  try { await api.bookLookup(allow); } catch (e) { err.textContent = e.message; err.hidden = false; }
+  $('book-lookup-yes').disabled = false; $('book-lookup-no').disabled = false;
+  await bookLoad();
 }
 
 function paintBook() {
@@ -24,12 +50,14 @@ function paintBook() {
   const lines = [];
   if (!b.count) lines.push('Nothing saved yet. Add people and places by hand, save them from the map, or connect a contacts account.');
   else {
-    lines.push(`${b.count.toLocaleString()} saved, ${b.located.toLocaleString()} with a place on the map${b.approximate ? ` (${b.approximate.toLocaleString()} approximate)` : ''}.`);
+    const notes = [b.online ? `${b.online.toLocaleString()} looked up online` : '', b.approximate ? `${b.approximate.toLocaleString()} approximate` : ''].filter(Boolean);
+    lines.push(`${b.count.toLocaleString()} saved, ${b.located.toLocaleString()} with a place on the map${notes.length ? ` (${notes.join(', ')})` : ''}.`);
     if (b.withAddress > b.located) lines.push(b.addressData ? `${(b.withAddress - b.located).toLocaleString()} could not be placed from their address. Open one to place it by hand.` : `${(b.withAddress - b.located).toLocaleString()} have an address but no place yet: fetch the addresses, under Change or update, and they are placed by themselves.`);
   }
   if (b.busy) lines.push(`${b.busy}...`);
   for (const [name, s] of Object.entries(b.sources || {})) if (s.error) lines.push(`${name === 'google' ? 'Google' : name === 'icloud' ? 'iCloud' : 'The file'}: ${s.error}`);
   $('book-status').textContent = lines.join(' ');
+  paintBookLookup(b);
   if (mapGo.tab !== 'book' || !bookUi.data) return;
   const all = bookUi.data.entries;
   // Pinned places first, in their own group, by kind. The filters below do not hide them.
@@ -52,7 +80,8 @@ function paintBook() {
     if (show === 'map' && e.lat == null) return false;
     if (show === 'none' && e.address) return false;
     if (show === 'miss' && !(e.address && e.lat == null)) return false;
-    if (show === 'rough' && !(e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual')) return false;
+    if (show === 'rough' && !(e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual' && e.how !== 'online')) return false;
+    if (show === 'online' && e.how !== 'online') return false;
     if (group === 'unset' ? (e.group || e.tie) : group !== 'all' && e.group !== group) return false;
     if (!words.length) return true;
     const hay = `${e.name} ${e.label} ${e.address} ${e.org} ${bookRel(e)} ${e.pin ? `${e.pinName || ''} ${(BOOK_PINS.find((p) => p[0] === e.pin) || [])[1] || ''}` : ''}`.toLowerCase();
@@ -76,6 +105,7 @@ function bookRow(e, pinned) {
   if (e.address) btn.append(el('span', 'map-hit-addr', bookLine(e.address)));
   if (e.phones) btn.append(el('span', 'map-hit-addr', e.phones));
   if (e.address && e.lat == null) { const miss = el('span', 'map-hit-approx', 'Not on the map yet'); if (e.why) miss.title = e.why; btn.append(miss); }
+  else if (e.how === 'online') btn.append(el('span', 'map-hit-online', 'Looked up online'));
   else if (e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual') btn.append(el('span', 'map-hit-approx', e.how === 'town' ? 'Approximate: the town only' : 'Approximate position'));
   btn.addEventListener('click', () => bookShow(e));
   const acts = el('div', 'book-row-acts');
@@ -99,7 +129,7 @@ function bookRow(e, pinned) {
 
 /** A saved entry as the map knows a found place. */
 function bookHitOf(e) {
-  return { c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: bookLine(e.address), p: e.phones, kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why };
+  return { c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: e.label ? `${e.name} (${e.label})` : e.name, d: bookLine(e.address), p: e.phones, kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual' && e.how !== 'online'), why: e.why };
 }
 
 /** Show an entry on the map if it has a place, and open it for editing if not. */
@@ -146,7 +176,7 @@ function bookWhere(e) {
   const ed = bookUi.editing;
   let text = 'When you save, the address is looked up in the address data to place it on the map.';
   if (ed.placed && ed.lat != null) text = `Placed by hand at ${Number(ed.lat).toFixed(5)}, ${Number(ed.lon).toFixed(5)}. It stays there whatever the address says.`;
-  else if (e && e.lat != null) text = e.how === 'exact' ? 'Found in the address data.' : e.why || 'Placed approximately from the address.';
+  else if (e && e.lat != null) text = e.how === 'exact' ? 'Found in the address data.' : e.how === 'online' ? `${e.why} To put the mark on the house itself, place it by hand.` : e.why || 'Placed approximately from the address.';
   else if (e && e.address && e.why) text = `Not on the map: ${e.why}`;
   else if (e && e.address) text = state?.book?.addressData ? 'This address was not found in the address data. You can place it on the map by hand.' : 'There is no address data yet, so it has no place on the map. Fetch the addresses, or place it by hand.';
   if (e && (e.src === 'google' || e.src === 'icloud')) text += ` It came from ${e.src === 'google' ? 'Google' : 'iCloud'}. Pinning it or setting the relationship keeps it in step with the account. Changing the name, address, telephone or notes makes it yours, and reading the account again then leaves it alone.`;
@@ -235,6 +265,9 @@ async function bookDo(work, done) {
   paintAccounts();
 }
 const bookTold = (name) => (r) => `${name}: ${r.contacts.toLocaleString()} contacts read, ${r.entries.toLocaleString()} entries kept, ${r.located.toLocaleString()} placed on the map.`;
+$('book-lookup-yes').addEventListener('click', () => bookLookupSet(true));
+$('book-lookup-no').addEventListener('click', () => bookLookupSet(false));
+$('book-lookup-change').addEventListener('click', () => bookLookupSet(!(state?.book && state.book.lookup)));
 $('book-accounts').addEventListener('click', () => { bookUi.more = {}; $('book-acc-error').hidden = true; $('book-acc-done').hidden = true; $('book-acc').showModal(); paintAccounts(); });
 $('book-acc-close').addEventListener('click', () => $('book-acc').close());
 $('acc-google-connect').addEventListener('click', () => bookDo(() => api.bookGoogleConnect($('acc-google-id').value, $('acc-google-secret').value).then((r) => { $('acc-google-secret').value = ''; $('acc-google-how').open = false; return r; }), bookTold('Google')));

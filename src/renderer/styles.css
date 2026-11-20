@@ -677,6 +677,11 @@ dialog#tour::backdrop { background: rgba(20, 38, 59, .62); }
 .map-approx { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #b26a00; background: rgba(178, 106, 0, 0.09); font-size: 13px; }
 .map-approx-rough { border-left-color: #b3261e; background: rgba(179, 38, 30, 0.09); font-size: 14px; }
 .map-hit-approx { display: block; color: #8a5200; font-size: 13px; font-weight: 600; }
+.map-hit-online { display: block; color: #3d5a78; font-size: 13px; }
+/* The address book's one question about looking addresses up online. */
+.book-lookup { margin: 8px 0 12px; padding: 10px 12px; border-left: 3px solid #5b7a99; background: rgba(91, 122, 153, 0.1); border-radius: 0 6px 6px 0; }
+.book-lookup p { margin: 0 0 8px; font-size: 14px; line-height: 1.45; max-width: 68ch; }
+.book-lookup .actions { margin: 0; }
 
 /* How full the library's partition is. */
 #lib-partition .meter { margin: 8px 0 4px; max-width: 520px; }

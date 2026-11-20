@@ -8,11 +8,17 @@
 // An entry can be pinned (Home, Work, School, Meeting point, or a name of the user's own) and its person
 // given a relationship: a group (Family, Friends...) and a tie (mother, wife, father-in-law...). These are the
 // user's own marks. They are kept in this app only, and reading a contacts account again leaves them in place.
+// An address the downloaded data cannot place can be looked up online when the user has agreed to that (see
+// geocode-online.js); what comes back is kept here, so it is asked for once and works with no connection after.
 // Kept as one JSON file in the app's own data folder, not in the library. No Electron, no network.
 
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const rel = require('./relations');
+const geocode = require('./geocode-online');
+
+const NEAR_ENOUGH = new Set(['exact', 'between', 'nearest']); // placements from the downloaded data that an online lookup would not better
+const ASK_AGAIN_DAYS = 30; // an address the online lookup did not know is asked about again after this long
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const oneLine = (s) => String(s || '').replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
@@ -31,7 +37,7 @@ class AddressBook {
 
   summary() {
     const withAddress = this.entries.filter((e) => e.address).length;
-    return { count: this.entries.length, withAddress, pinned: this.entries.filter((e) => e.pin).length, related: this.entries.filter((e) => e.group || e.tie).length, located: this.entries.filter((e) => e.lat != null).length, approximate: this.entries.filter((e) => e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual').length, sources: this.sources };
+    return { count: this.entries.length, withAddress, pinned: this.entries.filter((e) => e.pin).length, related: this.entries.filter((e) => e.group || e.tie).length, located: this.entries.filter((e) => e.lat != null).length, approximate: this.entries.filter((e) => e.lat != null && e.how && e.how !== 'exact' && e.how !== 'manual' && e.how !== 'online').length, online: this.entries.filter((e) => e.how === 'online').length, lookable: this.toLookUp().length, sources: this.sources };
   }
   list() { return this.entries.slice().sort((a, b) => fold(a.name).localeCompare(fold(b.name)) || fold(a.label).localeCompare(fold(b.label))); }
   get(id) { return this.entries.find((e) => e.id === id) || null; }
@@ -39,7 +45,15 @@ class AddressBook {
   /** Work out where an entry is from its address, unless the user has placed it by hand. */
   place(e) {
     if (e.fixed) return e;
-    const hit = e.address ? this.locate(oneLine(e.address)) : null;
+    const text = e.address ? oneLine(e.address) : '';
+    const hit = text ? this.locate(text) : null;
+    if (e.web && e.web.of !== text) delete e.web; // the address has changed since it was looked up online
+    // What an online lookup found stands in when the downloaded data knows the town at best. A house the data has,
+    // or a street it can place the number along, is at least as good and needs no connection to check.
+    if (e.web && e.web.lat != null && !(hit && hit.lat != null && NEAR_ENOUGH.has(hit.how))) {
+      Object.assign(e, { lat: e.web.lat, lon: e.web.lon, how: 'online', why: `Looked up online as ${e.web.matched || text}. The lookup places a number along its street from the range of numbers on the block, so the mark may be a few doors from the house.` });
+      return e;
+    }
     if (hit && hit.lat != null) { e.lat = hit.lat; e.lon = hit.lon; e.how = hit.how; e.why = hit.why || ''; } else { e.lat = null; e.lon = null; e.how = null; e.why = (hit && hit.why) || ''; } // with no place, `why` says what stood in the way
     return e;
   }
@@ -148,6 +162,40 @@ class AddressBook {
     for (const e of this.entries) { if (e.fixed || !e.address || e.how === 'exact') continue; const had = e.lat != null; this.place(e); if (!had && e.lat != null) found += 1; }
     this.save();
     return { found, ...this.summary() };
+  }
+
+  /**
+   * The addresses an online lookup could help with: [{ id, address }]. Those the downloaded data places at the
+   * house or along the street are left out, as are those placed by hand, those the service cannot use (no house
+   * number, or outside the United States), and those it was asked about lately without finding them.
+   */
+  toLookUp(now = Date.now()) {
+    const out = [];
+    for (const e of this.entries) {
+      if (!e.address || e.fixed || NEAR_ENOUGH.has(e.how) || e.how === 'manual' || e.how === 'online') continue;
+      const text = oneLine(e.address);
+      if (e.web && e.web.of === text && (e.web.lat != null || now - Date.parse(e.web.date) < ASK_AGAIN_DAYS * 86400000)) continue;
+      if (!geocode.rowOf(text)) continue;
+      out.push({ id: e.id, address: text });
+    }
+    return out;
+  }
+  /**
+   * Keep what an online lookup said. `asked` is what toLookUp() gave, `found` a Map from id to { lat, lon, matched,
+   * exact }. An address that was asked about and not found is remembered too, so that it is not sent again for a while.
+   */
+  applyLookup(asked, found, now = Date.now()) {
+    let placed = 0;
+    for (const a of asked) {
+      const e = this.get(a.id);
+      if (!e || e.fixed || oneLine(e.address || '') !== a.address) continue; // changed while the answer was on its way
+      const hit = found.get(String(a.id));
+      e.web = hit ? { of: a.address, date: new Date(now).toISOString(), lat: hit.lat, lon: hit.lon, matched: hit.matched || '', exact: Boolean(hit.exact) } : { of: a.address, date: new Date(now).toISOString() };
+      this.place(e);
+      if (e.how === 'online') placed += 1;
+    }
+    this.save();
+    return { asked: asked.length, placed };
   }
 
   /** Pinned entries of one kind ('home', 'work'...), or those whose own pin name is the words given. Placed ones first. */

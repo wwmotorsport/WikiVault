@@ -201,7 +201,7 @@ const MEET = /^(?:meeting (?:point|place|spot)|meet(?:ing)?[- ]?up (?:point|plac
 const THING = /\s+(house|home|place|address|home address|apartment|flat|cabin|farm|office|work|workplace|job|work address|school)$/;
 
 const nameOf = (e) => (e.label ? `${e.name} (${e.label})` : e.name);
-const pointOf = (e) => ({ lon: e.lon, lat: e.lat, label: nameOf(e), ...(e.how && e.how !== 'exact' && e.how !== 'manual' ? { approx: e.why || 'Its address was not found exactly in the address data.', how: e.how } : {}) });
+const pointOf = (e) => ({ lon: e.lon, lat: e.lat, label: nameOf(e), ...(e.how && e.how !== 'exact' && e.how !== 'manual' && e.how !== 'online' ? { approx: e.why || 'Its address was not found exactly in the address data.', how: e.how } : {}) });
 const hitOf = (e) => ({ c: 'saved', i: `bk${e.id}`, a: e.lat, o: e.lon, n: nameOf(e), d: String(e.address || '').replace(/\s*\n\s*/g, ', '), p: e.phones || '', kind: 'Saved', how: e.how, approx: Boolean(e.how && e.how !== 'exact' && e.how !== 'manual'), why: e.why || '' });
 
 /** Of one person's or one pin's entries, the one meant: a wanted label first, then a home, then any with a place. */

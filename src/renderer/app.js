@@ -2322,7 +2322,7 @@ function mapDetails(h) {
   if (h.c === 'address') { box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.d || 'This address is in the address data.')); } else row('Address', h.d);
   row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
   if (h.s === 'ov') box.append(el('p', 'small-print', 'From Overture Maps, not OpenStreetMap. It may have moved or closed.'));
-  if (h.c === 'saved') box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.how === 'manual' ? 'From your address book. You placed it on the map yourself.' : h.approx ? `From your address book. ${h.why || 'The position is approximate.'}` : 'From your address book.'));
+  if (h.c === 'saved') box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.how === 'manual' ? 'From your address book. You placed it on the map yourself.' : h.how === 'online' ? `From your address book. ${h.why || 'Its address was looked up online.'}` : h.approx ? `From your address book. ${h.why || 'The position is approximate.'}` : 'From your address book.'));
   const words = { size: 'Ground covered', listed: 'Listed on', emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
@@ -2875,6 +2875,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.33.0': [
+    'Addresses the downloaded data cannot place can be looked up online. The address book asks once; only the street address is sent, never a name or number.',
+    'A town is no longer placed at a namesake in another state when its own state\'s addresses are not downloaded.',
+    'Fixed: the bar for the ready-made places download now fills and shows the speed.',
+  ],
   '0.32.0': [
     'Setup and Library are one page now: Options and Setup. Its groups fold, and each heading says whether the group is complete or still needs something.',
     'One list and one button in the Map section too, with the part-by-part controls under Advanced map download settings.',

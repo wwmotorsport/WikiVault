@@ -2,8 +2,15 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
-## Not yet released
+## 0.33.0 (2026-11-20)
 
+Addresses the downloaded data cannot place can be looked up online, once you say yes.
+
+- **Looking addresses up online.** The free address data does not cover every county, so a contact with a complete address could end up placed only at its town, or not at all. When there are such addresses the address book now asks, once, whether it may look them up with the United States Census Bureau's free address service. After a yes, they are looked up in one request whenever there is a connection (after a contacts account is read, an entry is saved, or the address data changes) and put on the map. What is found is kept, so each address is asked about once and works offline from then on.
+- **What is sent is the street address and nothing else:** no name, telephone number, e-mail or note, and nothing from entries the downloaded data can already place. It goes in the body of the request, never in a web address, and nothing about it is written to the log. Until you say yes nothing is sent, and the line under the address book's summary switches it off again. This is the first thing the app can send from your own data, which is why it asks.
+- **How good the result is.** The service places a number along its street from the range of numbers on the block: the right stretch of road, usually within a few doors. Such an entry says *Looked up online*, shows the address as the service read it (small misspellings are corrected), and is no longer counted as approximate. A house the downloaded data knows, and a place set by hand, are always used in preference. On a real address book, 13 of the 14 addresses that qualified were placed.
+- **Limits.** United States and Puerto Rico only. Post office boxes and addresses with no house number are not sent. An address the service does not know is tried again after a month.
+- **Fixed: a town placed in the wrong state.** When an address named a town and state whose addresses had not been downloaded, the town-level fallback could pick a town of the same name elsewhere: a Springfield in one state could be put at the Springfield of another, hundreds of miles away. A town is now only ever placed in the state the address names, and when no such town is known there the entry is left unplaced, with the reason.
 - **Fixed: the bar for the ready-made places.** While the ready-made set was being fetched, the bar on the Options and Setup page and in the Map panel slid a thin strip from side to side and showed no speed or time left, because that download did not hand the page its size. It now fills as the bytes arrive, with the speed and the time left beside it, and fills again by files while the places are read in.
 
 ## 0.32.0 (2026-11-20)
