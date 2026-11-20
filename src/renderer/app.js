@@ -2810,6 +2810,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.28.2': [
+    'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
+    'Hospitals: doctors\' offices that Overture Maps files as hospitals are now listed with the clinics, so real hospitals are not crowded out.',
+    'Map: dragging the map no longer opens the card for a spot. Places: updating a complete set asks first.',
+  ],
   '0.28.1': [
     'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
     'Map: dragging the map no longer opens the card for a spot. Only a single click does.',

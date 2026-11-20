@@ -2,6 +2,15 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.28.2 (2026-11-19)
+
+Hospitals are hospitals.
+
+- **Why a large hospital three miles from home was missing from "hospitals near home".** It was in the data, from OpenStreetMap, with its emergency room noted. But Overture Maps files almost anything medical under "hospital": on a real download, about 36,000 of its 52,000 "hospitals" were doctors' offices, therapy practices, wards and the like. Ten of those were nearer than the hospital, and the answer lists ten.
+- **A place from Overture now counts as a hospital only when its name says so** (hospital, medical center, emergency room, and the French and Spanish for them) and does not say it is an office or a part of one (a suite, a family practice, a sleep centre, a gift shop, an animal hospital). The rest are listed with the clinics. OpenStreetMap's hospitals, which are marked as hospitals by hand, are taken as they are.
+- Nothing needs downloading again: the rule is applied when the places are read. On the download this was found on, the hospital in question went from eleventh to first.
+- The same applies on the map's *Kind of place* list: *Hospitals* shows hospitals, and the offices are under *Clinics and urgent care*.
+
 ## 0.28.1 (2026-11-19)
 
 The places download no longer trips over the server's daily update, and says where it stands.

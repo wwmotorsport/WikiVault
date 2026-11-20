@@ -757,8 +757,13 @@ class MapsLibrary extends EventEmitter {
     if (!this.loaded.has(id)) {
       const read = (folder) => { try { return JSON.parse(fs.readFileSync(path.join(this.dir, folder, `${id}.json`), 'utf8')).items; } catch { return []; } };
       const items = this.placesInfo ? read('places') : [];
+      // Overture's "hospitals" are mostly offices and parts of hospitals (see places.isHospitalName): only those named
+      // as hospitals are hospitals here, and the others are listed with the clinics.
+      let more = this.overture && this.overture.counts[id] ? read('overture') : [];
+      if (id === 'hospital') more = more.filter((r) => places.isHospitalName(r.n));
+      if (id === 'clinic' && this.overture && this.overture.counts.hospital) { try { more = more.concat(JSON.parse(fs.readFileSync(path.join(this.dir, 'overture', 'hospital.json'), 'utf8')).items.filter((r) => !places.isHospitalName(r.n))); } catch { /* none */ } }
       // Places from Overture are added only where OpenStreetMap has no place of a like name close by.
-      const extra = this.overture && this.overture.counts[id] ? places.fresh(items, read('overture')) : [];
+      const extra = more.length ? places.fresh(items, more) : [];
       const all = extra.length ? items.concat(extra) : items;
       for (const it of all) it.c = id;
       this.loaded.set(id, all);
