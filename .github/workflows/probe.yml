@@ -1,0 +1,37 @@
+name: Probe the extract server
+
+# Asks the extract server for a few files' headers from GitHub's network and keeps the answers beside the places data.
+# For finding out why a places build could not fetch. Runs when a branch named probe/... is pushed.
+
+on:
+  push:
+    branches: ['probe/**']
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ask
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            date -u
+            for u in north-america/mexico-latest.osm.pbf north-america/us/delaware-latest.osm.pbf north-america/us/delaware-latest.osm.pbf.md5 north-america/canada/prince-edward-island-latest.osm.pbf north-america/us/alabama-latest.osm.pbf; do
+              echo "== HEAD $u"; curl -sS -I -L -m 40 -A "Wikivault places build (github.com/wwmotorsport/WikiVault)" "https://download.geofabrik.de/$u" 2>&1 | grep -i -E "^HTTP|^location|^content-length|^retry|^x-|^server|curl:" | head -12
+            done
+            echo "== GET range delaware"; curl -sS -L -m 40 -r 0-99 -o /dev/null -w "%{http_code} %{size_download} %{url_effective}\n" "https://download.geofabrik.de/north-america/us/delaware-latest.osm.pbf" 2>&1
+            echo "== node fetch HEAD"; node -e "fetch('https://download.geofabrik.de/north-america/us/delaware-latest.osm.pbf',{method:'HEAD',headers:{'user-agent':'Wikivault'}}).then(r=>console.log(r.status,r.url,r.headers.get('content-length')),e=>console.log('ERR',e.message,e.cause&&e.cause.code))"
+          } 2>&1 | tee probe.txt
+          gh release upload places-data probe.txt --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Remove the branch that asked for this
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/${GITHUB_REF#refs/heads/}" || true
