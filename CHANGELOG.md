@@ -2,6 +2,15 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.30.1 (2026-11-20)
+
+The first real build of the ready-made places, and what it showed.
+
+- **The ready-made set is live:** 66 MB in 56 files, holding 834,624 places from OpenStreetMap and 992,290 from Overture Maps (release 2026-11-18.0) for the United States, Canada and Mexico, and Medicare's 5,435 hospitals. Fetched and put to use for the contiguous United States in 25 seconds on a test machine. The build took 70 minutes on GitHub's servers. Of Overture's places, 299,000 were settled by brand, 606,000 by Overture's exact kind and 87,000 by name; gun shops went from 12 to 11,259, and ambulance stations and medical supply shops, which had received nothing, got 6,614 and 10,611. The hospital list found 4,808 of its hospitals among the places and took 917 of them back from the clinics.
+- **What it showed was wrong, now put right** (in the set from its next build): therapy practices filed as children's hospitals were trusted on their kind; doctors listed by name were filed as ambulance services and lenders as medical suppliers; and the brand index's "sports shop" let golf and shoe chains back in as outdoor shops. Those kinds are now checked by name as well.
+- **The backup is spelled out.** The places still come the old way when the ready-made set does not: on its own when the set cannot be reached, is over 60 days old or does not cover the regions chosen, and by choice under *Other ways* (build from regional extracts, or in small pieces from the shared servers). When a fetch of the set fails part way, what is on the computer is left untouched and the message says where the other way is.
+- **The weekly job keeps itself running.** GitHub stops the schedules of a public repository that has had no activity for 60 days. After each build the job now commits a short record of it to `docs/PLACES-STATUS.md` (when it was built, how many places of each kind), which is a record worth having and is the activity GitHub asks for.
+
 ## 0.30.0 (2026-11-20)
 
 The places are built once for everyone, and know their size.

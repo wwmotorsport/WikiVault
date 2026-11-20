@@ -46,4 +46,23 @@ const stamp = () => new Date().toISOString().slice(11, 19);
   const m = central.pack({ dir, out, app: pkg.version, regions });
   console.log(`${stamp()} packed ${m.files.length} files, ${(m.bytes / 1e6).toFixed(1)} MB: ${m.osm.total} places from OpenStreetMap, ${m.overture ? m.overture.total : 0} from Overture Maps (${m.overture ? m.overture.release : 'none'}), hospital list ${m.hospitals ? m.hospitals.count : 'none'}`);
   if (m.overture && m.overture.sorting) console.log(`${stamp()} sorting: ${JSON.stringify(m.overture.sorting)}`);
+  // A record for the repository (docs/PLACES-STATUS.md): what the last build held. The job commits it, which is also
+  // the activity GitHub asks of a repository before it will go on running a schedule.
+  const names = Object.fromEntries(lib.registry.categories.map((c) => [c.id, c.name]));
+  const kinds = [...new Set([...Object.keys(m.osm.counts), ...Object.keys((m.overture && m.overture.counts) || {})])].sort((a, b) => (names[a] || a).localeCompare(names[b] || b));
+  const s = (m.overture && m.overture.sorting) || {};
+  fs.writeFileSync(path.join(out, 'places-status.md'), [
+    '# The ready-made places: the last build', '',
+    'Written by the weekly job (`.github/workflows/places.yml`). The app fetches these files from the release *places-data*.', '',
+    `- Built: ${m.built.slice(0, 16).replace('T', ' ')} UTC, by Wikivault ${m.app}`,
+    `- Regions: ${m.regions.join(', ')}`,
+    `- To download: ${(m.bytes / 1e6).toFixed(1)} MB in ${m.files.length} files`,
+    `- From OpenStreetMap: ${m.osm.total.toLocaleString('en-US')} places (data of ${String(m.osm.date).slice(0, 10)})`,
+    `- From Overture Maps: ${m.overture ? `${m.overture.total.toLocaleString('en-US')} places (release ${m.overture.release})` : 'none'}`,
+    `- Sorting of Overture's places: ${(s.kept || 0).toLocaleString('en-US')} kept, ${(s.moved || 0).toLocaleString('en-US')} moved to another kind, ${(s.lesser || 0).toLocaleString('en-US')} marked as a lesser sort, ${(s.out || 0).toLocaleString('en-US')} left out; settled by brand ${(s['by brand'] || 0).toLocaleString('en-US')}, by Overture's kind ${(s['by kind'] || 0).toLocaleString('en-US')}, by name ${(s['by name'] || 0).toLocaleString('en-US')}`,
+    `- Brand index: ${m.overture && m.overture.brands ? `${m.overture.brands.version} (${m.overture.brands.from})` : 'none'}`,
+    `- Hospital list: ${m.hospitals ? `${m.hospitals.count.toLocaleString('en-US')} hospitals` : 'not fetched'}`, '',
+    '| Kind | OpenStreetMap | Overture Maps |', '|---|---:|---:|',
+    ...kinds.map((k) => `| ${names[k] || k} | ${(m.osm.counts[k] || 0).toLocaleString('en-US')} | ${(((m.overture && m.overture.counts) || {})[k] || 0).toLocaleString('en-US')} |`), '',
+  ].join('\n'));
 })().catch((err) => { console.error(`FAILED: ${err.stack || err.message}`); process.exit(1); });
