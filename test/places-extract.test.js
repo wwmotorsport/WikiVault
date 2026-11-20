@@ -173,7 +173,7 @@ test('places from extracts: stopping keeps what is there, and the slow way can s
     assert.equal(new Set(Object.values(real.extracts.regions).flat().map((e) => e.id)).size, Object.values(real.extracts.regions).flat().length);
     const all = new MapsLibrary({ dir: tmp(), registry: real });
     const first = all.extractsFor(['us48'])[0];
-    assert.match(first.url, /^https:\/\/download\.geofabrik\.de\/north-america\/us\/[a-z-]+-latest\.osm\.pbf$/);
+    assert.match(first.url, /^https:\/\/download\.geofabrik\.de\/north-america\/us\/([a-z-]+)\/\1-latest\.osm\.pbf$/);
   } finally { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

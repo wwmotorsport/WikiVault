@@ -21,6 +21,8 @@ const places = require('./places');
 const placeSort = require('./place-sort');
 const hospitals = require('./hospitals');
 const central = require('./central-places');
+/** The name an extract goes by in the extract server's index: the last part of its path, without the ending. */
+const extractKey = (p) => String(p).split('/').pop().replace(/-latest\.osm\.pbf$/, '');
 const read1 = (dir, kind) => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'overture', `${kind}.json`), 'utf8')).items; } catch { return []; } };
 const placesExtract = require('./places-extract');
 const routing = require('./routing');
@@ -360,11 +362,28 @@ class MapsLibrary extends EventEmitter {
   // ---------------------------------------------------------------- places, from regional extracts
 
   /** The extract files that hold these regions: [{ id, name, url, at: [lat, lon] }]. */
+  /**
+   * Where each extract is today, from the extract server's own index. The server has moved its files before (each into
+   * a folder of its own, in November 2026), and its index is the one place that always says where they are. The
+   * addresses in the app's list are used when the index cannot be read, or does not name a file.
+   */
+  async learnExtractUrls(signal = null) {
+    const x = this.registry.extracts;
+    if (!x || !x.index || (this.extractUrlsAt && Date.now() - this.extractUrlsAt < 6 * 3600000)) return;
+    try {
+      const res = await this.fetch(this.rewrite(x.index), { signal, timeoutMs: 30000, headers: { 'user-agent': this.agent } });
+      if (!res.ok) throw new Error(`the server answered ${res.status}`);
+      const urls = new Map();
+      for (const f of (await res.json()).features || []) { const p = f.properties || {}; const u = p.urls && p.urls.pbf; if (typeof p.id === 'string' && typeof u === 'string' && u.startsWith(x.base) && /-latest\.osm\.pbf$/.test(u)) urls.set(p.id.split('/').pop(), u); }
+      if (urls.size) { this.extractUrls = urls; this.extractUrlsAt = Date.now(); }
+    } catch (err) { if (signal && signal.aborted) throw err; this.log(`places: the extract server's index could not be read (${err.message}); the addresses in the app's list are used`); }
+  }
+
   extractsFor(regionIds) {
     const x = this.registry.extracts;
     if (!x) throw new Error('This version has no list of regional extracts.');
     const out = [];
-    for (const id of regionIds) for (const e of (x.regions[id] || [])) if (!out.some((o) => o.id === e.id)) out.push({ id: e.id, name: e.name, url: x.base + e.path, at: e.at });
+    for (const id of regionIds) for (const e of (x.regions[id] || [])) if (!out.some((o) => o.id === e.id)) out.push({ id: e.id, name: e.name, url: (this.extractUrls && this.extractUrls.get(extractKey(e.path))) || x.base + e.path, at: e.at });
     if (!out.length) throw new Error('Choose at least one region.');
     return out;
   }
@@ -393,7 +412,7 @@ class MapsLibrary extends EventEmitter {
         const res = await this.fetch(this.rewrite(f.url), { method: 'HEAD', signal, timeoutMs: 30000, headers: { 'user-agent': this.agent } });
         drop(res);
         const bytes = Number(res.headers.get('content-length'));
-        if (res.status === 404) by[f.id] = { missing: true };
+        if (res.status === 404) { by[f.id] = { missing: true }; this.log(`places: ${f.name} is not where it was looked for (${res.url || f.url} answered 404)`); }
         else if (!res.ok || !(bytes > 0)) throw new Error(`The extract server could not say how big ${f.name} is (it answered ${res.status}). Try again later.`);
         else by[f.id] = { dated: res.url || this.rewrite(f.url), bytes, asked: Date.now() };
       }
@@ -471,6 +490,7 @@ class MapsLibrary extends EventEmitter {
       this.placesMeasured = { regions: regionIds, how: 'central', files: m.files.length, bytes: m.bytes, largest: Math.max(...m.files.map((f) => f.raw || f.bytes)), per: {}, missing: [], date: new Date().toISOString(), built: m.built, osm: m.osm.total, overture: m.overture ? m.overture.total : 0 };
       return { ...this.placesMeasured, left: m.bytes };
     }
+    await this.learnExtractUrls();
     const files = this.extractsFor(regionIds);
     const job = this.begin('places-measure', { done: 0, total: files.length });
     try {
@@ -500,6 +520,7 @@ class MapsLibrary extends EventEmitter {
       const cats = this.registry.categories;
       const signal = job.controller.signal;
       const key = `x:${this.placesKey(regionIds)}`;
+      await this.learnExtractUrls(signal);
       const files = this.extractsFor(regionIds);
       let state = await readJson(stateFile);
       if (!state || state.v !== 2 || state.key !== key) {

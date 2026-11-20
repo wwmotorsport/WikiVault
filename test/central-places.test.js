@@ -108,3 +108,31 @@ test('a damaged file is refused and what was there stays; with no set to be had,
     assert.notEqual(measured && measured.how, 'central', 'the size asked for is then that of the extracts');
   } finally { await site.close(); for (const d of [src, out, dir]) fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test('the addresses of the extracts are read from the extract server\'s own index, and the app\'s list is used when it cannot be', async () => {
+  const web = tmp(); const dir = tmp();
+  fs.writeFileSync(path.join(web, 'index-v1-nogeom.json'), JSON.stringify({ features: [
+    { properties: { id: 'us/delaware', parent: 'us', urls: { pbf: 'https://download.geofabrik.de/moved/again/delaware-latest.osm.pbf' } } },
+    { properties: { id: 'prince-edward-island', parent: 'canada', urls: { pbf: 'https://download.geofabrik.de/north-america/canada/pei/prince-edward-island-latest.osm.pbf' } } },
+    { properties: { id: 'us/maryland', parent: 'us', urls: { pbf: 'https://elsewhere.example/maryland-latest.osm.pbf' } } },
+    { properties: { id: 'us/virginia', parent: 'us', urls: {} } },
+  ] }));
+  const site = await serve(web);
+  try {
+    const lines = [];
+    const lib = new MapsLibrary({ dir, registry: registry(), base: site.base, log: (l) => lines.push(l) });
+    await lib.init();
+    const urlOf = (region, id) => lib.extractsFor([region]).find((f) => f.id === id || f.name.toLowerCase() === id).url;
+    assert.equal(urlOf('us48', 'delaware'), 'https://download.geofabrik.de/north-america/us/delaware/delaware-latest.osm.pbf', 'before the index is read: the list packed with the app, each file in its own folder');
+    await lib.learnExtractUrls();
+    assert.equal(urlOf('us48', 'delaware'), 'https://download.geofabrik.de/moved/again/delaware-latest.osm.pbf');
+    assert.equal(urlOf('canada', 'prince edward island'), 'https://download.geofabrik.de/north-america/canada/pei/prince-edward-island-latest.osm.pbf');
+    assert.equal(urlOf('us48', 'maryland'), 'https://download.geofabrik.de/north-america/us/maryland/maryland-latest.osm.pbf', 'an address on another server is not taken');
+    assert.equal(urlOf('us48', 'virginia'), 'https://download.geofabrik.de/north-america/us/virginia/virginia-latest.osm.pbf');
+    // No index: the list packed with the app, and a line in the log.
+    const bare = new MapsLibrary({ dir, registry: registry(), base: site.base.replace(/\d+$/, '1'), log: (l) => lines.push(l) });
+    await bare.init(); await bare.learnExtractUrls();
+    assert.equal(bare.extractsFor(['us48'])[0].url.startsWith('https://download.geofabrik.de/north-america/us/'), true);
+    assert.ok(lines.some((l) => /extract server's index could not be read/.test(l)));
+  } finally { await site.close(); for (const d of [web, dir]) fs.rmSync(d, { recursive: true, force: true }); }
+});
