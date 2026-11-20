@@ -2,6 +2,10 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## Not yet released
+
+- **Fixed: the bar for the ready-made places.** While the ready-made set was being fetched, the bar on the Options and Setup page and in the Map panel slid a thin strip from side to side and showed no speed or time left, because that download did not hand the page its size. It now fills as the bytes arrive, with the speed and the time left beside it, and fills again by files while the places are read in.
+
 ## 0.32.0 (2026-11-20)
 
 Setup and Library are one page: Options and Setup.

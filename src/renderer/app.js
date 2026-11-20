@@ -2047,9 +2047,10 @@ function mapJobView(j) {
   }
   if (j.kind === 'places-measure') { title = 'Asking how big the places download is'; value = j.done || 0; max = j.total || 1; detail = `File ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 1}. Nothing is downloaded yet.`; }
   if (j.kind === 'places' && j.how === 'central') {
-    return j.stage === 'read' ? { text: `Putting the places to use: ${j.readDone || 0} of ${j.readTotal || 0} files`, value: j.readTotal ? (j.readDone || 0) / j.readTotal : null } : { text: `Fetching the ready-made places: file ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 0}, ${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}`, value: j.bytes ? (j.downloaded || 0) / j.bytes : null };
-  }
-  if (j.kind === 'places' && j.how === 'extract') {
+    // The ready-made set: a few files fetched whole, then read into the library. Both halves have a known size, so the bar always fills.
+    if (j.stage === 'read') { title = 'Putting the places to use'; value = j.readDone || 0; max = j.readTotal || 1; detail = `${j.readDone || 0} of ${j.readTotal || 0} files read. This part needs no connection.`; }
+    else { title = 'Fetching the ready-made places'; value = Math.min(j.downloaded || 0, j.bytes || 0); max = j.bytes || null; detail = `${bytes(j.downloaded || 0)} of ${bytes(j.bytes || 0)}. File ${Math.min((j.done || 0) + 1, j.total || 1)} of ${j.total || 0}.`; }
+  } else if (j.kind === 'places' && j.how === 'extract') {
     // From regional extracts: a file to a state, downloaded, read here and deleted.
     title = 'Fetching the places';
     const so = `${j.done || 0} of ${j.total || 0} files read, ${(j.found || 0).toLocaleString()} places so far.`;
