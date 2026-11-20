@@ -1801,6 +1801,9 @@ let mapKey = '';           // the map file that view was made for
 let mapOrigin = null;      // the app's own local server
 let mapProtocol = null;
 let mapSetupOpen = false;
+// The part-by-part settings are folded away until asked for; a person who works with them finds them open next time.
+let mapAdvancedOpen = (() => { try { return localStorage.getItem('wv.mapAdvanced') === '1'; } catch { return false; } })();
+const MAP_ONE = ['map', 'routing', 'places', 'addresses'];
 let mapHits = { total: 0, hits: [] };
 let mapSelected = null;    // id of the place whose details are open
 let mapPopup = null;
@@ -2014,6 +2017,9 @@ const mapRegionNames = (m, ids) => m.regions.filter((r) => ids.includes(r.id)).m
 function mapRegionsPicked(m) {
   const boxes = [...document.querySelectorAll('#map-setup input[name="map-region"]')];
   if (boxes.length) return boxes.filter((b) => b.checked).map((b) => b.value);
+  // The same choice as on the Setup page, when one has been made there.
+  const want = typeof hubWant === 'function' ? hubWant().regions : null;
+  if (Array.isArray(want) && want.length) return want.filter((id) => m.regions.some((r) => r.id === id));
   return m.map ? m.map.regions : m.regions.filter((r) => r.default).map((r) => r.id);
 }
 
@@ -2109,7 +2115,8 @@ function paintMapSetup(m) {
     const label = el('label', 'map-check');
     const input = document.createElement('input');
     input.type = 'checkbox'; input.name = 'map-region'; input.value = r.id; input.checked = picked.includes(r.id); input.disabled = busy;
-    input.addEventListener('change', () => renderMap());
+    // One choice of regions for the whole app: the Setup page shows the same ticks.
+    input.addEventListener('change', () => { hubSet({ regions: [...document.querySelectorAll('#map-setup input[name="map-region"]')].filter((b) => b.checked).map((b) => b.value) }); renderMap(); });
     const text = el('span', '', r.name);
     if (r.note) text.append(el('span', 'small-print', ` ${r.note}`));
     label.append(input, text);
@@ -2144,6 +2151,44 @@ function paintMapSetup(m) {
   } else {
     parts.push(el('p', 'small-print', 'Measuring reads the index of the world map (tens of megabytes) and lists what each level of detail would take. Nothing large is downloaded until you choose.'), measure);
   }
+  // ---- One button for all of it ------------------------------------------------------------------------------
+  // The same rows as the Setup page, for the map's own things: tick what is wanted, and one button fetches it all,
+  // one thing after another, from the quickest source for each. The parts below it are for doing one thing by hand.
+  const one = el('fieldset', 'map-field map-one');
+  one.append(el('legend', '', 'What to download'));
+  const running = hub.running; const all = hubItems(); const rows = MAP_ONE.map((id) => all.find((it) => it.id === id)).filter(Boolean);
+  for (const it of rows) {
+    const row = el('label', 'map-check map-one-row');
+    const input = Object.assign(document.createElement('input'), { type: 'checkbox', id: `map-one-${it.id}`, checked: it.state !== 'off', disabled: busy || running || !it.tick });
+    input.addEventListener('change', () => { hubSet({ [it.tick]: input.checked }); renderMap(); });
+    const word = { done: 'Done', working: 'Working', update: 'A newer set is ready', off: 'Not ticked', failed: 'Did not finish' }[it.state] || 'To fetch';
+    const text = el('span', 'map-one-text');
+    text.append(el('b', '', it.title), el('span', `map-one-state map-one-${it.state}`, `${word}${hubLeft(it) && it.bytes != null ? `, ${bytes(it.bytes)}` : ''}`), el('span', 'small-print', it.detail));
+    if (hub.errors && hub.errors[it.id]) text.append(el('span', 'error map-one-error', hub.errors[it.id]));
+    row.append(input, text);
+    one.append(row);
+  }
+  const mapRow = rows.find((it) => it.id === 'map');
+  if (mapRow && mapRow.state !== 'done' && mapRow.state !== 'off') {
+    const pick = el('label', 'map-one-level');
+    const sel = document.createElement('select'); sel.id = 'map-one-level'; sel.disabled = busy || running;
+    const w = hubWant(); const now = (m.levels.find((l) => l.zoom === w.level) || m.levels[m.levels.length - 1]).zoom;
+    for (const l of m.levels) sel.append(Object.assign(document.createElement('option'), { value: String(l.zoom), textContent: l.name, selected: l.zoom === now }));
+    sel.addEventListener('change', () => { hubSet({ level: Number(sel.value) }); renderMap(); });
+    pick.append(el('span', '', 'Detail of the map: '), sel);
+    one.append(pick);
+  }
+  const left = rows.filter(hubLeft); const known = left.every((it) => it.bytes != null); const sum = left.reduce((n, it) => n + (it.bytes || 0), 0);
+  const go = el('button', 'btn primary', running ? 'Stop after this one' : left.length ? `Download everything ticked${known && sum ? `, ${bytes(sum)}` : ''}` : 'Everything ticked is here');
+  go.type = 'button'; go.id = 'map-one-go'; go.disabled = running ? hub.stopAsked : (!left.length || busy || !picked.length);
+  go.addEventListener('click', () => { if (hub.running) { hub.stopAsked = true; renderMap(); } else { $('map-error').hidden = true; hubRun(MAP_ONE).then(renderMap, renderMap); renderMap(); } });
+  const unknown = left.some((it) => it.bytes == null);
+  const sizes = el('button', 'btn small', 'Work out the sizes');
+  sizes.type = 'button'; sizes.id = 'map-one-sizes'; sizes.disabled = busy || running || hub.measuring || !picked.length; sizes.hidden = !unknown;
+  sizes.addEventListener('click', () => { hubMeasure(false).then(renderMap, renderMap); renderMap(); });
+  const acts = el('div', 'actions'); acts.append(go, sizes);
+  one.append(acts, el('p', 'small-print', hub.measuring ? 'Working out the sizes.' : 'One thing is fetched after another, each from the quickest place it can be had, and anything already here is left alone. The Setup page shows the same list with everything else the app can download.'));
+
   const placesBox = el('fieldset', 'map-field');
   placesBox.append(el('legend', '', 'Places'));
   placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above.'));
@@ -2155,7 +2200,7 @@ function paintMapSetup(m) {
   // A complete set fetched lately is not downloaded all over again on one click: that is many gigabytes, and the
   // server asks that files are not fetched again without need.
   const recent = whole && !m.placesKept && m.placesHow === 'extract' && Date.now() - Date.parse(m.places.date) < 14 * 86400000 && sameAreas(m.places.regions || [], picked);
-  if (recent && mapPlacesAgain) getPlaces.textContent = 'Yes, download them all again';
+  if (recent && mapPlacesAgain) getPlaces.textContent = 'Yes, update the places';
   getPlaces.addEventListener('click', () => {
     if (recent && !mapPlacesAgain) { mapPlacesAgain = true; render(); return; }
     mapPlacesAgain = false;
@@ -2163,7 +2208,10 @@ function paintMapSetup(m) {
   });
   if (recent && mapPlacesAgain) {
     const pmAll = m.placesMeasured && sameAreas(m.placesMeasured.regions, picked) ? m.placesMeasured : null;
-    placesBox.append(el('p', 'map-approx', `The places are complete: ${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}. Updating them does not carry on from anything: it downloads every file again${pmAll ? ` (${bytes(pmAll.bytes)})` : ''}. The files on the server change a little each day, so once a month is plenty.`));
+    const ready = pmAll && pmAll.how === 'central';
+    placesBox.append(el('p', 'map-approx', ready
+      ? `The places are complete: ${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}. Updating fetches the ready-made set again (${bytes(pmAll.bytes)}, built on ${mapDay(pmAll.built)}) and puts it in their place. It takes a minute or two.`
+      : `The places are complete: ${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}. Updating fetches the ready-made set if it can be reached (tens of megabytes; press Measure the download to see). If it cannot, every regional file is downloaded again${pmAll ? ` (${bytes(pmAll.bytes)})` : ', about 13 GB'}.`));
     const leave = el('button', 'btn small', 'Leave them as they are');
     leave.type = 'button'; leave.id = 'map-places-leave';
     leave.addEventListener('click', () => { mapPlacesAgain = false; api.mapsPlacesDiscard().catch(() => {}).then(render); });
@@ -2207,7 +2255,7 @@ function paintMapSetup(m) {
   routeBox.append(routeBtn);
   parts.push(routeBox);
   const ovBox = el('fieldset', 'map-field');
-  ovBox.append(el('legend', '', 'Addresses and more places'));
+  ovBox.append(el('legend', '', 'Street addresses, and Overture\'s places on their own'));
   ovBox.append(el('p', 'small-print', `Street addresses, so that an address can be searched and driven to, and places that OpenStreetMap does not have, for the areas ticked above. Both come from Overture Maps, as large files that download quickly. Only the parts for these areas are fetched. ${m.overtureCredit}`));
   const ovSized = m.overtureMeasured && m.overtureMeasured.regions.join() === picked.join() ? m.overtureMeasured : null;
   const ovKinds = [['addresses', 'Addresses'], ['places', 'More places']];
@@ -2233,8 +2281,12 @@ function paintMapSetup(m) {
   ovBtn.addEventListener('click', () => guard(() => (ovSized ? api.mapsOvertureDownload(picked, ovPicked) : api.mapsOvertureMeasure(picked)), $('map-error')));
   ovBox.append(ovBtn);
   parts.push(ovBox);
+  // The parts, each on its own, are folded away: most people need only the button above.
+  const adv = document.createElement('details'); adv.id = 'map-advanced'; adv.className = 'map-advanced'; adv.open = mapAdvancedOpen;
+  adv.append(el('summary', '', 'Advanced map download settings'), el('p', 'small-print', 'Each part on its own: measure it, choose the detail of the map, fetch one thing and not another, or build the places on this computer when the ready-made set will not do.'), ...parts.slice(1));
+  adv.addEventListener('toggle', () => { mapAdvancedOpen = adv.open; try { localStorage.setItem('wv.mapAdvanced', adv.open ? '1' : '0'); } catch { /* not kept */ } });
   // Keep the boxes that are ticked: build the new content first, then swap.
-  box.replaceChildren(...parts);
+  box.replaceChildren(parts[0], one, adv);
 }
 
 function paintMapSearch(m) {
@@ -2821,6 +2873,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.31.0': [
+    'One list and one button in the Map section: tick the map, directions, places and street addresses, and press Download everything ticked.',
+    '"Places" is now one item. It fetches the ready-made set, and builds the places on this computer only when that cannot be had.',
+    'The part-by-part controls are still there, under Advanced map download settings.',
+  ],
   '0.30.1': [
     'The ready-made places are live: about 66 MB in place of 13 GB. Press Update the places once to get them, with their sorting and sizes.',
     'If the ready-made set cannot be reached, the app still builds the places on this computer as before; that way is also under Other ways.',

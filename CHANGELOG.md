@@ -2,6 +2,17 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.31.0 (2026-11-20)
+
+One list and one button for the map's downloads.
+
+- **"Places" is one thing.** There were two rows, *Places* (from OpenStreetMap) and *Addresses and more places* (from Overture), which was the app's plumbing showing through. Now there is one row, *Places: hospitals, fuel, shops, towns and more*, on the Setup page and in the Map section. It fetches the ready-made set, which holds both sources. When the set cannot be had, the same row builds OpenStreetMap's places on the computer and then fetches Overture's, without being asked. *Street addresses* stay a row of their own: they are large, and many people will not want them.
+- **The Map section has the Setup page's list.** Under *Change or update*: the regions, then *What to download* with a tick for the map, directions, places and street addresses, what each will take, the detail of the map, and one button, *Download everything ticked*. It fetches one thing after another, each from the quickest place it can be had, and leaves alone what is already here. The regions ticked there and on the Setup page are now the same choice.
+- **Advanced map download settings.** Everything that was on the panel before (measuring each part, choosing a level of detail, fetching one thing by hand, building the places from extracts or in small pieces, Overture's places on their own) is folded under that heading. It stays open for those who use it.
+- **A newer ready-made set is offered.** When the places on the computer were built here, or the ready-made set is a month newer than the one in use, the row says so and the one button fetches it.
+- **The warning before updating complete places says what will happen:** the ready-made set is fetched again, with its size and date, where it used to speak of downloading every regional file.
+- Street addresses still come straight from Overture Maps, not from GitHub. For places, building once saved every user 13 GB; for addresses there is no such saving, because what is fetched is already about what is kept (gigabytes), and hosting a copy would only add a second place for it to go stale.
+
 ## 0.30.1 (2026-11-20)
 
 The first real build of the ready-made places, and what it showed.

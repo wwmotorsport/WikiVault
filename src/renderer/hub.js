@@ -101,20 +101,26 @@ function hubItems() {
       out.push({ id: 'addresses', title: 'Street addresses', state: jobOf(['overture:addresses']) ? 'working' : adDone ? 'done' : w.addresses && regs.length ? 'todo' : 'off', tick: adDone ? null : 'addresses',
         detail: adDone ? `${m.addresses.addresses.toLocaleString()} addresses, ${bytes(m.addresses.bytes)}. Search an address, or get directions to one.` : 'Lets you search a street address and get directions to it. Large: the index needs several times its own size in working room while it is built.',
         bytes: adDone ? 0 : om && om.addresses ? om.addresses.bytes + om.addresses.rows * 14 : null });
+      // The places are one thing to the user, whichever of the two sources each came from. The ready-made set holds
+      // both; built here, they are two fetches, one after the other (see hubRun).
       const moreDone = Boolean(m.overture && hubSame(m.overture.regions, regs));
-      out.push({ id: 'more', title: 'Places: shops, fuel, hospitals and more', state: jobOf(['overture:places']) ? 'working' : moreDone ? 'done' : w.more && regs.length ? 'todo' : 'off', tick: moreDone ? null : 'more',
-        detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.${m.overture.sorted >= 2 ? '' : ' Fetched before places were sorted as they arrive: fetch them again in the Map section (Change or update) for sorting by exact kind and the official hospital list. It takes minutes.'}` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
-      const plDone = Boolean(m.places && !m.places.partial && hubSame(m.places.regions || [], regs));
-// Read out of regional extracts: a large download of which little is kept. `bytes` is what is still to
-      // download; `keeps` what stays on the disk, a guess until it is done; `room` adds the largest file, held while it is read.
-      const pm = m.placesHow === 'extract' && m.placesMeasured && hubSame(m.placesMeasured.regions, regs) ? m.placesMeasured : null;
-      const plKeeps = pm ? (pm.how === 'central' ? Math.round(pm.bytes * 3.5) : Math.round(pm.left * 0.02)) : null;
-      out.push({ id: 'places', title: 'Places: towns, water, power and services', state: jobOf(['places']) ? 'working' : plDone ? 'done' : w.places && regs.length ? 'todo' : 'off', tick: plDone ? null : 'places',
-        detail: plDone ? `${m.places.total.toLocaleString()} places from OpenStreetMap.` : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} ${m.placesKept.how === 'extract' ? 'files were read' : 'pieces were fetched'} before it stopped, and what they held is kept. Fetching again carries on from there.`
-          : pm && pm.how === 'central' ? `A ready-made set of places from OpenStreetMap and Overture Maps, already sorted into kinds, built on ${String(pm.built).slice(0, 10)} and rebuilt every week. It takes the place of hours of downloading and sorting on this computer.`
-          : m.placesHow === 'extract' ? `Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Read out of regional extracts, one file to a state: each is downloaded, read here and deleted, the nearest to home first, so most of what is downloaded is not kept.${pm ? ` Needs ${bytes(pm.largest)} of room while it works.` : ''} What has been read can be searched straight away.`
-            : 'Places from OpenStreetMap, including the kinds Overture does not have: towns, water works, power plants, springs. Small, but slow: it comes from free, shared servers in small pieces, the nearest to home first.',
-        bytes: plDone ? 0 : pm ? pm.left : null, keeps: plDone ? 0 : plKeeps, room: plDone ? 0 : pm ? plKeeps + pm.largest : null, sizeNote: m.placesHow === 'extract' ? '' : 'small' });
+      const osmDone = Boolean(m.places && !m.places.partial && hubSame(m.places.regions || [], regs));
+      const plDone = osmDone && moreDone;
+      const pm = m.placesMeasured && hubSame(m.placesMeasured.regions, regs) ? m.placesMeasured : null;
+      const ready = pm && pm.how === 'central' ? pm : null;
+      // A ready-made set is worth fetching over places built here (it is sorted, and has sizes), or over a set a month older.
+      const newer = Boolean(plDone && ready && (!m.places.built || !(m.overture.sorted >= 2) || Date.parse(ready.built) - Date.parse(m.places.built) > 30 * 86400000));
+      const wantPl = w.places && regs.length;
+      const plBytes = ready ? ready.bytes : pm ? pm.left + (moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : 0) : null;
+      const plKeeps = ready ? Math.round(ready.bytes * 3.5) : pm ? Math.round(pm.left * 0.02) : null;
+      const total = (m.places ? m.places.total : 0) + (m.overture ? m.overture.total : 0);
+      out.push({ id: 'places', title: 'Places: hospitals, fuel, shops, towns and more', state: jobOf(['places', 'overture:places']) ? 'working' : plDone ? (newer && wantPl ? 'update' : 'done') : wantPl ? 'todo' : 'off', tick: plDone && !newer ? null : 'places',
+        detail: plDone && !newer ? `${total.toLocaleString()} places, sorted into kinds.`
+          : plDone ? `${total.toLocaleString()} places are here. A ready-made set built on ${String(ready.built).slice(0, 10)} can take their place: sorted by exact kind, checked against the official hospital list, and with the size of each place.`
+            : m.placesKept && hubSame(m.placesKept.regions || [], regs) ? `${m.placesKept.done} of ${m.placesKept.total} ${m.placesKept.how === 'extract' ? 'files were read' : 'pieces were fetched'} before it stopped, and what they held is kept. Fetching carries on from there.`
+              : ready ? `A ready-made set of places from OpenStreetMap and Overture Maps, already sorted into kinds, built on ${String(ready.built).slice(0, 10)} and rebuilt every week.`
+                : 'Places from OpenStreetMap and Overture Maps. The ready-made set could not be reached, so they are built on this computer: a large download (about 13 GB for the whole continent) of which little is kept.',
+        bytes: plDone && !newer ? 0 : plBytes, keeps: plDone && !newer ? 0 : plKeeps, room: plDone && !newer ? 0 : pm ? plKeeps + pm.largest : null, sizeNote: '' });
     }
     // 5. Other libraries
     for (const lib of state.libraries || []) {
@@ -152,7 +158,8 @@ function hubHave(id) {
   if (id.startsWith('lib:')) return of((state.libraries || []).find((x) => x.id === id.slice(4)));
   if (id === 'school') return (s && s.bytes) || null;
   if (!m) return null;
-  const kept = { map: m.map, routing: m.routing, addresses: m.addresses, more: m.overture, places: m.places }[id];
+  if (id === 'places') return ((m.places && m.places.bytes) || 0) + ((m.overture && m.overture.bytes) || 0) || null;
+  const kept = { map: m.map, routing: m.routing, addresses: m.addresses }[id];
   return (kept && kept.bytes) || null;
 }
 
@@ -222,6 +229,8 @@ function renderHub(force) {
   const left = items.filter(hubLeft);
   $('hub-badge').hidden = !left.length; $('hub-badge').textContent = String(left.length);
   if (!hub.resumed && state.settings.hub.running && !hub.running) { hub.resumed = true; hubRun(); }
+  // The Map section shows the same rows and the same button for the map's own things.
+  if (view === 'map' && typeof mapSetupOpen !== 'undefined' && mapSetupOpen && state.maps) paintMapSetup(state.maps);
   if (view !== 'hub' && !$('hub-pop').open) return;
   const focused = document.activeElement && $('hub-steps').contains(document.activeElement) ? document.activeElement : null;
   if (focused && focused.tagName === 'SELECT' && !force) return; // a list is open: do not pull it from under the pointer
@@ -324,9 +333,9 @@ function renderHub(force) {
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));
   else if (hub.autoNote) total.append(el('p', 'small-print', hub.autoNote));
-  const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'more'].includes(it.id) && hubLeft(it) && it.bytes == null) || Object.keys(w.libs).some((id) => w.libs[id] && hub.sizes.libs[id] == null);
+  const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'places'].includes(it.id) && hubLeft(it) && it.bytes == null) || Object.keys(w.libs).some((id) => w.libs[id] && hub.sizes.libs[id] == null);
   $('hub-sizes').hidden = !anyMap && hub.sizes.wikipedia != null;
-  const key = JSON.stringify([w.regions, w.level, Object.keys(w.libs).filter((id) => w.libs[id]).sort(), ['map', 'routing', 'addresses', 'more'].filter((id) => w[id])]);
+  const key = JSON.stringify([w.regions, w.level, Object.keys(w.libs).filter((id) => w.libs[id]).sort(), ['map', 'routing', 'addresses', 'places'].filter((id) => w[id])]);
   if (anyMap && !hub.running && !hub.measuring && hub.autoKey !== key && state.maps && !state.maps.job) {
     clearTimeout(hub.autoTimer);
     hub.autoTimer = setTimeout(() => { if (hub.running || hub.measuring || (view !== 'hub' && !$('hub-pop').open)) return; hub.autoKey = key; hubMeasure(true); }, 900);
@@ -352,8 +361,10 @@ async function hubMeasure(auto = false) {
   if (m && w.regions.length) {
     if (open('map')) await attempt('Map', () => hubMapJob(() => api.mapsMeasure(w.regions)));
     if (open('routing')) await attempt('Directions', () => hubMapJob(() => api.mapsRoutingMeasure(w.regions)));
-    if (open('addresses') || open('more')) await attempt('Addresses and places', () => hubMapJob(() => api.mapsOvertureMeasure(w.regions)));
-    if (m.placesHow === 'extract' && open('places')) await attempt('Places', () => hubMapJob(() => api.mapsPlacesMeasure(w.regions)));
+    // The places first: when the ready-made set is there, Overture need not be asked about its places at all.
+    const pmNow = () => { const x = state.maps.placesMeasured; return x && hubSame(x.regions, w.regions) ? x : null; };
+    if (m.placesHow === 'extract' && w.places && !pmNow()) await attempt('Places', () => hubMapJob(() => api.mapsPlacesMeasure(w.regions)));
+    if (open('addresses') || (open('places') && !(pmNow() && pmNow().how === 'central'))) await attempt('Addresses and places', () => hubMapJob(() => api.mapsOvertureMeasure(w.regions)));
   }
   hub.measuring = false;
   // Asked for by the page itself, a failure (no connection, most likely) is a note, not an error.
@@ -363,7 +374,7 @@ async function hubMeasure(auto = false) {
 }
 
 /** Fetch everything ticked that is not there yet, one thing after another. */
-async function hubRun() {
+async function hubRun(only = null) {
   if (hub.running) return;
   hub.running = true; hub.stopAsked = false; hub.errors = {}; $('hub-error').hidden = true;
   hubWant();
@@ -371,7 +382,7 @@ async function hubRun() {
   renderHub(true);
   const w = hubWant();
   const item = (id) => hubItems().find((it) => it.id === id);
-  const due = (id) => { const it = item(id); return Boolean(it && hubLeft(it)); };
+  const due = (id) => { if (only && !only.includes(id)) return false; const it = item(id); return Boolean(it && hubLeft(it)); };
   const step = async (id, fn) => {
     if (hub.stopAsked || !due(id)) return;
     hub.current = id; delete hub.errors[id]; renderHub(true);
@@ -385,19 +396,21 @@ async function hubRun() {
     await step('school', async () => { await api.schoolDownload(); await hubUntil(() => Boolean(state.school.job), 4000).catch(() => {}); await hubUntil(() => !state.school.job); if (state.school.error) throw new Error(state.school.error); });
     await step('map', () => hubMapJob(() => api.mapsDownload(w.regions, w.level)));
     await step('routing', () => hubMapJob(() => api.mapsRoutingDownload(w.regions)));
-    const kinds = [due('addresses') ? 'addresses' : '', due('more') ? 'places' : ''].filter(Boolean);
-    // Places before addresses: they are quick, and the addresses take the longest of all.
-    if (kinds.includes('places')) await step('more', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['places'])));
-    if (kinds.includes('addresses')) await step('addresses', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['addresses'])));
-    // A fetch of the places can fail part of the way. What arrived is kept, so it is simply asked for again a few times.
+    // The places: the ready-made set when it can be had, which holds both sources. When it cannot, the app builds
+    // OpenStreetMap's places here, and then Overture's are fetched as well. A fetch can fail part of the way; what
+    // arrived is kept, so it is asked for again a few times.
     await step('places', async () => {
       for (let round = 0; ; round++) {
-        try { await hubMapJob(() => api.mapsPlaces(w.regions, typeof gpsPoint === 'function' ? gpsPoint() : null)); return; } catch (err) {
+        try { await hubMapJob(() => api.mapsPlaces(w.regions, typeof gpsPoint === 'function' ? gpsPoint() : null)); break; } catch (err) {
           if (hub.stopAsked || round >= 3 || !/carries on from there|to carry on/.test(err.message)) throw err;
           await new Promise((r) => setTimeout(r, 30000));
         }
       }
+      const ov = state.maps.overture;
+      if (!hub.stopAsked && !(ov && hubSame(ov.regions, w.regions))) await hubMapJob(() => api.mapsOvertureDownload(w.regions, ['places']));
     });
+    // The addresses last: they take the longest of all.
+    await step('addresses', () => hubMapJob(() => api.mapsOvertureDownload(w.regions, ['addresses'])));
     const libs = (state.libraries || []).filter((l) => due(`lib:${l.id}`));
     if (libs.length && !hub.stopAsked) {
       await hubUntil(() => Boolean(state.edition && state.edition.active)); // the other libraries open in Wikipedia's reader, so they wait for it
