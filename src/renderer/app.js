@@ -1805,6 +1805,8 @@ let mapHits = { total: 0, hits: [] };
 let mapSelected = null;    // id of the place whose details are open
 let mapPopup = null;
 let mapAsked = 0;
+let mapErrorJob = null;     // the kind of job running when the error line was last cleared
+let mapPlacesAgain = false; // asked once whether a complete set of places is really to be downloaded again
 // The look chosen for the map (dark or not, kinds of feature switched off), kept between runs.
 let mapLook = { dark: false, off: [] };
 try { mapLook = WikivaultMapStyle.clean(JSON.parse(localStorage.getItem('wikivault-map-look') || '{}')); } catch { /* the default look */ }
@@ -2142,14 +2144,31 @@ function paintMapSetup(m) {
   const placesBox = el('fieldset', 'map-field');
   placesBox.append(el('legend', '', 'Places'));
   placesBox.append(el('p', 'small-print', 'Hospitals, pharmacies, fire and police, water and power works, fuel, food, hardware and other supplies, airfields and towns, for the areas ticked above.'));
+  const sameAreas = (a, b) => a.slice().sort().join() === b.slice().sort().join();
   const whole = m.places && !m.places.partial;
-  const getPlaces = el('button', whole ? 'btn small' : 'btn primary', whole ? 'Update the places' : m.places || m.placesKept ? 'Carry on fetching the places' : 'Fetch the places');
+  const getPlaces = el('button', whole ? 'btn small' : 'btn primary', whole ? (m.placesKept ? `Carry on updating the places (${m.placesKept.done} of ${m.placesKept.total} read)` : 'Update the places') : m.places || m.placesKept ? 'Carry on fetching the places' : 'Fetch the places');
   getPlaces.type = 'button'; getPlaces.id = 'map-places'; getPlaces.disabled = busy || !picked.length;
   const nearNow = () => (typeof gpsPoint === 'function' ? gpsPoint() : null);
-  getPlaces.addEventListener('click', () => guard(() => api.mapsPlaces(picked, nearNow()), $('map-error')));
+  // A complete set fetched lately is not downloaded all over again on one click: that is many gigabytes, and the
+  // server asks that files are not fetched again without need.
+  const recent = whole && !m.placesKept && m.placesHow === 'extract' && Date.now() - Date.parse(m.places.date) < 14 * 86400000 && sameAreas(m.places.regions || [], picked);
+  if (recent && mapPlacesAgain) getPlaces.textContent = 'Yes, download them all again';
+  getPlaces.addEventListener('click', () => {
+    if (recent && !mapPlacesAgain) { mapPlacesAgain = true; render(); return; }
+    mapPlacesAgain = false;
+    guard(() => api.mapsPlaces(picked, nearNow()), $('map-error'));
+  });
+  if (recent && mapPlacesAgain) {
+    const pmAll = m.placesMeasured && sameAreas(m.placesMeasured.regions, picked) ? m.placesMeasured : null;
+    placesBox.append(el('p', 'map-approx', `The places are complete: ${m.places.total.toLocaleString()} places, fetched on ${mapDay(m.places.date)}. Updating them does not carry on from anything: it downloads every file again${pmAll ? ` (${bytes(pmAll.bytes)})` : ''}. The files on the server change a little each day, so once a month is plenty.`));
+    const leave = el('button', 'btn small', 'Leave them as they are');
+    leave.type = 'button'; leave.id = 'map-places-leave';
+    leave.addEventListener('click', () => { mapPlacesAgain = false; api.mapsPlacesDiscard().catch(() => {}).then(render); });
+    placesBox.append(leave);
+  }
   if (m.placesHow === 'extract') {
     // The quick way: a regional extract to a state, downloaded whole, read here, and deleted.
-    const pm = m.placesMeasured && m.placesMeasured.regions.slice().sort().join() === picked.slice().sort().join() ? m.placesMeasured : null;
+    const pm = m.placesMeasured && sameAreas(m.placesMeasured.regions, picked) ? m.placesMeasured : null;
     placesBox.append(el('p', 'small-print', `They are read out of regional OpenStreetMap extracts, one file to a state or province: each is downloaded, read on this computer and deleted, the nearest to home first. ${pm ? `${pm.files} files, ${bytes(pm.left)} still to download; the largest is ${bytes(pm.largest)}, which is the room needed while it works. Only a small part of that is kept.` : 'That is a large download for what is kept (about 11 GB for the contiguous United States), but a quick and dependable one.'}${pm && pm.missing.length ? ` Not on the server: ${pm.missing.join(', ')}.` : ''}`));
     const size = el('button', 'btn small', pm ? 'Measure again' : 'Measure the download');
     size.type = 'button'; size.id = 'map-places-measure'; size.disabled = busy || !picked.length;
@@ -2583,6 +2602,8 @@ function renderMap() {
   $('nav-map').setAttribute('aria-pressed', String(view === 'map'));
   if (!m || view !== 'map') return;
   $('map-credit').textContent = m.credit;
+  // What last went wrong is shown until something is fetched again: an error from an hour ago must not sit above a download that has since finished.
+  if (m.job && m.job.kind !== mapErrorJob) { mapErrorJob = m.job.kind; $('map-error').hidden = true; } else if (!m.job) mapErrorJob = null;
   if (m.error) { $('map-error').textContent = m.error; $('map-error').hidden = false; }
   paintMapJob(m);
   paintMapSummary(m);
@@ -2789,6 +2810,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.28.1': [
+    'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
+    'Map: dragging the map no longer opens the card for a spot. Only a single click does.',
+    'Places: files replaced on the server during a long download are fetched again at once, and updating a complete set asks first.',
+  ],
   '0.28.0': [
     'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
     'The answer lists them with distances, puts them on the map, and gives directions to any of them. "There" means the place just found.',

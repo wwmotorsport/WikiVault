@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   mapsDownload: (regions, zoom) => call('maps:download', { regions, zoom }),
   mapsPlaces: (regions, near, how) => call('maps:places', { regions, near: near || null, how: how || null }),
   mapsPlacesMeasure: (regions) => call('maps:places-measure', { regions }),
+  mapsPlacesDiscard: () => call('maps:places-discard'),
   mapsCancel: () => call('maps:cancel'),
   mapsSearch: (o) => call('maps:search', o),
   mapsOrigin: () => call('maps:origin'),
