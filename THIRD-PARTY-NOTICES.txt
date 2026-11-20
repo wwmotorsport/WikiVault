@@ -967,6 +967,12 @@ Routing data (rd5 files)
 Addresses and added places
   From the Overture Maps Foundation (https://overturemaps.org), downloaded only if you ask for them. Places: CDLA Permissive 2.0, with contributions from Meta, Microsoft, Foursquare (Apache 2.0) and others. Addresses: gathered by Overture from many public sources, among them the US National Address Database and sources collected by OpenAddresses, each under its own open licence. The full list of sources and what each asks for is at https://docs.overturemaps.org/attribution/.
 
+Brand names used to sort places
+  From the Name Suggestion Index (https://nsi.guide), the list of brands kept by OpenStreetMap's contributors, under the BSD 3-Clause licence. A cut of it is packed with the app; a newer one is fetched from cdn.jsdelivr.net when you fetch places.
+
+The list of hospitals of the United States
+  Hospital General Information, from the Centers for Medicare & Medicaid Services (https://data.cms.gov), a work of the United States government in the public domain. Fetched with the places, only if you ask for them.
+
 The map and the places on it
   Map data and places © OpenStreetMap contributors, under the Open Database License (https://www.openstreetmap.org/copyright). The map file is cut from the Protomaps world basemap (https://protomaps.com), which is built from OpenStreetMap and Natural Earth. Places are asked for through the Overpass API. Both are downloaded only if you ask for them.
 

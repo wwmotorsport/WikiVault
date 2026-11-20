@@ -2,6 +2,20 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.29.0 (2026-11-19)
+
+Places are sorted when they are fetched, from three public sources.
+
+0.28.3 sorted Overture's places by the words in their names, because that was all the fetched records held. This version sorts them as they arrive, when more is to hand, and asks the name last.
+
+- **The app's list of Overture's kinds was wrong, and is now Overture's own.** Of the 120 kind names the app asked for, 71 are not in Overture's published taxonomy of 2,302 kinds. That is why ambulance stations, medical supply shops and power plants received nothing and gun shops twelve, and the fallback to wider kinds is why golf, bicycle and clothes shops arrived as outdoor shops, airport terminals as airfields and recruiting offices as military sites. The list now names real kinds exactly; a kind under a listed one is taken only where the list says so. A test checks every listed name against the taxonomy.
+- **Brands.** The Name Suggestion Index, OpenStreetMap's public list of brands and what each is, settles the branches of chains: on a real download, 30% of places. Aldi goes to the supermarkets, CAT Scale is left out of the fuel, Sherwin-Williams is marked as a paint shop. A cut of the index is packed with the app (`assets/maps/brands.json`, made by `scripts/make-brands.js`); a fresh one is fetched with the places from `cdn.jsdelivr.net`. Where Overture gives a brand's Wikidata id, that is used before the name. The index is deliberately not trusted too far: it never moves a pharmacy counter or a set of pumps to the shop around them, never moves a place in with the fuel on a shared name alone, and is not asked about fire or police stations.
+- **Medicare's list of hospitals** (5,435 of them, public domain, from `data.cms.gov`) is fetched when a United States region is chosen and laid over the places when they are read: matched by telephone, or by postcode or town and name, never to a department or office of the hospital. A match makes the place a hospital whatever its name says, and gives it the list's word on its emergency room. In a state where at least 70% of the list is matched, a place Overture calls a hospital that is not on the list is marked as a lesser sort. Tried on 51 real rows against a real download: 48 found, and hospitals named like "Atrium Health Union", which the name rule had sent to the clinics, came back.
+- **New from Overture:** emergency departments (listed with the hospitals, emergency room: yes), ambulance and EMS services, medical supply shops, gun shops and warehouse clubs, by their exact kinds. Psychiatric, rehabilitation and long-term care hospitals are kept as a lesser sort of hospital.
+- **Each fetched place keeps Overture's own kind**, and the fetch records how many places were settled by brand, by kind and by name (in the log and in `overture.json`).
+- **To get all this, fetch the addresses and added places again** (Map, *Change or update*). It takes minutes. The Setup page says so where the places on the computer were fetched before. Until then, places already fetched are sorted when read, by brand and name; the hospital list is fetched only with a new fetch. The large OpenStreetMap places download is not affected and need not be repeated.
+- Not done: Canada's and Mexico's official hospital lists; fire, police and ambulance have no maintained official list since the federal HIFLD portal closed in 2025.
+
 ## 0.28.3 (2026-11-19)
 
 Every kind of place checked against the other source.

@@ -145,18 +145,131 @@ function keepsOsm(cat, name) {
   return !(NOT_OUTDOOR.test(n) && !OUTDOOR.test(n) && !GUNS.test(n));
 }
 
-// Which kinds can receive places that were fetched under another kind.
-const FROM = { clinic: ['hospital'], weapons: ['outdoor'], supermarket: ['department'], fuel: ['supermarket', 'rest_area'], police: ['fire'], fire: ['police'], medical_supply: ['pharmacy'] };
+// ---- Brands -------------------------------------------------------------------------------------------------------
+// The Name Suggestion Index (nsi.guide, BSD licence) is OpenStreetMap's list of brands, each with the tags a place of
+// that brand should carry: Aldi is shop=supermarket, CAT Scale is amenity=weighbridge. For the third of Overture's
+// places that are branches of a chain, it says what the place is with no guessing. A cut of it for North America is
+// packed with the app (assets/maps/brands.json) and a fresh one is fetched when places are.
+
+const foldBrand = (s) => fold(s).replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** The index as fetched, cut down to what sorting needs: for each brand name and Wikidata id, the tags of the brand. */
+function reduceBrands(nsiJson, version = '') {
+  const names = {}; const ids = {};
+  const add = (into, key, tag) => { if (!key) return; const l = into[key] || (into[key] = []); if (!l.includes(tag)) l.push(tag); };
+  for (const [where, group] of Object.entries((nsiJson && nsiJson.nsi) || {})) {
+    if (!where.startsWith('brands/')) continue;
+    const tag = where.split('/').slice(1).join('=');
+    for (const it of group.items || []) {
+      const inc = ((it.locationSet && it.locationSet.include) || []).map((x) => String(x).toLowerCase());
+      if (!inc.some((x) => x === '001' || x === '019' || x === '021' || /^(us|ca|mx)\b/.test(x))) continue;
+      const t = it.tags || {};
+      for (const n of [it.displayName, t.name, t.brand, ...(it.matchNames || [])]) add(names, foldBrand(n), tag);
+      if (/^Q\d+$/.test(t['brand:wikidata'] || '')) add(ids, t['brand:wikidata'], tag);
+    }
+  }
+  return { version: version || (nsiJson && nsiJson._meta && nsiJson._meta.version) || '', names, ids };
+}
+
+// What a brand's tag means here: the kinds it fits (the first is where a place is moved to), or nothing of ours.
+const fits = (...c) => ({ c });
+const BRAND_TAGS = {
+  'amenity=fuel': fits('fuel'), 'amenity=pharmacy': fits('pharmacy'), 'shop=chemist': fits('pharmacy'),
+  'shop=supermarket': fits('supermarket'), 'shop=greengrocer': fits('supermarket'),
+  'shop=department_store': fits('department'), 'shop=variety_store': fits('department'), 'shop=general': fits('department'),
+  'shop=doityourself': fits('hardware'), 'shop=hardware': fits('hardware'), 'shop=trade': fits('hardware'),
+  'shop=paint': { c: ['hardware'], kind: 'Paint shop', less: true },
+  'shop=country_store': fits('farm_supply', 'hardware'), 'shop=agrarian': fits('farm_supply'),
+  'shop=outdoor': fits('outdoor'), 'shop=sports': fits('outdoor'),
+  'shop=bicycle': { c: ['outdoor'], kind: 'Bicycle shop', less: true },
+  'shop=weapons': fits('weapons'), 'shop=hunting': fits('weapons', 'outdoor'), 'shop=fishing': fits('outdoor'),
+  'shop=wholesale': fits('wholesale'), 'shop=gas': fits('propane'),
+  'amenity=vending_machine': { c: ['propane'], kind: 'Cylinder exchange at a shop', less: true, only: ['propane'] },
+  'amenity=veterinary': fits('veterinary'), 'amenity=clinic': fits('clinic'), 'amenity=doctors': fits('clinic'), 'amenity=hospital': fits('hospital'),
+  'shop=medical_supply': fits('medical_supply'), 'tourism=camp_site': fits('campsite'), 'tourism=caravan_site': fits('campsite'),
+  'highway=services': fits('rest_area', 'fuel'), 'highway=rest_area': fits('rest_area'),
+  // A corner shop is none of the map's kinds, but many sell fuel or groceries: its brand settles nothing.
+  'shop=convenience': null,
+};
+// Tags of a brand that is plainly none of the map's kinds. A tag in neither list (a tyre bay, an optician) is passed
+// over: big shops have many departments, and the index lists them all under the one name.
+const BRAND_OUT = new Set(['amenity=weighbridge', 'shop=clothes', 'shop=shoes', 'shop=fashion_accessories', 'shop=swimming_pool', 'shop=houseware', 'shop=furniture', 'shop=interior_decoration', 'shop=mobile_phone', 'shop=electronics', 'shop=nutrition_supplements', 'shop=alcohol', 'shop=flooring', 'shop=tiles', 'shop=plant_hire', 'shop=car_repair', 'shop=pet', 'shop=gift', 'shop=hearing_aids', 'shop=storage_rental', 'amenity=bank', 'amenity=atm', 'amenity=money_transfer', 'amenity=post_office', 'amenity=fast_food', 'amenity=restaurant', 'amenity=cafe', 'amenity=ice_cream', 'amenity=car_rental', 'amenity=training', 'healthcare=laboratory', 'tourism=hotel', 'office=insurance']);
+// A sandwich counter inside a filling station does not make the station a sandwich shop.
+const EATS = new Set(['amenity=fast_food', 'amenity=restaurant', 'amenity=cafe', 'amenity=ice_cream']);
+const WITH_EATS = new Set(['fuel', 'rest_area']);
+// A pharmacy counter inside a supermarket is a pharmacy, and pumps outside one are fuel: the brand of the shop around
+// them does not move the place.
+const BRAND_NO_MOVE = new Set(['pharmacy', 'fuel', 'rest_area']);
+// Brands are shops and chains: the index has nothing to say of a fire station, and a clothes brand called "Police" exists.
+const BRAND_KINDS = new Set(['hospital', 'clinic', 'pharmacy', 'medical_supply', 'veterinary', 'fuel', 'propane', 'supermarket', 'wholesale', 'department', 'hardware', 'farm_supply', 'outdoor', 'weapons', 'rest_area', 'campsite']);
+const FUELISH = /\b(?:gas|gasolin\w*|fuels?|petrol\w*|diesel)\b/;
+
+/** What the brand says of a place now under `cat`: 'keep', `{ c, kind?, less? }` to move or mark it, 'out', or null for no opinion. */
+function byBrand(cat, name, brands, id) {
+  if (!brands || !BRAND_KINDS.has(cat)) return null;
+  const sure = Boolean(id && brands.ids && brands.ids[id]);
+  const tags = sure ? brands.ids[id] : brands.names && brands.names[foldBrand(name)];
+  if (!tags || !tags.length) return null;
+  let move = null; let open = false; let out = false;
+  for (const tag of tags) {
+    if (BRAND_OUT.has(tag)) { if (!(EATS.has(tag) && WITH_EATS.has(cat))) out = true; continue; }
+    if (!(tag in BRAND_TAGS)) continue;
+    const m = BRAND_TAGS[tag];
+    if (!m) { open = true; continue; }             // settles nothing
+    if (m.only && !m.only.includes(cat)) continue;
+    if (m.c.includes(cat)) return m.kind ? { c: cat, kind: m.kind, less: m.less } : 'keep';
+    // Of several kinds a big brand covers, the shop itself comes before its pharmacy counter or its pumps.
+    if (!move || ((move.c[0] === 'fuel' || move.c[0] === 'pharmacy') && m.c[0] !== 'fuel' && m.c[0] !== 'pharmacy')) move = m;
+  }
+  if (open) return null;
+  if (move && !BRAND_NO_MOVE.has(cat)) {
+    // Brand names collide (Puma the fuel company, Puma the shoe maker): by name alone, a place is moved in with the
+    // fuel stations only when its name speaks of fuel.
+    if (move.c[0] !== 'fuel' || sure || FUELISH.test(fold(name))) return { c: move.c[0], kind: move.kind, less: move.less };
+    return null;
+  }
+  return out ? 'out' : null;
+}
+
+// Overture kinds that say enough on their own: the name is not asked to confirm them.
+const TRUSTED = new Set(['emergency_department', 'outdoor_store', 'hunting_and_fishing_store', 'archery_store', 'army_and_navy_store', 'military_surplus_store', 'tactical_supply_store', 'gun_and_ammo_store', 'gunsmith', 'bike_store', 'dive_store', 'ski_and_snowboard_store', 'paint_store', 'electrical_supply_store', 'welding_supply_store', 'veterans_hospital', 'childrens_hospital', 'psychiatric_hospital', 'rehabilitation_hospital', 'long_term_care_hospital', 'specialty_hospital', 'medical_supply_store', 'ambulance_or_ems_service', 'warehouse_club_store', 'lumber_store']);
 
 /**
- * The Overture places of one kind, from the lists as they were fetched: `read(kind)` gives a fetched list.
+ * Where a place from Overture goes, by all that is known of it, strongest first: the brand, Overture's own kind
+ * (`at` is what the app's list makes of that kind: `{ c, kind?, less? }`), and last the words of the name.
+ * Returns `{ c, kind?, less?, by }`, or null for a place that is none of the map's kinds.
+ */
+function settle(at, name, { own = '', brands = null, brandId = '' } = {}) {
+  const b = byBrand(at.c, name, brands, brandId);
+  // A maker of outdoor clothes is listed by the index as a clothes shop; its shops are outdoor shops all the same.
+  if (b === 'out' && !(at.c === 'outdoor' && OUTDOOR.test(fold(name)))) return null;
+  if (b && b !== 'keep' && b !== 'out') return { c: b.c, ...(b.kind ? { kind: b.kind } : {}), ...(b.less ? { less: true } : {}), by: 'brand' };
+  if (b === 'keep') return { ...at, by: 'brand' };
+  if (own && TRUSTED.has(own)) {
+    // A hunting shop named for its guns is listed with the gun shops.
+    if (at.c === 'outdoor' && !at.less && GUNS.test(fold(name))) return { c: 'weapons', by: 'name' };
+    return { ...at, ...(own === 'emergency_department' ? { kind: 'Emergency department' } : {}), by: 'kind' };
+  }
+  const s = sortPlace(at.c, name);
+  if (!s) return null;
+  if (s.c !== at.c) return { ...s, by: 'name' };
+  return { c: at.c, ...(s.kind || at.kind ? { kind: s.kind || at.kind } : {}), ...(s.less || at.less ? { less: true } : {}), by: s.kind || s.less ? 'name' : 'kind' };
+}
+
+// Which kinds can receive places that were fetched under another kind.
+// With brands, a place can be moved from any kind to any other, so every list is read for every kind the first time.
+const FROM = { clinic: ['hospital'], weapons: ['outdoor'], supermarket: ['department', 'wholesale', 'farm_supply'], fuel: ['supermarket', 'rest_area'], police: ['fire'], fire: ['police'], medical_supply: ['pharmacy', 'hospital'], department: ['hardware', 'farm_supply', 'outdoor'], hardware: ['farm_supply', 'outdoor'], farm_supply: ['hardware'], wholesale: ['supermarket', 'department'], outdoor: ['campsite'], pharmacy: ['clinic'] };
+
+/**
+ * The Overture places of one kind, from lists fetched before 0.29 (which were not sorted when fetched, and do not keep
+ * Overture's own kind): `read(kind)` gives a fetched list, and the brand and the name are all there is to go by.
  * Places that belong elsewhere are not in it; places that belong here but were fetched under another kind are.
  */
-function sorted(id, read) {
+function sorted(id, read, brands = null) {
   const out = [];
   for (const src of [id, ...(FROM[id] || [])]) {
     for (const r of read(src)) {
-      const s = sortPlace(src, r.n);
+      const s = settle({ c: src }, r.n, { brands });
       if (!s || s.c !== id) continue;
       if (s.kind || s.less) { const x = { ...r, x: { ...(r.x || {}), ...(s.kind ? { kind: s.kind } : {}) } }; if (s.less) x.less = true; out.push(x); } else out.push(r);
     }
@@ -164,4 +277,4 @@ function sorted(id, read) {
   return out;
 }
 
-module.exports = { sortPlace, sorted, keepsOsm, isHospitalName, FROM };
+module.exports = { sortPlace, sorted, settle, byBrand, reduceBrands, foldBrand, keepsOsm, isHospitalName, FROM, TRUSTED };

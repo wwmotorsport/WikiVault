@@ -104,3 +104,102 @@ test('Ask: places of a lesser sort do not fill the list of the nearest; the near
   const one = mapAsk.plan(mapAsk.parseNear('where can I get propane near home'), ctx);
   assert.deepEqual(one.hits.map((h) => (h.less ? 'cage' : h.n)), ['cage', 'cage', 'Suburban Propane', 'Hill Gas Co', 'Valley Propane']);
 });
+
+test('the brand index: cut down, and what a brand settles', () => {
+  const { reduceBrands, byBrand, settle } = require('../src/core/place-sort');
+  const nsi = { nsi: {
+    'brands/shop/supermarket': { items: [{ displayName: 'Aldi', locationSet: { include: ['001'] }, tags: { name: 'Aldi', brand: 'Aldi', 'brand:wikidata': 'Q125054' }, matchNames: ['aldi sud'] }, { displayName: 'Mercadona', locationSet: { include: ['es'] }, tags: { name: 'Mercadona' } }] },
+    'brands/amenity/weighbridge': { items: [{ displayName: 'CAT Scale', locationSet: { include: ['us', 'ca'] }, tags: { name: 'CAT Scale' } }] },
+    'brands/shop/convenience': { items: [{ displayName: 'Quik Stop', locationSet: { include: ['us-ca.geojson'] }, tags: { name: 'Quik Stop' } }] },
+    'brands/amenity/fuel': { items: [{ displayName: 'Quik Stop', locationSet: { include: ['us'] }, tags: { name: 'Quik Stop' } }, { displayName: 'Puma', locationSet: { include: ['mx'] }, tags: { name: 'Puma' } }] },
+    'brands/shop/clothes': { items: [{ displayName: 'Summit Wear', locationSet: { include: ['001'] }, tags: { name: 'Summit Wear' } }, { displayName: 'Peak Outfitters', locationSet: { include: ['001'] }, tags: { name: 'Peak Outfitters' } }] },
+    'brands/amenity/fast_food': { items: [{ displayName: 'Subz', locationSet: { include: ['us'] }, tags: { name: 'Subz' } }] },
+    'operators/amenity/police': { items: [{ displayName: 'Police', locationSet: { include: ['001'] }, tags: {} }] },
+  } };
+  const b = reduceBrands(nsi, 'test');
+  assert.deepEqual([b.version, b.names.aldi, b.names['aldi sud'], b.ids.Q125054, b.names.mercadona, b.names.police], ['test', ['shop=supermarket'], ['shop=supermarket'], ['shop=supermarket'], undefined, undefined]);
+  assert.deepEqual(b.names['quik stop'], ['shop=convenience', 'amenity=fuel']);
+  assert.equal(byBrand('supermarket', 'ALDI', b), 'keep');
+  assert.deepEqual(byBrand('department', 'Aldi', b), { c: 'supermarket', kind: undefined, less: undefined });
+  assert.deepEqual(byBrand('department', 'Store 14', b, 'Q125054'), { c: 'supermarket', kind: undefined, less: undefined }, 'by Wikidata id, whatever the branch is called');
+  assert.equal(byBrand('fuel', 'CAT Scale', b), 'out');
+  assert.equal(byBrand('fuel', 'Quik Stop', b), 'keep');
+  assert.equal(byBrand('supermarket', 'Quik Stop', b), null, 'a corner shop brand settles nothing');
+  assert.equal(byBrand('outdoor', 'Puma', b), null, 'not moved in with the fuel on a shared name');
+  assert.equal(byBrand('fuel', 'Subz', b), null, 'a sandwich counter inside a filling station');
+  assert.equal(byBrand('supermarket', 'Subz', b), 'out');
+  assert.equal(byBrand('police', 'Aldi', b), null, 'brands are not asked about police stations');
+  assert.equal(settle({ c: 'outdoor' }, 'Summit Wear', { brands: b }), null);
+  assert.deepEqual(settle({ c: 'outdoor' }, 'Peak Outfitters', { brands: b }), { c: 'outdoor', by: 'kind' }, 'an outdoor shop that the index lists as clothes');
+  assert.deepEqual(settle({ c: 'department' }, 'Aldi', { brands: b }), { c: 'supermarket', by: 'brand' });
+  assert.deepEqual(settle({ c: 'hospital' }, 'Lakeside Family Medicine', { brands: b }), { c: 'clinic', by: 'name' });
+  // The copy packed with the app is there and of a sensible size.
+  const packed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'maps', 'brands.json'), 'utf8'));
+  assert.ok(Object.keys(packed.names).length > 3000 && packed.names.aldi.includes('shop=supermarket') && packed.names.walgreens.includes('amenity=pharmacy'));
+});
+
+test('the official list of hospitals is laid over the places', () => {
+  const hospitals = require('../src/core/hospitals');
+  const row = (name, town, zip, phone, type = 'Acute Care Hospitals', er = 'Yes', state = 'NC') => hospitals.rowOf({ facility_name: name, address: '1 Main St', citytown: town, state, zip_code: zip, telephone_number: phone, hospital_type: type, emergency_services: er });
+  const rows = [
+    row('RIVERSIDE HEALTH NORTHSIDE', 'SPRINGFIELD', '27001', '(336) 555-0100'),
+    row('SPRINGFIELD MEMORIAL HOSPITAL', 'SPRINGFIELD', '27001', '(336) 555-0200'),
+    row('PINE STATE HOSPITAL', 'OAKTON', '27002', '(336) 555-0300', 'Psychiatric', 'No'),
+    row('LAKE NORFOLK MEDICAL CENTER', 'LAKEVILLE', '27003', '(336) 555-0400'),
+    row('HARBOR GENERAL HOSPITAL', 'HARBOR', '27004', '(336) 555-0500'),
+    row('MISSING HOSPITAL', 'NOWHERE', '27009', '(336) 555-0900'),
+  ];
+  const rec = (i, n, d, p, more = {}) => ({ i, n, a: 36, o: -80, d, p, c: 'hospital', ...more });
+  const hospital = [
+    rec('n1', 'Springfield Memorial Hospital', '', '+1 336-555-0200', { x: { emergency: 'yes', beds: '300' } }),          // OpenStreetMap, by telephone
+    rec('ov1', 'Springfield Memorial Hospital Gift Shop', '9 Elm St, Springfield, NC 27001', '+13365550200', { s: 'ov' }), // a part of it, same switchboard
+    rec('ov2', 'Pine State Hospital', '4 Oak Rd, Oakton, NC 27002', '', { s: 'ov' }),                                      // by postcode and name
+    rec('n2', 'Lake Norfolk Medical Center', '', ''),                                                                       // by name alone: unique, no address
+    rec('ov3', 'Harbor Hospital for Pets', '2 Quay St, Harbor, NC 27004', '', { s: 'ov' }),                                // not it
+    rec('ov4', 'Springfield Surgical Hospital', '7 Elm St, Springfield, NC 27001', '', { s: 'ov' }),                       // a hospital by name, on no list
+    rec('ov5', 'Hospital General Leon', 'Calle 5, Leon, GTO 37000', '', { s: 'ov' }),                                      // another country: left alone
+  ];
+  const clinic = [
+    { i: 'ov6', n: 'Riverside Health Northside', a: 36, o: -80, d: '1 Main St, Springfield, NC 27001', p: '+13365550100', s: 'ov', c: 'clinic' }, // a hospital whose name does not say so
+    { i: 'ov7', n: 'Riverside Health Northside Sleep Center', a: 36, o: -80, d: '1 Main St, Springfield, NC 27001', p: '+13365550100', s: 'ov', c: 'clinic' },
+    { i: 'n3', n: 'Elm Urgent Care', a: 36, o: -80, d: '', p: '', c: 'clinic' },
+  ];
+  const out = hospitals.lay(rows, hospital, clinic);
+  const h = Object.fromEntries(out.hospital.map((r) => [r.i, r]));
+  assert.deepEqual(out.stats, { rows: 6, matched: 4, places: 4, promoted: 1, lowered: 0, states: 0 }, 'too few rows here for any state to count as well matched');
+  assert.deepEqual([h.n1.x, h.n1.less], [{ emergency: 'yes', beds: '300', listed: 'Medicare hospital list' }, undefined]);
+  assert.deepEqual([h.ov2.x, h.ov2.less], [{ emergency: 'no', listed: 'Medicare hospital list', kind: 'Psychiatric hospital' }, true], 'a psychiatric hospital is a lesser sort of hospital');
+  assert.equal(h.n2.x.listed, 'Medicare hospital list');
+  assert.deepEqual([h.ov6.c, h.ov6.x.emergency], ['hospital', 'yes'], 'taken from the clinics');
+  assert.deepEqual([h.ov1.x, h.ov3.x, h.ov4.x, h.ov5.x], [undefined, undefined, undefined, undefined]);
+  assert.deepEqual(out.clinic.map((r) => r.i), ['ov7', 'n3']);
+  assert.equal(hospital[0].x.listed, undefined, 'the records given are not changed');
+  // In a state where the list is matched well, what Overture calls a hospital and the list does not is kept, as a lesser sort.
+  const many = []; const recs = [];
+  for (let k = 0; k < 8; k++) { many.push(row(`TOWN ${k} MEMORIAL HOSPITAL`, `TOWN ${k}`, `2800${k}`, `(704) 555-01${k}0`)); recs.push(rec(`m${k}`, `Town ${k} Memorial Hospital`, `1 Main St, Town ${k}, NC 2800${k}`, '', { s: 'ov' })); }
+  recs.push(rec('x1', 'Valley Surgical Hospital', '5 Low Rd, Town 3, NC 28003', '', { s: 'ov' }), rec('x2', 'Old Mill Hospital', '', '', {}), rec('x3', 'Hospital General Leon', 'Calle 5, Leon, GTO 37000', '', { s: 'ov' }));
+  const two = hospitals.lay(many, recs, []);
+  const g = Object.fromEntries(two.hospital.map((r) => [r.i, r]));
+  assert.deepEqual([two.stats.matched, two.stats.lowered, two.stats.states], [8, 1, 1]);
+  assert.deepEqual([g.x1.less, g.x1.x.kind, g.x2.less, g.x3.less, g.m0.less], [true, 'Not on the Medicare hospital list', undefined, undefined, undefined], 'OpenStreetMap\'s and other countries\' are left as they are');
+});
+
+test('the hospital list is fetched in pages and kept only when it arrives whole', async () => {
+  const hospitals = require('../src/core/hospitals');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-hosp-'));
+  try {
+    const all = Array.from({ length: 1234 }, (_, k) => ({ facility_id: String(k), facility_name: `HOSPITAL ${k}`, address: '1 MAIN ST', citytown: 'TOWN', state: 'NC', zip_code: '28001', telephone_number: '(704) 555-0100', hospital_type: 'Acute Care Hospitals', emergency_services: k % 5 ? 'Yes' : 'No' }));
+    const asked = [];
+    const get = (cut) => async (url) => { asked.push(url); const u = new URL(url); const off = Number(u.searchParams.get('offset')); const lim = Number(u.searchParams.get('limit')); return Buffer.from(JSON.stringify({ results: all.slice(off, Math.min(cut, off + lim)), count: all.length })); };
+    const cfg = { url: 'https://example.test/api/query/x/0', page: 500 };
+    await assert.rejects(hospitals.fetchList({ dir, cfg, get: get(700) }), /Only 700 of the hospital list's 1234 rows arrived/);
+    assert.equal(fs.existsSync(path.join(dir, 'official', 'hospitals-us.json')), false);
+    asked.length = 0;
+    assert.equal((await hospitals.fetchList({ dir, cfg, get: get(9999) })).count, 1234);
+    assert.deepEqual(asked.map((u) => new URL(u).search), ['?limit=500&offset=0', '?limit=500&offset=500', '?limit=500&offset=1000']);
+    const kept = JSON.parse(fs.readFileSync(path.join(dir, 'official', 'hospitals-us.json'), 'utf8'));
+    assert.deepEqual([kept.count, kept.rows[0], kept.rows[1][7]], [1234, ['HOSPITAL 0', '1 MAIN ST', 'TOWN', 'NC', '28001', '7045550100', 'Acute Care Hospitals', 'no'], 'yes']);
+    await assert.rejects(hospitals.fetchList({ dir, cfg, get: async () => Buffer.from('{"error":"x"}') }), /did not arrive in the form expected/);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'official', 'hospitals-us.json'), 'utf8')).count, 1234, 'a failed fetch leaves the list that was there');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
