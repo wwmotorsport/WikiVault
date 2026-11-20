@@ -245,6 +245,8 @@ let askSeq = 0;
 // The current Ask conversation. Lives in memory only: it is never written to disk,
 // and it is gone when the person starts a new conversation or the app closes.
 let conversation = [];
+/** The place the last map request in Ask was about, for a "there" in the next one. Forgotten with the conversation. */
+let lastMapPlace = null;
 const MAX_TURNS = 8;
 let aiBusy = null;
 let aiResting = false;      // the model was taken out of memory while idle; it loads again on the next question
@@ -2099,11 +2101,31 @@ function registerIpc() {
         const centre = Array.isArray(around) && around.length === 2 && around.every((v) => Number.isFinite(Number(v))) ? around.map(Number) : null;
         const plan = await mapAsk.understand(String(question || ''), {
           book, here: spot(here), signal: ac.signal, onStatus: (text) => emit('status', { text }),
-          search: (q) => { try { return maps ? maps.search({ q, limit: 1, around: centre }).hits[0] || null : null; } catch { return null; } },
+          search: (q) => {
+            try {
+              if (!maps) return null;
+              const first = maps.search({ q, limit: 1, around: centre }).hits[0] || null;
+              // A town's name with nothing else: of the towns so named, the nearest to you, to home, or to where the map is looking,
+              // not the largest one in the country.
+              if (first && first.c === 'town' && !/\d/.test(q)) {
+                const same = (s) => String(s || '').trim().toLowerCase();
+                const all = maps.search({ categories: ['town'], q, limit: 60 }).hits.filter((h) => same(h.n) === same(first.n));
+                const ref = spot(here) || placesNear(null) || (centre ? { lon: centre[0], lat: centre[1] } : null);
+                if (all.length > 1 && ref) { const far = (h) => Math.hypot(h.a - ref.lat, (h.o - ref.lon) * Math.cos(ref.lat * Math.PI / 180)); return all.reduce((a, b) => (far(b) < far(a) ? b : a)); }
+              }
+              return first;
+            } catch { return null; }
+          },
+          // The places of some kinds (or, with no kind, of some name), nearest first, each with its distance.
+          nearby: maps ? ({ cats, q = '', near, limit = 50 }) => { try { return maps.search({ categories: cats && cats.length ? cats : maps.registry.categories.map((c) => c.id), q, near, limit }).hits; } catch { return []; } } : null,
+          kinds: maps ? Object.fromEntries(maps.registry.categories.map((c) => [c.id, c.name])) : {},
+          last: lastMapPlace,
           model: settings.ai.enabled ? async () => { emit('status', { text: 'Getting the local model ready' }); await llm.prepare({ signal: ac.signal, onStatus: (text) => emit('status', { text }) }); pushState(); return llm; } : null,
         });
         if (plan) {
           log(`ask: map request (${plan.kind}${plan.error ? ', not carried out' : ''})`);
+          // "there", in the next request, is the place this one was about: the place shown, the destination, or the nearest one found.
+          if (!plan.error) { const p = plan.kind === 'near' ? (plan.hits[0] && { lon: plan.hits[0].o, lat: plan.hits[0].a, label: plan.hits[0].n || plan.names }) : plan.to; if (p) lastMapPlace = { lon: p.lon, lat: p.lat, label: p.label, ...(p.approx ? { approx: p.approx, how: p.how } : {}) }; }
           emit('understood', { text: plan.said });
           emit('map', { plan: { ...plan, routing: Boolean(maps && maps.routing), hasMap: Boolean(maps && maps.status().map) } });
           return;
@@ -2146,6 +2168,7 @@ function registerIpc() {
   handle('ask:reset', () => {
     for (const ac of asks.values()) ac.abort('stopped');
     conversation = [];
+    lastMapPlace = null;
     return true;
   });
 

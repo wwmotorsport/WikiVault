@@ -100,6 +100,7 @@ function tripSpot(map, ev, hadPopup) {
   const h = { c: 'spot', i: 'spot', a: ev.lngLat.lat, o: ev.lngLat.lng, n: 'A spot on the map', kind: '' };
   if (mapPopup) mapPopup.remove();
   mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '300px', offset: 6, focusAfterOpen: false }).setLngLat([h.o, h.a]).setDOMContent(mapDetails(h)).addTo(map);
+  mapPopup.spotAt = Date.now(); // see where the map is wired: a drag that begins straight after takes this card away again
 }
 
 $('trip-q').addEventListener('input', () => { $('trip-error').hidden = true; tripPaint(); });

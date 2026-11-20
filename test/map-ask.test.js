@@ -153,3 +153,128 @@ test('ask: places are found among pins, relationships and contacts before the ma
   assert.deepEqual(ask.readModel('{"intent":"where","to":"my mom"}'), { kind: 'where', what: 'my mom', sure: false, byModel: true });
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// The places a stand-in map holds, and the nearby search the app gives the request reader.
+const PLACES = [
+  { c: 'hospital', i: 'n1', n: 'Mercy General', a: 35.20, o: -80.80, d: '2001 Vale Avenue', p: '+1 555 0100', x: { emergency: 'yes' } },
+  { c: 'hospital', i: 'w1', n: 'Mercy General', a: 35.2005, o: -80.8003, d: '2001 Vale Avenue' }, // the same building, drawn as an outline too
+  { c: 'hospital', i: 'n2', n: 'County Hospital', a: 35.41, o: -80.60, d: '' },
+  { c: 'hospital', i: 'n3', n: 'Far Away General', a: 31.0, o: -89.0, d: '' },
+  { c: 'clinic', i: 'n4', n: 'Elm Urgent Care', a: 35.23, o: -80.85, d: '' },
+  { c: 'pharmacy', i: 'n5', n: 'Corner Pharmacy', a: 35.23, o: -80.84, d: '' },
+  { c: 'pharmacy', i: 'n6', n: 'Mill Pharmacy', a: 35.40, o: -80.58, d: '' },
+  { c: 'fuel', i: 'n7', n: 'Corner Fuel', a: 35.30, o: -80.90, d: '' },
+  { c: 'supermarket', i: 'n8', n: 'Walmart Supercenter', a: 35.25, o: -80.80, d: '' },
+  { c: 'town', i: 'n9', n: 'Concord', a: 35.41, o: -80.58, d: 'NC' },
+];
+const KM = (a, o, b, p) => { const r = Math.PI / 180; const x = (p - o) * r * Math.cos(((a + b) / 2) * r); const y = (b - a) * r; return Math.sqrt(x * x + y * y) * 6371; };
+const nearby = ({ cats, q = '', near, limit = 50 }) => PLACES.filter((r) => (!cats || cats.includes(r.c)) && (!q || r.n.toLowerCase().includes(q.toLowerCase()))).map((r) => ({ ...r, kind: r.c, km: Math.round(KM(near[1], near[0], r.a, r.o) * 10) / 10 })).sort((a, b) => a.km - b.km).slice(0, limit);
+const kinds = { hospital: 'Hospitals', clinic: 'Clinics and urgent care', pharmacy: 'Pharmacies', fuel: 'Fuel stations', supermarket: 'Supermarkets and grocery', town: 'Cities, towns and villages', propane: 'Bottled gas and propane' };
+const town = (q) => { const r = PLACES.find((x) => x.c === 'town' && x.n.toLowerCase() === String(q).toLowerCase()); return r ? { ...r, kind: 'town' } : null; };
+
+test('ask: the nearest of a kind is understood however it is put, and questions for the articles are left alone', () => {
+  const near = (q) => { const p = ask.parse(q); return p && p.kind === 'near' ? [p.cats ? p.cats.join('+') : null, p.at, p.radiusKm ? Math.round(p.radiusKm) : null, p.count, p.how, p.sure] : p; };
+  // The three that did not work, and their kin.
+  assert.deepEqual(near('what is the nearest hospital to home'), ['hospital', 'home', null, null, 'list', true]);
+  assert.deepEqual(near('where is the nearest hospital to there'), ['hospital', 'there', null, null, 'list', true]);
+  assert.deepEqual(near('Where are the nearest gas stations to 350 5th Ave, New York NY?'), ['fuel', '350 5th ave, new york ny', null, null, 'list', true]);
+  assert.deepEqual(near('which hospital is closest to my mother in law\'s house'), ['hospital', "my mother in law's house", null, null, 'list', true]);
+  assert.deepEqual(near('please tell me where the closest emergency room to my house is'), ['hospital', 'my house', null, null, 'list', true]);
+  assert.deepEqual(near('is there a pharmacy near work?'), ['pharmacy', 'work', null, null, 'list', true]);
+  assert.deepEqual(near('where can I get gas near work'), ['fuel', 'work', null, null, 'list', true]);
+  assert.deepEqual(near('is there anywhere to get propane around here'), ['propane', null, null, null, 'list', true]);
+  // With no place named: here, or home.
+  for (const q of ['nearest hospital', 'closest ER', 'hospitals near me', 'any hospitals nearby', 'hospital close by', 'show me the hospitals around here']) assert.deepEqual(near(q).slice(0, 2), ['hospital', null], q);
+  // A distance, in miles or kilometres, in figures or words, with a place or without.
+  assert.deepEqual(near('list the hospitals within a 10 mile radius of home'), ['hospital', 'home', 16, null, 'list', true]);
+  assert.deepEqual(near('list all pharmacies inside a radius of 15 km around work'), ['pharmacy', 'work', 15, null, 'list', true]);
+  assert.deepEqual(near('hospitals within twenty miles'), ['hospital', null, 32, null, 'list', true]);
+  assert.deepEqual(near('hospitals near me within 10 miles'), ['hospital', null, 16, null, 'list', true]);
+  assert.deepEqual(near('find water sources less than 5 miles from the cabin'), ['drinking_water+spring', 'the cabin', 8, null, 'list', true]);
+  assert.deepEqual(near('what towns are within 30 miles of home'), ['town', 'home', 48, null, 'list', true]);
+  // How many, how far, and a number wanted.
+  assert.deepEqual(near('how many fire stations are within twenty miles of work'), ['fire', 'work', 32, null, 'count', true]);
+  assert.deepEqual(near('how far is the nearest hospital from home'), ['hospital', 'home', null, null, 'far', true]);
+  assert.deepEqual(near('5 closest pharmacies to home'), ['pharmacy', 'home', null, 5, 'list', true]);
+  assert.deepEqual(near("show me the three nearest grocery stores to my mom's house"), ['supermarket', "my mom's house", null, 3, 'list', true]);
+  // A kind in a town.
+  assert.deepEqual(near('hospitals in Concord'), ['hospital', 'concord', null, null, 'list', true]);
+  // Several kinds under one word.
+  assert.deepEqual(ask.kindsOf('medical help').cats, ['hospital', 'clinic']);
+  assert.deepEqual(ask.kindsOf('the open drug stores').cats, ['pharmacy']);
+  assert.equal(ask.kindsOf('star'), null);
+  // Not sure, so they count only around a place of the user's own: a shop by its name, and things that are no places at all.
+  assert.deepEqual(near('nearest walmart to home'), [null, 'home', null, null, 'list', false]);
+  assert.deepEqual(near('what is the nearest star to the sun'), [null, 'the sun', null, null, 'list', false]);
+  // And these are not this kind of request at all.
+  assert.equal(ask.parse('what is a hospital'), null);
+  assert.equal(ask.parse('how do hospitals work'), null);
+  assert.deepEqual(ask.parse('where is the hospital'), { kind: 'where', what: 'the hospital', sure: false });
+  assert.deepEqual(ask.parse('directions to the nearest hospital'), { kind: 'route', from: null, to: 'the nearest hospital', mode: null, sure: true });
+  for (const q of ['nearest hospital to home', 'pharmacies within 10 miles', 'gas near me', 'is there a clinic close to home']) assert.equal(ask.hint(q), true, q);
+});
+
+test('ask: the nearest of a kind is found around home, a person, a town or "there", with distances, and what cannot be done is said', async () => {
+  const { book, dir } = bookOf();
+  try {
+    const ctx = { book, search: town, nearby, kinds, here: null, last: null, model: null };
+    const names = (p) => p.hits.map((h) => h.n);
+    // What was asked: the nearest hospital to home.
+    let p = await ask.understand('what is the nearest hospital to home', ctx);
+    assert.equal(p.kind, 'near');
+    assert.deepEqual([p.at.label, p.names, p.one, p.said], ['Our house', 'Hospitals', true, 'Hospitals nearest to Home: Our house']);
+    assert.deepEqual(names(p), ['Mercy General', 'County Hospital', 'Far Away General'], 'nearest first, and the building that is in the data twice is listed once');
+    assert.deepEqual([p.hits[0].miles, p.hits[0].wind, p.hits[0].far], [3, 'south-east', '3 miles']);
+    assert.equal(p.total, 3);
+    // "there": the place the last request was about.
+    assert.match((await ask.understand('where is the nearest hospital to there', ctx)).error, /Say which place you mean/);
+    p = await ask.understand('where is the nearest hospital to there', { ...ctx, last: { lon: -80.58, lat: 35.41, label: 'Rosa Diaz (home)' } });
+    assert.deepEqual([p.at.label, names(p)[0]], ['Rosa Diaz (home)', 'County Hospital']);
+    // A person by their tie, a number wanted, and a distance.
+    p = await ask.understand("the 1 closest pharmacy to my mother in law's house", ctx);
+    assert.deepEqual([names(p), p.at.label], [['Mill Pharmacy'], 'Rosa Diaz (home)']);
+    assert.ok(p.notes.some((n) => /approximate, so the distances are too/.test(n)), 'an approximate starting place is said to be one');
+    p = await ask.understand('list the hospitals within a 10 mile radius of home', ctx);
+    assert.deepEqual([names(p), p.radius, p.total, p.said], [['Mercy General'], '10 miles', 1, 'Hospitals within 10 miles of Home: Our house']);
+    p = await ask.understand('how many hospitals are within 20 miles of home', ctx);
+    assert.deepEqual([p.how, p.total, names(p)], ['count', 2, ['Mercy General', 'County Hospital']]);
+    assert.match((await ask.understand('hospitals within 1 mile of home', ctx)).error, /No hospitals are within 1 mile of Our house/);
+    // Several kinds under one word, each named in the list.
+    p = await ask.understand('where can I get medical help near work', ctx);
+    assert.deepEqual([p.names, names(p).slice(0, 2), p.hits[0].kind], ['Hospitals, Clinics and urgent care', ['Elm Urgent Care', 'Mercy General'], 'clinic']);
+    // No place named: from the GPS position when there is one, else from home, and which is said.
+    p = await ask.understand('nearest gas station', ctx);
+    assert.deepEqual([names(p), p.at.label], [['Corner Fuel'], 'Our house']);
+    assert.match(p.notes[0], /no GPS receiver is connected, so this is measured from Our house, which is pinned as Home/);
+    p = await ask.understand('nearest gas station', { ...ctx, here: { lon: -80.9, lat: 35.3, label: 'My position' } });
+    assert.deepEqual([p.at.label, p.hits[0].far, p.notes[0]], ['My position', 'under a tenth of a mile', 'No place was named, so this is measured from your GPS position.']);
+    assert.match((await ask.understand('nearest hospital', { ...ctx, book: null })).error, /Say near where/);
+    // A town from the map data.
+    p = await ask.understand('pharmacies in Concord', ctx);
+    assert.deepEqual([p.at.label, names(p)[0]], ['Concord, NC', 'Mill Pharmacy']);
+    // A shop by its name, around a place of the user's own.
+    p = await ask.understand('nearest walmart to home', ctx);
+    assert.deepEqual([names(p), p.names, p.cats], [['Walmart Supercenter'], 'Places named "walmart"', null]);
+    // Things that are no places are left to the articles; a kind that is not on this computer is said to be missing.
+    assert.equal(await ask.understand('what is the nearest star to the sun', ctx), null);
+    assert.equal(await ask.understand('nearest neighbor search to home', ctx), null);
+    assert.match((await ask.understand('nearest propane to home', ctx)).error, /No bottled gas and propane are in the places on this computer/);
+    assert.match((await ask.understand('nearest hospital to my brother', ctx)).error, /has no place on the map yet/);
+    assert.match((await ask.understand('nearest hospital to Zzyzx Qwerty', ctx)).error, /"zzyzx qwerty" was not found/);
+    // In directions, "the nearest hospital" is a place like any other.
+    p = await ask.understand('directions to the nearest hospital', ctx);
+    assert.deepEqual([p.kind, p.to.label, p.from.label], ['route', 'Mercy General, 2001 Vale Avenue', 'Our house']);
+    p = await ask.understand('directions from work to the closest pharmacy to work', ctx);
+    assert.deepEqual([p.kind, p.from.label, p.to.label], ['route', 'The plant', 'Corner Pharmacy']);
+    p = await ask.understand('how do I get there', { ...ctx, last: { lon: -80.8, lat: 35.2, label: 'Mercy General' } });
+    assert.deepEqual([p.kind, p.to.label], ['route', 'Mercy General']);
+    // The model's reading of looser wording is carried out the same way.
+    const said = (json) => ({ model: async () => ({ chat: async () => json }) });
+    p = await ask.understand('I cut my hand badly, who can stitch it', { ...ctx, ...said('{"intent":"near","what":"hospital","to":"home","miles":0}') });
+    assert.equal(p, null, 'wording with no hint of the map in it is not put to the model');
+    p = await ask.understand('I need the closest place to home that can stitch a cut', { ...ctx, ...said('{"intent":"near","what":"hospital","to":"home","miles":15}') });
+    assert.deepEqual([p.kind, names(p), p.radius], ['near', ['Mercy General'], '15 miles']);
+    assert.equal(ask.windOf({ lat: 35, lon: -80 }, { lat: 36, lon: -80 }), 'north');
+    assert.equal(ask.windOf({ lat: 35, lon: -80 }, { lat: 35, lon: -81 }), 'west');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

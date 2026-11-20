@@ -2,6 +2,20 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.28.0 (2026-11-19)
+
+Ask finds the nearest places of a kind, and dragging the map no longer opens a card.
+
+- **Why "what is the nearest hospital to home" went wrong.** Ask knew two kinds of map request: directions, and where a named person or place is. A request for the nearest of a kind was neither, so it was handed to the encyclopedia, which answered from articles about hospitals. "Where is the nearest hospital to there" was read as a place whose name was that whole phrase.
+- **The nearest of a kind is now a request of its own.** "The nearest hospital to home", "which pharmacy is closest to my mother-in-law's house", "gas near me", "is there anywhere to get propane around here", "list the hospitals within a 10 mile radius of home", "how many fire stations are within twenty miles of work", "the five closest supermarkets", "hospitals in Concord", "how far is the nearest hospital". Each kind of place answers to the words people use for it (emergency room, ER, drug store, gas station, grocery, feed store and so on), and a shop can be asked for by name.
+- **What the answer is.** The places nearest first, each with distance and direction in a straight line, address and telephone, and whether a hospital has an emergency room; the same places on the map's Places tab and drawn on the map; *Show on the map* and *Directions* on each row. For the first three the distance by road is worked out, and the answer says when the nearest by road is a different one.
+- **"There".** In the next request, *there* is the place the last one was about: "where is home", then "where is the nearest hospital to there"; or "nearest hospital to home", then "how do I get there".
+- **In directions.** "Directions to the nearest hospital" and "take me to the closest gas station" use the nearest one as the destination.
+- **With no place named**, distances are from the GPS position, else from Home, and the answer says which. A town named alone ("hospitals in Concord") is the nearest town of that name, not the largest in the country.
+- **Loose wording** with "nearest", "closest", "near me" or a distance in it is put to the model when answers are on, as directions already were. Questions that are not about places ("the nearest star to the sun") still go to the articles.
+- **Map: dragging no longer opens the card for a spot.** The card opened on the tap that begins a tap-and-drag on a touchpad, and on a press that was held. Now it waits a moment after a single click, and anything that starts moving the map calls it off; a card that opened just as a drag began is taken away again.
+- Not yet seen on the real computer: checked with stand-in places and a stand-in map. How good the lists are there depends on the places fetched, which I have not seen.
+
 ## 0.27.0 (2026-11-19)
 
 Places come from regional extracts: minutes for the area around home, not hours.

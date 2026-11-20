@@ -2241,7 +2241,7 @@ function mapDetails(h) {
   const words = { emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
-  if (h.km != null) row('From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
+  if (h.km != null) row(h.kmFrom ? `From ${h.kmFrom}, in a straight line` : 'From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
   if (state?.maps?.routing) {
     const go = el('div', 'map-place-go');
     for (const [which, label] of [['from', 'Directions from here'], ['to', 'Directions to here']]) {
@@ -2551,8 +2551,22 @@ async function mapEnsure(m) {
     mapAddOverlays(map);
     // A click that only closes an open card does not open another.
     let hadPopup = false;
-    map.on('mousedown', () => { hadPopup = Boolean(mapPopup && mapPopup.isOpen()); });
-    map.on('click', (e) => { if (!mapClicked(e.lngLat)) tripSpot(map, e, hadPopup); });
+    // A single click on an empty part of the map opens the card for that spot. Moving the map must never do so:
+    // not a press that is held, and not the tap that begins a tap-and-drag on a touchpad, which arrives as a whole
+    // click a moment before the drag. So the card waits a moment, and anything that starts moving the map calls it off.
+    let downAt = 0; let spotTimer = 0;
+    const noSpot = () => { clearTimeout(spotTimer); spotTimer = 0; };
+    map.on('mousedown', () => { noSpot(); hadPopup = Boolean(mapPopup && mapPopup.isOpen()); downAt = Date.now(); });
+    for (const ev of ['dragstart', 'dblclick', 'zoomstart', 'rotatestart', 'pitchstart', 'touchstart', 'wheel']) map.on(ev, noSpot);
+    // A card that had only just opened when the drag began was that same tap: it goes again.
+    map.on('dragstart', () => { if (mapPopup && mapPopup.spotAt && Date.now() - mapPopup.spotAt < 900) { mapPopup.remove(); mapPopup = null; } });
+    map.on('click', (e) => {
+      if (mapClicked(e.lngLat)) return;
+      const had = hadPopup; const held = Date.now() - downAt > 450;
+      noSpot();
+      if (held) return;
+      spotTimer = setTimeout(() => { spotTimer = 0; tripSpot(map, e, had); }, 280);
+    });
     map.on('click', 'hits-dot', (e) => { if (mapGo.picking) return; const f = e.features && e.features[0]; if (f) mapSelect(f.properties.i, { fly: false }); });
     map.on('mouseenter', 'hits-dot', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
@@ -2775,6 +2789,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.28.0': [
+    'Ask now finds the nearest places of a kind: "what is the nearest hospital to home", "pharmacies within 10 miles of work", "gas near me".',
+    'The answer lists them with distances, puts them on the map, and gives directions to any of them. "There" means the place just found.',
+    'Map: dragging the map no longer opens the card for a spot. Only a single click does.',
+  ],
   '0.27.0': [
     'Places now come from regional extracts: about 11 GB is downloaded for the lower 48 states, a state at a time, read here and deleted.',
     'The states nearest home come first, and what has been read can be searched at once. It carries on where it stopped.',

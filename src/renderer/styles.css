@@ -854,3 +854,13 @@ dialog #trip-list li { margin-bottom: 0; }
 .map-places-slow { margin-top: 10px; }
 .map-places-slow summary { cursor: pointer; font-size: 13px; color: var(--muted, #5b6875); }
 .map-places-slow .btn { margin-top: 6px; }
+
+/* Ask: the places of a kind near somewhere */
+.qa-near-title { font-weight: 600; margin-bottom: 4px; }
+.qa-near { margin: 8px 0 10px; padding-left: 22px; }
+.qa-near li { margin: 0 0 9px; }
+.qa-near li > b { display: block; }
+.qa-near-far, .qa-near-line { display: block; font-size: 13px; color: var(--muted); }
+.qa-near-far { color: inherit; }
+.qa-near-road { color: inherit; }
+.qa-near-acts { display: flex; gap: 14px; margin-top: 2px; font-size: 13px; }
