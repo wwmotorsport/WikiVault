@@ -31,7 +31,7 @@ If the browser says the file "isn't commonly downloaded", keep it. In Edge: clic
 2. A blue box saying **"Windows protected your PC"** appears, because the installer is not code-signed. Click **More info**, then **Run anyway**.
 3. The installer shows the licence and a short notice (answers can be wrong, it is not professional advice, it can change disk partitions when you ask it to). Read it and click **I Agree**.
 4. Accept what the next screens suggest (who the program is for, where it is installed) and click **Install**.
-5. Near the end it asks whether to install **Microsoft Foundry Local**, the program that writes the answers on your computer. **Yes** is right for most people. **No** leaves you with search and reading only; answers can be switched on later from the Library page.
+5. Near the end it asks whether to install **Microsoft Foundry Local**, the program that writes the answers on your computer. **Yes** is right for most people. **No** leaves you with search and reading only; answers can be switched on later from Options and Setup.
 6. Click **Finish**. Wikivault starts, and a shortcut is added to the Start menu.
 
 **If Windows says "Smart App Control blocked an app that may be unsafe"** there is no "run anyway" button. Smart App Control only allows signed apps, and Wikivault is not signed. The only way to install is to switch Smart App Control off: *Windows Security > App & browser control > Smart App Control settings > Off*. Read what that screen says first. On many versions of Windows it cannot be switched back on without resetting the computer, and it is a real protection, so this is a decision to make deliberately, not a step to click through.
@@ -54,6 +54,21 @@ Download the newer installer the same way and run it. It replaces the app and ke
 ### Removing it
 
 *Windows Settings > Apps > Installed apps > Wikivault > Uninstall*. The uninstaller asks whether to remove the downloaded library and your settings as well; choose No if you plan to install again.
+
+## Options and Setup
+
+Everything the app can download and every setting is on one page, opened with **Options and Setup** at the top right. (Before version 0.32 these were two pages, *Setup* and *Library*.) The page is in groups, and each group folds away when its heading is pressed:
+
+| Group | What is in it |
+|---|---|
+| Downloads | Everything the app can fetch, with ticks, sizes, the room on the disk, and one button to fetch all that is ticked |
+| The library and where it is kept | Which edition is here, its folder, moving it, and the partition |
+| Wikipedia: updates and size | Checking for a newer edition, automatic updates, and how much of Wikipedia to keep |
+| More libraries | Wikibooks, Wikiversity and others |
+| Answers from the local model | Switching answers on, tuning them to the computer, choosing a model |
+| About | The version, licences and the guided tour |
+
+Each heading carries a flag: **Complete** when the group needs nothing from you, or what it still needs (*3 to fetch*, *Needs setup*, *A newer edition is ready*), or *Optional* and *Switched off* for things that are a choice. The first time you open the page, the groups that need something are open and the rest are folded; after that each group stays as you left it. The number on the button at the top is how many downloads are still to fetch.
 
 ## Setup and downloads
 
@@ -133,12 +148,12 @@ Things to know:
 
 - Back up anything you cannot afford to lose first. Shrinking a live system drive is a standard Windows operation, but a power cut or disk fault partway through can damage a drive.
 - If `C:` is protected by BitLocker (device encryption), the new partition is not encrypted.
-- Only the system drive is offered. It can be done before the first download, as described here, or at any time afterwards from the Library page (see *Managing the partition later*).
+- Only the system drive is offered. It can be done before the first download, as described here, or at any time afterwards from Options and Setup (see *Managing the partition later*).
 - It can be undone from inside the app; see the next section.
 
 ### Managing the partition later
 
-The **Partition** section of the Library page shows how full the partition is: how much is in use, how much is free, and how much of that the library itself takes. The bar turns amber when less than a twelfth is free. A map, addresses, routing data and school files all live on the partition, so it fills as you add them.
+The **Partition** section of Options and Setup (in the group *The library and where it is kept*) shows how full the partition is: how much is in use, how much is free, and how much of that the library itself takes. The bar turns amber when less than a twelfth is free. A map, addresses, routing data and school files all live on the partition, so it fills as you add them.
 
 **Change the size** opens a box with the smallest, largest and recommended sizes and a field for the size you want. The same box opens from **Give the library its own partition** when the library is in an ordinary folder.
 
@@ -153,7 +168,7 @@ This needs enough free space on `C:` to hold the whole library for a while, and 
 
 If a step fails, nothing is lost: the library is whole wherever the last finished step put it, and the message says where. If Windows can free less than it reported beforehand, the app makes the partition as large as Windows allows, provided that still holds the library, and says so.
 
-If the library ends up in a folder with an empty partition beside it, the Library page offers **Move the library onto drive W:** and **Remove drive W:**.
+If the library ends up in a folder with an empty partition beside it, Options and Setup offers **Move the library onto drive W:** and **Remove drive W:**.
 
 ### Going back to a folder
 
@@ -231,7 +246,7 @@ The places are read out of **regional OpenStreetMap extracts**: files published 
 - **It is a large download for what is kept.** The contiguous United States is 49 files and about 11 GB, of which a few hundred megabytes at most stay on the disk. In exchange it is quick and dependable: a download server sends a whole file gladly. *Measure the download* asks the server for the sizes first, and downloads nothing.
 - **Room while it works.** One file is held at a time, so the room needed is the size of the largest (a little over a gigabyte for the largest states), not the whole download.
 - **Nearest first.** The files nearest you come first: around your GPS position if a receiver is connected, otherwise around the place you pinned as *Home*. What has been read can be searched straight away, and the map page says how many places are in so far. (When a complete set is already in use and you are updating it, the old set stays until the new one is whole.)
-- **Stopping and carrying on.** What has been read is kept, and so is the part of a file that had arrived. If the run fails, or you stop it or close the app, fetch the places again and it carries on from there. The Setup page asks again by itself a few times.
+- **Stopping and carrying on.** What has been read is kept, and so is the part of a file that had arrived. If the run fails, or you stop it or close the app, fetch the places again and it carries on from there. The Options and Setup page asks again by itself a few times.
 - **Checked.** Each file is compared with the checksum the server publishes beside it, where there is one, and a file that does not match is not read: it is fetched again at once. The server replaces its files once a day, so the app asks where each file is just before fetching it.
 - **Updating.** Once the places are complete, *Update the places* downloads every file again; it does not carry on from anything. If they were fetched in the last two weeks the app says so and waits for a second press. Once a month is plenty.
 
@@ -265,7 +280,7 @@ Places that come from Overture say so when opened. They are sorted into the map'
 - if you leave the route, a new one is worked out from where you are;
 - *Speak the turns* reads each turn aloud as it comes up, using the voices Windows has.
 
-The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port. *No receiver yet?* under the button and on the Setup page opens the shop page of one such receiver, the GlobalSat BU-353N5, in your web browser. Any receiver of the kind described above should do.
+The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port. *No receiver yet?* under the button and on the Options and Setup page opens the shop page of one such receiver, the GlobalSat BU-353N5, in your web browser. Any receiver of the kind described above should do.
 
 **Saved: the address book.** The *Saved* tab keeps people and places: a name, an address, telephone numbers and notes. An entry's address is looked up in the app's own address data to place it on the map, with the same *Approximate* marking as any address; one that cannot be found can be placed by clicking the map.
 
@@ -522,7 +537,7 @@ The kinds are the ones in the map's *Kind of place* list, under the words people
 
 The answer lists them nearest first, each with its distance and direction in a straight line, its address and telephone where known, and whether a hospital has an emergency room. The same places are put on the map's *Places* tab and drawn on the map. Each row has *Show on the map* and *Directions*. For the first three, the distance and time by road are worked out too, and if the nearest by road is not the nearest in a straight line, the answer says so.
 
-**Downloading for the map, in one go.** In the Map section press *Change or update* (or *Set up the map*). Tick the regions to cover. Under *What to download* are four things, each with what it will take: the offline map, directions, places, and street addresses. Tick what you want, choose the detail of the map, and press **Download everything ticked**. The app fetches one after another, each from the quickest place it can be had, and leaves alone anything already on the computer. The Setup page shows the same list, with the same ticks and regions, beside everything else the app can download.
+**Downloading for the map, in one go.** In the Map section press *Change or update* (or *Set up the map*). Tick the regions to cover. Under *What to download* are four things, each with what it will take: the offline map, directions, places, and street addresses. Tick what you want, choose the detail of the map, and press **Download everything ticked**. The app fetches one after another, each from the quickest place it can be had, and leaves alone anything already on the computer. The Options and Setup page shows the same list, with the same ticks and regions, beside everything else the app can download.
 
 Below it, **Advanced map download settings** opens the parts one by one: measure a part, fetch one thing and not another, choose another source for the places. Most people never need it.
 
@@ -542,7 +557,7 @@ A few places are kept and marked as a lesser sort of their kind, such as a cage 
 
 Places fetched before version 0.29 were not sorted as they arrived and do not carry Overture's kind; they are sorted by brand and name when read. Fetch the addresses and added places again (*Change or update* in the Map section; it takes minutes) to have them sorted in full. The large places download from OpenStreetMap is not needed again.
 
-Two things to know. The list is only as good as the places on the computer: fetch both the OpenStreetMap places and the Overture places on the Setup page. And a question that is not about places ("what is the nearest star to the sun") is left to the articles.
+Two things to know. The list is only as good as the places on the computer: fetch both the OpenStreetMap places and the Overture places on the Options and Setup page. And a question that is not about places ("what is the nearest star to the sun") is left to the articles.
 
 This part does not use the model. It works by rule, at once, and before answers are set up. When the wording is loose ("I need to be driving over to see Rosa, what is the way to go?") and answers are on, the model is asked to pick out the places.
 

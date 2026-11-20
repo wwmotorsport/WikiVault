@@ -40,7 +40,7 @@ The [user guide](docs/USER-GUIDE.md#installing-step-by-step) has the same steps 
 | Need | How |
 |---|---|
 | A local copy of Wikipedia | Downloads a Kiwix edition of English Wikipedia from download.kiwix.org: everything with images (110+ GB), every article without images (about a quarter of that), or introductions only. Setup shows the real sizes and whether each fits. Resumes after any interruption. |
-| More than Wikipedia | English Wikibooks (textbooks and manuals) and Wikiversity (courses and lessons) can be added from the Library page and are searched, read, asked about and updated the same way. |
+| More than Wikipedia | English Wikibooks (textbooks and manuals) and Wikiversity (courses and lessons) can be added from Options and Setup and are searched, read, asked about and updated the same way. |
 | Regular backups | Checks daily for a newer edition (Kiwix publishes roughly monthly). Downloads it, verifies it, switches to it, and only then deletes the old one. |
 | Offline search | Title suggestions as you type and full-text search over every article, served by the Kiwix reader engine on 127.0.0.1. |
 | Local AI | Finds the passages that match your question, hands only those to a local model, and shows the answer with numbered links to the source articles. |

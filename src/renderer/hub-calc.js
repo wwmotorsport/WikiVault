@@ -1,11 +1,11 @@
 'use strict';
-// The sums behind the Setup page: how a drive's room is shared out, and how fast a download is going.
+// The sums behind the Options and Setup page: how a drive's room is shared out, and how fast a download is going.
 // Used in the window (as a script) and in the tests (as a module). No dependencies.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(); else root.WikivaultHubCalc = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   /**
-   * How one drive's room is shared out, for the bar on the Setup page.
+   * How one drive's room is shared out, for the bar on the Options and Setup page.
    * `disk` is { total, free } in bytes; `app` is what Wikivault keeps there now; `need` is what is still to come.
    * Returns { total, other, app, add, short, freeAfter, parts }: `add` is the part of `need` that fits, `short`
    * the part that does not. `parts` are the pieces of the bar, left to right, each with its share of the drive.

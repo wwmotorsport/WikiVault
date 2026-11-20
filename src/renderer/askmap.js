@@ -40,7 +40,7 @@ async function askMap(entry, plan, question) {
       mapView.easeTo({ center: [plan.to.lon, plan.to.lat], zoom: Math.max(mapView.getZoom(), Math.min(14, mapView.getMaxZoom())), duration: 600 });
       return true;
     };
-    if (!(await show())) say('No map has been downloaded yet, so it cannot be shown. The map is on the Setup page.', 'qa-note'); else add('Show it on the map again', show);
+    if (!(await show())) say('No map has been downloaded yet, so it cannot be shown. The map is on the Options and Setup page.', 'qa-note'); else add('Show it on the map again', show);
     if (plan.routing) { add('Directions to here', () => tripStart('to', plan.to)); add('Directions from here', () => tripStart('from', plan.to)); }
     done();
     return;
@@ -104,7 +104,7 @@ async function askMap(entry, plan, question) {
       list.append(li);
     }
     entry.answer.append(list);
-    if (!plan.hasMap) say('No map has been downloaded yet, so they cannot be shown on it. The map is on the Setup page.', 'qa-note');
+    if (!plan.hasMap) say('No map has been downloaded yet, so they cannot be shown on it. The map is on the Options and Setup page.', 'qa-note');
     else if (await show(null)) add('Show them on the map again', () => show(null));
     done('Found on this computer, in the places fetched for the offline map. Distances are in a straight line. No model wrote this.');
     // By road, the nearest in a straight line is not always the nearest: the first few are measured along the roads.
@@ -126,7 +126,7 @@ async function askMap(entry, plan, question) {
 
   // Directions: the two ends go into the Directions tab, exactly as if they had been typed and found there.
   say(`From ${plan.from.label} to ${plan.to.label}.`);
-  if (!plan.routing) { say('Both places were found, but directions need the routing data, which has not been downloaded yet. It is on the Setup page, under Directions.', 'qa-note'); add('Open the Setup page', () => showView('hub')); done(); return; }
+  if (!plan.routing) { say('Both places were found, but directions need the routing data, which has not been downloaded yet. It is on the Options and Setup page, under Directions.', 'qa-note'); add('Open the Options and Setup page', () => showView('hub')); done(); return; }
   showView('map');
   mapGo.tab = 'go';
   paintMapGo();

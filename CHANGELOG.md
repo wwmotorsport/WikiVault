@@ -2,6 +2,16 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.32.0 (2026-11-20)
+
+Setup and Library are one page: Options and Setup.
+
+- **One page in place of two.** The *Setup* and *Library* buttons at the top are one button, **Options and Setup**. The page holds everything both had, in six groups: *Downloads* (the list with its ticks, sizes and one button), *The library and where it is kept* (the edition, its folder, moving it, the partition), *Wikipedia: updates and size*, *More libraries*, *Answers from the local model*, and *About*.
+- **Each group folds, and its heading says how it stands:** *Complete*, or what it still needs (*3 to fetch*, *Needs setup*, *A newer edition is ready*), or *Optional* and *Switched off* for the things that are a choice. The first time, the groups that need something are open and the complete ones are folded; after that each stays as you left it.
+- Anything in the app that used to send you to the Library page (the edition's name at the top, "there is not enough room", the guide) opens this page at the library's group.
+- The page works out download sizes by itself only when you come to it by its button, not when something else brings you to the library's settings.
+- The guided tour has one stop for the page where it had two.
+
 ## 0.31.0 (2026-11-20)
 
 One list and one button for the map's downloads.

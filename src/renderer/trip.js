@@ -8,7 +8,7 @@ const trip = { which: null, other: null, point: null, picking: false, busy: fals
 
 /** One end is chosen: put it on the Directions tab and ask for the other. `which` is 'to' or 'from'. */
 function tripStart(which, point) {
-  if (!state?.maps?.routing) { $('map-error').textContent = 'Directions need the routing data, which has not been downloaded yet. It is on the Setup page.'; $('map-error').hidden = false; return; }
+  if (!state?.maps?.routing) { $('map-error').textContent = 'Directions need the routing data, which has not been downloaded yet. It is on the Options and Setup page.'; $('map-error').hidden = false; return; }
   if (mapPopup) mapPopup.remove();
   showView('map');
   mapGo.tab = 'go'; mapGo.picking = null;

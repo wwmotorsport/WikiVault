@@ -62,13 +62,15 @@ const BUSY = ['checking', 'downloading', 'verifying', 'switching', 'moving'];
 // ------------------------------------------------------------ views
 
 function showView(next) {
+  // The Library page is a part of Options and Setup now: asking for it opens that page at the library's group.
+  if (next === 'library') { next = 'hub'; if (typeof optOpen === 'function') { optOpen('library'); hub.autoOk = false; } }
   if (view === next) return;
   if (view && view !== 'setup') prevView = view;
   view = next;
   for (const v of ['setup', 'results', 'reader', 'library', 'golf', 'school', 'map', 'hub']) $(`view-${v}`).hidden = v !== next;
   if (next === 'hub' && state && typeof renderHub === 'function') renderHub();
   if (next !== 'reader') { document.title = 'Wikivault'; closeFind(); }
-  if (next === 'library') { renderLibrary(); renderLibraries(); loadModelList(); }
+  if (next === 'hub') { renderLibrary(); renderLibraries(); loadModelList(); }
   if (next === 'golf' || state?.golf) renderGolf();
   if (state) { renderSchool(); renderMap(); }
   updateNav();
@@ -1111,7 +1113,7 @@ function renderAi() {
     buttons = [setup];
   }
   $('ai-status').textContent = text;
-  if (view === 'library') { if (!catalog) loadModelList(); renderBuilds(); }
+  if (view === 'hub') { if (!catalog) loadModelList(); renderBuilds(); }
   $('ai-busy').textContent = ai.tune ? '' : (ai.busy || ''); // tuning shows its own progress under its button
   $('ai-busy').hidden = !ai.busy;
   const err = ai.state === 'error' ? ai.message : '';
@@ -1384,7 +1386,7 @@ let libFlavourKey = null;    // the state that report was asked for
 let libFlavourAsk = 0;       // counts the requests, so that a late answer to an old one is dropped
 let libFlavourPick = null;   // the size ticked but not yet confirmed
 function renderLibraryFlavours() {
-  if (view !== 'library' || !state.edition?.active) return;
+  if (view !== 'hub' || !state.edition?.active) return;
   const key = `${state.edition.active.file}|${state.settings.flavour}|${state.settings.dataDir}`;
   if (libFlavourKey !== key) {
     libFlavourKey = key;
@@ -1480,7 +1482,7 @@ function renderLibraries() {
   $('search-input').placeholder = ready.length ? `Search ${where}` : 'Search this edition';
   $('search-input').setAttribute('aria-label', $('search-input').placeholder);
 
-  if (view !== 'library') return;
+  if (view !== 'hub') return;
   renderLibraryFlavours();
   const haveWikipedia = Boolean(state.edition?.active);
   $('more-libs').replaceChildren(...libs.map((lib) => {
@@ -2017,7 +2019,7 @@ const mapRegionNames = (m, ids) => m.regions.filter((r) => ids.includes(r.id)).m
 function mapRegionsPicked(m) {
   const boxes = [...document.querySelectorAll('#map-setup input[name="map-region"]')];
   if (boxes.length) return boxes.filter((b) => b.checked).map((b) => b.value);
-  // The same choice as on the Setup page, when one has been made there.
+  // The same choice as on the Options and Setup page, when one has been made there.
   const want = typeof hubWant === 'function' ? hubWant().regions : null;
   if (Array.isArray(want) && want.length) return want.filter((id) => m.regions.some((r) => r.id === id));
   return m.map ? m.map.regions : m.regions.filter((r) => r.default).map((r) => r.id);
@@ -2115,7 +2117,7 @@ function paintMapSetup(m) {
     const label = el('label', 'map-check');
     const input = document.createElement('input');
     input.type = 'checkbox'; input.name = 'map-region'; input.value = r.id; input.checked = picked.includes(r.id); input.disabled = busy;
-    // One choice of regions for the whole app: the Setup page shows the same ticks.
+    // One choice of regions for the whole app: the Options and Setup page shows the same ticks.
     input.addEventListener('change', () => { hubSet({ regions: [...document.querySelectorAll('#map-setup input[name="map-region"]')].filter((b) => b.checked).map((b) => b.value) }); renderMap(); });
     const text = el('span', '', r.name);
     if (r.note) text.append(el('span', 'small-print', ` ${r.note}`));
@@ -2152,7 +2154,7 @@ function paintMapSetup(m) {
     parts.push(el('p', 'small-print', 'Measuring reads the index of the world map (tens of megabytes) and lists what each level of detail would take. Nothing large is downloaded until you choose.'), measure);
   }
   // ---- One button for all of it ------------------------------------------------------------------------------
-  // The same rows as the Setup page, for the map's own things: tick what is wanted, and one button fetches it all,
+  // The same rows as the Options and Setup page, for the map's own things: tick what is wanted, and one button fetches it all,
   // one thing after another, from the quickest source for each. The parts below it are for doing one thing by hand.
   const one = el('fieldset', 'map-field map-one');
   one.append(el('legend', '', 'What to download'));
@@ -2187,7 +2189,7 @@ function paintMapSetup(m) {
   sizes.type = 'button'; sizes.id = 'map-one-sizes'; sizes.disabled = busy || running || hub.measuring || !picked.length; sizes.hidden = !unknown;
   sizes.addEventListener('click', () => { hubMeasure(false).then(renderMap, renderMap); renderMap(); });
   const acts = el('div', 'actions'); acts.append(go, sizes);
-  one.append(acts, el('p', 'small-print', hub.measuring ? 'Working out the sizes.' : 'One thing is fetched after another, each from the quickest place it can be had, and anything already here is left alone. The Setup page shows the same list with everything else the app can download.'));
+  one.append(acts, el('p', 'small-print', hub.measuring ? 'Working out the sizes.' : 'One thing is fetched after another, each from the quickest place it can be had, and anything already here is left alone. The Options and Setup page shows the same list with everything else the app can download.'));
 
   const placesBox = el('fieldset', 'map-field');
   placesBox.append(el('legend', '', 'Places'));
@@ -2587,7 +2589,7 @@ function mapClicked(lngLat) {
 $('map-tab-find').addEventListener('click', () => { mapGo.tab = 'find'; mapGo.picking = null; paintMapGo(); });
 $('map-tab-go').addEventListener('click', () => { mapGo.tab = 'go'; paintMapGo(); });
 $('map-tab-book').addEventListener('click', () => { mapGo.tab = 'book'; mapGo.picking = null; paintMapGo(); bookLoad(); });
-$('open-hub').addEventListener('click', () => { showView('hub'); render(); });
+$('open-hub').addEventListener('click', () => { hub.autoOk = true; showView('hub'); render(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && view === 'map' && mapPopup && mapPopup.isOpen() && !document.querySelector('dialog[open]')) { mapPopup.remove(); e.preventDefault(); } });
 $('map-go').addEventListener('submit', (e) => { e.preventDefault(); mapGo.alt = 0; guard(() => mapRoute(), $('map-error')); });
 $('map-route-other').addEventListener('click', () => { mapGo.alt = (mapGo.alt + 1) % 4; guard(() => mapRoute({ again: true }), $('map-error')); });
@@ -2868,11 +2870,15 @@ const TOUR_STOPS = [
   [['search'], 'Search', 'Titles appear as you type. Press Enter to search the full text of every article. Ctrl+K jumps here.'],
   [['edition-stamp'], 'Edition', 'Which edition is on this computer. Press it for updates and storage.'],
   [['toggle-ask'], 'Ask', 'Type a question in plain words. The answer is written on this computer and links to the articles it came from. Ask for directions or where someone lives and the map answers.'],
-  [['open-hub'], 'Setup', 'Everything the app can download or set up, on one page: what is done, what is left, how big it is, and one button to fetch the rest. The number is how many things are still to do.'],
-  [['open-library'], 'Library', 'Updates, more libraries, how much of Wikipedia to keep, the answer model and every setting.'],
+  [['open-hub'], 'Options and Setup', 'Everything the app can download and every setting, on one page, in groups that fold: downloads with one button to fetch the rest, the library and where it is kept, updates, more libraries, and the answer model. Each heading says whether its group is complete. The number is how many things are still to fetch.'],
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.32.0': [
+    'Setup and Library are one page now: Options and Setup. Its groups fold, and each heading says whether the group is complete or still needs something.',
+    'One list and one button in the Map section too, with the part-by-part controls under Advanced map download settings.',
+    '"Places" is one item everywhere, fetched as a ready-made set.',
+  ],
   '0.31.0': [
     'One list and one button in the Map section: tick the map, directions, places and street addresses, and press Download everything ticked.',
     '"Places" is now one item. It fetches the ready-made set, and builds the places on this computer only when that cannot be had.',
@@ -2931,13 +2937,13 @@ const WHATS_NEW = {
     'School is being finished and is not in this version. It returns in a later one; files already downloaded are kept.',
   ],
   '0.25.0': [
-    'Setup page: each row shows how much is still to download and how much is here, with the sums and a bar of the room on the disk.',
-    'A row that is downloading shows its progress, speed and time left on the Setup page itself.',
+    'Options and Setup page: each row shows how much is still to download and how much is here, with the sums and a bar of the room on the disk.',
+    'A row that is downloading shows its progress, speed and time left on the Options and Setup page itself.',
     'A guide for every page: press ? at the top, or "Walk me through the next page" in the tour.',
     'Map: a key of what the lines and colours mean, and road numbers drawn as road signs.',
   ],
   '0.24.2': [
-    'Fixes from a first live test: the Setup page, contact addresses with no house number or ZIP code, sources under answers, a narrow window, and directions wording.',
+    'Fixes from a first live test: the Options and Setup page, contact addresses with no house number or ZIP code, sources under answers, a narrow window, and directions wording.',
     'Map page: the list of what is on the computer folds into one line, and the side panel is wider.',
   ],
   '0.24.1': [
@@ -2960,7 +2966,7 @@ const WHATS_NEW = {
   ],
   '0.22.0': [
     'Library: the partition can be managed after setup. Give the library its own partition at any time, or change the size of the one it has.',
-    'The Library page shows how full the partition is.',
+    'Options and Setup shows how full the partition is, in the group for the library.',
   ],
   '0.21.0': [
     'Map: street addresses. Fetch them under Change or update, then search an address or get directions to one.',
@@ -2996,7 +3002,7 @@ const WHATS_NEW = {
     'Wiki golf has a clubhouse: saved players with their own characters, records, wins and losses, and handicaps.',
     'This tour. It can be opened again from Library, About.',
     'Links between Wikipedia, Wikibooks and Wikiversity open in the offline copy when that library is downloaded.',
-    'How much of Wikipedia is kept can be changed at any time under Library.',
+    'How much of Wikipedia is kept can be changed at any time under Options and Setup.',
   ],
 };
 // One walk-through for each page of the app. The first is the row of buttons along the top; "the next page" then
@@ -3028,7 +3034,7 @@ const TOUR_PAGES = [
     lead: 'An offline map, places, directions and your saved addresses.',
     stops: [
       [['map-about'], 'What is on this computer', 'One line for the map, places, addresses and directions that have been fetched. Open it for the detail.'],
-      [['map-setup-toggle'], 'Change or update', 'Choose regions and detail and fetch the map, the places, the addresses and the routing data. The Setup page does the same with everything else.'],
+      [['map-setup-toggle'], 'Change or update', 'Choose regions and detail and fetch the map, the places, the addresses and the routing data. The Options and Setup page does the same with everything else.'],
       [['map-key'], 'Key and layers', 'What the lines and colours on the map mean, with a tick box beside each kind to show or hide it, and the dark map. Hide folds it down to a button.'],
       [['map-tab-find'], 'Places', 'Find a place by name or kind, a town, or a street address. An address the data does not have is placed as near as can be told, and marked approximate.'],
       [['map-tab-go'], 'Directions', 'A start and a destination, by car, bicycle or on foot, with the turns listed. Mark roads and areas as blocked and the route goes round them. A USB GPS receiver leads you turn by turn.'],
@@ -3042,7 +3048,7 @@ const TOUR_PAGES = [
       [['sch-tab-year'], 'The year', 'All the weeks, and how far along you are.'],
       [['sch-tab-books'], 'Books and supplies', 'Every teacher guide, student book and test, the few things that have to be bought, and a place to add PDFs of your own.'],
       [['sch-search'], 'Search the school books', 'Finds a word or phrase in every book.'],
-      [['sch-files'], 'The books on this computer', 'Says whether all the books are here. Missing ones are fetched from here or from the Setup page.'],
+      [['sch-files'], 'The books on this computer', 'Says whether all the books are here. Missing ones are fetched from here or from the Options and Setup page.'],
     ] },
   { id: 'golf', name: 'Wiki golf', title: 'Wiki golf', view: 'golf', when: () => Boolean(state.edition && state.edition.active) && !golfPlaying(),
     lead: 'Get from one article to another using only the links in between. Fewest clicks wins the hole.',
@@ -3051,8 +3057,8 @@ const TOUR_PAGES = [
       [['#golf-card .g8-box:nth-of-type(2)'], 'The round', 'How many holes, how long they are, and whether handicaps are used.'],
       [['golf-scene'], 'The course', 'During a round the page is the game: read the article, follow a link, and try to reach the target in par.'],
     ] },
-  { id: 'library', name: 'Library', title: 'Library', view: 'library',
-    lead: 'The edition on this computer, where it is kept, and the settings.',
+  { id: 'library', name: 'The library and settings', title: 'Options and Setup: the library and settings', view: 'hub',
+    lead: 'The lower groups of Options and Setup: the edition on this computer, where it is kept, and the settings.',
     stops: [
       [['lib-facts'], 'The edition', 'Which Wikipedia is here, how big it is, whether it matched its published checksum, and the folder. Move the library from here.'],
       [['lib-partition'], 'Partition', 'Give the library a partition of its own, change its size, or put it back in an ordinary folder.'],
@@ -3155,6 +3161,7 @@ function tourTo(index) {
   const pages = tourPages();
   tourPage = Math.max(0, Math.min(index, pages.length - 1));
   const page = pages[tourPage];
+  if ((page.id === 'library' || page.id === 'hub') && typeof optOpenAll === 'function') optOpenAll(); // the tour points at parts inside the groups
   if (page.view && view !== page.view) { showView(page.view); render(); if (page.view === 'map' && typeof bookLoad === 'function' && mapGo.tab === 'book') bookLoad(); }
   if (page.open) page.open();
   $(`view-${page.view || view}`)?.scrollTo?.(0, 0);
@@ -4051,9 +4058,9 @@ function render() {
 
   if (!active && maintaining()) {
     // The library is being moved: for a moment there is no edition open. That is not a reason to show the first-run page.
-    if (view === 'library') renderLibrary();
+    if (view === 'hub') renderLibrary();
   } else if (!active) {
-    // With nothing downloaded the first-run page is home. The Setup page can still be looked at.
+    // With nothing downloaded the first-run page is home. The Options and Setup page can still be looked at.
     if (view !== 'hub') showView('setup');
     renderSetup();
   } else {
@@ -4065,7 +4072,7 @@ function render() {
         $('reader-msg').hidden = false;
       }
     } else if (view === 'setup') openUrl(state.engine.homeUrl);
-    if (view === 'library') renderLibrary();
+    if (view === 'hub') renderLibrary();
   }
   if ($('revert-dialog').open) syncRevertGo();
   updateNav();

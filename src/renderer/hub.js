@@ -65,7 +65,7 @@ function hubItems() {
 
   // 2. Offline answers
   const ai = state.ai; const aiOn = state.settings.ai.enabled !== false; const tuned = Object.keys(state.settings.ai.speedTests || {}).length > 0;
-  if (!aiOn) out.push({ id: 'ai', title: 'Offline answers', state: 'off', detail: 'Switched off under Library. Questions show matching passages instead of a written answer.', bytes: 0 });
+  if (!aiOn) out.push({ id: 'ai', title: 'Offline answers', state: 'off', detail: 'Switched off in the group "Answers from the local model", lower on this page. Questions show matching passages instead of a written answer.', bytes: 0 });
   else if (ai.busy || ai.tune) out.push({ id: 'ai', title: 'Offline answers', state: 'working', detail: ai.busy || 'Timing the models on this computer to pick the best one.', bytes: 0 });
   else if (ai.state === 'ready' && (tuned || state.settings.ai.provider !== 'foundry')) out.push({ id: 'ai', title: 'Offline answers', state: 'done', detail: `Set up and tuned to this computer${ai.modelId ? `: ${ai.modelId}${ai.device ? ` on the ${ai.device}` : ''}` : ''}.`, bytes: 0 });
   // Set up on an earlier day: the model is on the disk and is loaded with the first question, or was put away after a while unused.
@@ -228,6 +228,7 @@ function renderHub(force) {
   const items = hubItems();
   const left = items.filter(hubLeft);
   $('hub-badge').hidden = !left.length; $('hub-badge').textContent = String(left.length);
+  optPaint(items);
   if (!hub.resumed && state.settings.hub.running && !hub.running) { hub.resumed = true; hubRun(); }
   // The Map section shows the same rows and the same button for the map's own things.
   if (view === 'map' && typeof mapSetupOpen !== 'undefined' && mapSetupOpen && state.maps) paintMapSetup(state.maps);
@@ -329,16 +330,18 @@ function renderHub(force) {
   $('hub-sum-note').textContent = unknown ? `plus ${unknown} not measured yet` : '';
   hubDisk(sums.keeps, unknown);
   const total = $('hub-total'); total.replaceChildren();
-  if (free != null && room > free) total.append(el('p', 'map-approx', `What is ticked needs ${bytes(room - free)} more than there is room for. Untick something, choose less map detail, ${state.partition && state.libraryOnPartition ? 'make the partition larger from the Library page, ' : ''}or add storage.`));
+  if (free != null && room > free) total.append(el('p', 'map-approx', `What is ticked needs ${bytes(room - free)} more than there is room for. Untick something, choose less map detail, ${state.partition && state.libraryOnPartition ? 'make the partition larger in the library group on this page, ' : ''}or add storage.`));
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));
   else if (hub.autoNote) total.append(el('p', 'small-print', hub.autoNote));
   const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'places'].includes(it.id) && hubLeft(it) && it.bytes == null) || Object.keys(w.libs).some((id) => w.libs[id] && hub.sizes.libs[id] == null);
   $('hub-sizes').hidden = !anyMap && hub.sizes.wikipedia != null;
   const key = JSON.stringify([w.regions, w.level, Object.keys(w.libs).filter((id) => w.libs[id]).sort(), ['map', 'routing', 'addresses', 'places'].filter((id) => w[id])]);
-  if (anyMap && !hub.running && !hub.measuring && hub.autoKey !== key && state.maps && !state.maps.job) {
+  // The sizes are worked out by the page itself only for someone who came for the downloads: the same page now holds the
+  // library's settings, and a visit to move the library should not start the map's servers being asked anything.
+  if (anyMap && hub.autoOk && $('opt-downloads').open && !hub.running && !hub.measuring && hub.autoKey !== key && state.maps && !state.maps.job) {
     clearTimeout(hub.autoTimer);
-    hub.autoTimer = setTimeout(() => { if (hub.running || hub.measuring || (view !== 'hub' && !$('hub-pop').open)) return; hub.autoKey = key; hubMeasure(true); }, 900);
+    hub.autoTimer = setTimeout(() => { if (hub.running || hub.measuring || !hub.autoOk || (view !== 'hub' && !$('hub-pop').open)) return; hub.autoKey = key; hubMeasure(true); }, 900);
   }
   $('hub-sizes').disabled = hub.running || hub.measuring;
   const startable = left.filter((it) => it.id !== 'wikipedia' || active);
@@ -434,6 +437,7 @@ function hubMaybePop() {
   hub.popped = true;
   hub.wasNew = state.settings.hub.seenVersion || (active ? '0.0.0' : null); // what is new is judged against the version last seen
   hub.fresh = active ? WHATS_NEW[state.version] || null : null;
+  hub.autoOk = true;
   $('hub-pop-body').append($('hub-panel'));
   $('hub-pop').showModal();
   renderHub(true);
@@ -466,6 +470,71 @@ $('hub-room-back').addEventListener('click', () => $('hub-room').close());
 $('hub-room-go').addEventListener('click', () => { $('hub-room').close(); hubRun(); });
 $('hub-room-part').addEventListener('click', () => { $('hub-room').close(); hubClosePop(); showView('library'); render(); const b = $('psize-open'); if (b && !b.hidden) b.click(); });
 $('hub-stop').addEventListener('click', () => { hub.stopAsked = true; renderHub(true); });
+
+// ---- Options and Setup: one page, in groups ------------------------------------------------------------------------
+// The Options and Setup page and the Library page were two places for one kind of thing. They are one page now. Each group folds,
+// and its heading says whether it is complete or still needs something. The parts keep the ids they always had, so the
+// code that fills them in is unchanged: this only gathers them under headings.
+const OPT = [
+  ['downloads', 'Downloads'],
+  ['library', 'The library and where it is kept'],
+  ['wikipedia', 'Wikipedia: updates and size'],
+  ['libraries', 'More libraries'],
+  ['answers', 'Answers from the local model'],
+  ['about', 'About'],
+];
+const optKept = (id) => { try { return localStorage.getItem(`wv.opt.${id}`); } catch { return null; } };
+function optBuild() {
+  const host = $('opt-groups'); const body = {};
+  for (const [id, title] of OPT) {
+    const d = document.createElement('details'); d.className = 'opt-group'; d.id = `opt-${id}`;
+    const s = document.createElement('summary');
+    const flag = el('span', 'opt-flag', ''); flag.id = `opt-flag-${id}`;
+    s.append(el('span', 'opt-name', title), flag);
+    const b = el('div', 'opt-body'); b.id = `opt-body-${id}`;
+    d.append(s, b); host.append(d); body[id] = b;
+    // A group opened or closed by hand stays that way next time.
+    s.addEventListener('click', () => setTimeout(() => { try { localStorage.setItem(`wv.opt.${id}`, d.open ? '1' : '0'); } catch { /* not kept */ } }, 0));
+  }
+  body.downloads.append($('hub-home'));
+  // The Library page's parts, in the order they were, each under the heading it had.
+  const under = { Updates: 'wikipedia', 'How much of Wikipedia': 'wikipedia', 'More libraries': 'libraries', Answers: 'answers', About: 'about' };
+  let at = 'library';
+  for (const node of [...document.querySelector('#view-library > .column').childNodes]) {
+    if (node.nodeType === 1 && node.tagName === 'H2' && under[node.textContent.trim()]) {
+      at = under[node.textContent.trim()];
+      if (at !== 'wikipedia') { node.remove(); continue; }   // the group's heading says it already
+      node.classList.add('opt-sub');
+    }
+    if (node.nodeType === 1 && node.id === 'lib-title') node.hidden = true;
+    body[at].append(node);
+  }
+}
+/** Open a group and bring it into view. */
+function optOpen(id) { const d = $(`opt-${id}`); if (!d) return; d.open = true; d.dataset.init = '1'; setTimeout(() => d.scrollIntoView({ block: 'start' }), 0); }
+function optOpenAll() { for (const [id] of OPT) { const d = $(`opt-${id}`); d.open = true; d.dataset.init = '1'; } }
+/** The flag on each heading, and, the first time, which groups are open: the ones that still need something. */
+function optPaint(items) {
+  if (!state || !$('opt-downloads')) return;
+  const e = state.edition; const active = Boolean(e && e.active); const left = items.filter(hubLeft);
+  const wiki = items.find((it) => it.id === 'wikipedia');
+  const libs = (state.libraries || []).filter((l) => l.active).length;
+  const ai = state.ai || {}; const aiOn = Boolean(state.settings && state.settings.ai && state.settings.ai.enabled);
+  const flags = {
+    downloads: left.length ? ['todo', `${left.length} to fetch`] : ['ok', 'Complete'],
+    library: active && state.settings.dataDir ? ['ok', 'Complete'] : ['todo', 'Needs setup'],
+    wikipedia: !active ? ['todo', 'Not downloaded yet'] : wiki && wiki.state === 'update' ? ['todo', 'A newer edition is ready'] : wiki && wiki.state === 'working' ? ['todo', 'Downloading'] : ['ok', 'Complete'],
+    libraries: libs ? ['ok', `${libs} added`] : ['none', 'Optional'],
+    answers: !aiOn ? ['none', 'Switched off'] : ai.state === 'ready' ? ['ok', 'Complete'] : ['todo', 'Needs setup'],
+    about: ['none', ''],
+  };
+  for (const [id] of OPT) {
+    const [kind, text] = flags[id]; const f = $(`opt-flag-${id}`); const d = $(`opt-${id}`);
+    f.textContent = text; f.className = `opt-flag opt-${kind}`; f.hidden = !text;
+    if (!d.dataset.init) { d.dataset.init = '1'; const kept = optKept(id); d.open = kept != null ? kept === '1' : kind === 'todo'; }
+  }
+}
+optBuild();
 
 // This is the last script: if the app's state arrived while the scripts were loading, draw now.
 if (state) render();

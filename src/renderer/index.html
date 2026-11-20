@@ -46,8 +46,8 @@
         <span class="dot" id="edition-dot"></span><span id="edition-label">No edition yet</span>
       </button>
       <button class="bar-btn" id="toggle-ask" aria-pressed="false">Ask</button>
-      <button class="bar-btn" id="open-hub" title="Setup and downloads: everything the app can fetch, in one place">Setup<span class="hub-badge" id="hub-badge" hidden></span></button>
-      <button class="bar-btn" id="open-library">Library</button>
+      <button class="bar-btn" id="open-hub" title="Options and Setup: everything the app can download and every setting, in one place">Options and Setup<span class="hub-badge" id="hub-badge" hidden></span></button>
+      <button class="bar-btn" id="open-library" hidden>Library</button>
       <button class="icon-btn" id="nav-help" title="How this page works" aria-label="How this page works">?</button>
     </div>
   </header>
@@ -172,6 +172,11 @@
 
       <!-- Library: edition, updates, answers -->
       <section class="view pad" id="view-hub" hidden>
+        <div class="column opt" id="opt-page">
+          <h1 class="display" id="opt-title">Options and Setup</h1>
+          <p class="lead" id="opt-lead">Everything the app can download and every setting, in groups. Each heading says whether its group is complete or still needs something from you.</p>
+          <div id="opt-groups"></div>
+        </div>
         <div class="column hub" id="hub-home">
           <div id="hub-panel">
             <h1 class="display" id="hub-title">Setup and downloads</h1>
@@ -698,7 +703,7 @@
     <ul>
       <li>Untick something, or choose fewer regions or less map detail, and the sums change as you do.</li>
       <li id="hub-room-opt-part">Make the library's partition larger.</li>
-      <li>Add storage: move the library to a larger drive from the Library page.</li>
+      <li>Add storage: move the library to a larger drive from Options and Setup.</li>
     </ul>
     <p class="small-print">Downloading anyway fetches what fits, in the order of the page, and stops with an error when the room runs out.</p>
     <div class="actions">
