@@ -19,7 +19,7 @@ From this page to a working app:
 1. **Sign in to GitHub.** While this repository is private, the page and the download only work for accounts that have been invited to it.
 2. **Download the installer** with the link above. To find it by hand instead: open **Releases** (in the right-hand column on a computer, further down the page on a phone), choose the newest release, open **Assets**, and click the file whose name ends in **`.exe`**. Do not take "Source code (zip)" or "Source code (tar.gz)": those are the program's source, not something you can run.
 3. **Keep the file** if the browser says it "isn't commonly downloaded" (in Edge: the three dots beside the download, then *Keep*).
-4. **Open your Downloads folder and double-click** `Wikivault-Setup-0.15.0.exe`.
+4. **Open your Downloads folder and double-click** the file you just downloaded (its name is `Wikivault-Setup-`, the version number, then `.exe`).
 5. **"Windows protected your PC"** appears because the installer is not code-signed. Click *More info*, then *Run anyway*. If Windows instead says **Smart App Control** blocked it, there is no "run anyway": see the [user guide](docs/USER-GUIDE.md#installing-step-by-step).
 6. **Follow the installer.** It shows the licence and the points below and asks you to agree, then asks whether to install Microsoft Foundry Local, the program that writes the answers. Say yes unless you only want search and reading.
 7. **Start Wikivault.** Choose how much of Wikipedia to keep and where to keep it, then press **Download Wikipedia**. The full edition is more than 100 GB and takes hours on most connections; it can be paused and picks up where it stopped.
