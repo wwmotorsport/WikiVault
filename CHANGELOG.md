@@ -2,6 +2,19 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.28.1 (2026-11-19)
+
+The places download no longer trips over the server's daily update, and says where it stands.
+
+- **What happened on a real run.** Sixty files were to be fetched. Six did not match the checksum beside them on the first go and four still did not on the second, so the run ended with an error; the Setup page asked again by itself, the four were fetched, and the set was complete (824,717 places) an hour later. The error line on the map page was still showing after that, and the button, rightly reading *Update the places* by then, began the whole download again when pressed.
+- **Why the checksums did not match.** The server replaces every file once a day, and this run straddled that. The app asked where each file was and how big at the start of the run and trusted the answer for hours. Now it asks again just before each file is fetched, and a file that does not match is forgotten and fetched again at once from wherever the server says it is now, instead of waiting for the end of the run with the same stale answer.
+- **A file that changed size under its name** is noticed and begun again, where before it could have been fetched over and over.
+- **The error line clears** when a new fetch starts, so an old error cannot sit above a download that has since finished.
+- **Updating a complete set asks first.** When the places are complete and were fetched in the last two weeks, *Update the places* says so, says that updating downloads every file again, and waits for a second press. *Leave them as they are* also clears away what an unfinished update had left.
+- **An update that was stopped** shows *Carry on updating the places*, with how many files were read.
+- The log names the copy each file came from, and both checksums when they differ, so that the next oddity can be read from it.
+- A file's error is said once: "Louisiana arrived damaged", not "Louisiana: Louisiana arrived damaged".
+
 ## 0.28.0 (2026-11-19)
 
 Ask finds the nearest places of a kind, and dragging the map no longer opens a card.

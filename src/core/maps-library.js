@@ -72,6 +72,7 @@ class MapsLibrary extends EventEmitter {
    */
   constructor({ dir, registry = loadRegistry(), fetchImpl = fetchLike, base = null, rewrite = base ? (u) => { const x = new URL(u); return base + x.pathname + x.search; } : (u) => u, pause = (ms) => new Promise((r) => setTimeout(r, ms)), agent = 'Wikivault', log = () => {} }) {
     super();
+    this.sizesFresh = 5 * 60000; // how long an answer about an extract's size is trusted before the file is fetched
     this.dir = dir; this.registry = registry; this.fetch = fetchImpl; this.base = base; this.rewrite = rewrite; this.pause = pause; this.agent = agent; this.log = log;
     this.map = null; this.placesInfo = null; this.measured = null; this.job = null; this.error = null;
     this.loaded = new Map(); // category id -> records
@@ -370,8 +371,8 @@ class MapsLibrary extends EventEmitter {
    * Ask the server where today's copy of each extract is and how big it is. Nothing is downloaded.
    * Returns { id: { dated, bytes } | { missing: true } }. An answer less than an hour old is used again.
    */
-  async extractSizes(files, signal, onOne = () => {}) {
-    const fresh = this.placesSizes && Date.now() - this.placesSizes.at < 3600000 ? this.placesSizes.by : {};
+  async extractSizes(files, signal, onOne = () => {}, anew = false) {
+    const fresh = !anew && this.placesSizes && Date.now() - this.placesSizes.at < 3600000 ? this.placesSizes.by : {};
     const by = {};
     let n = 0;
     for (const f of files) {
@@ -383,12 +384,20 @@ class MapsLibrary extends EventEmitter {
         const bytes = Number(res.headers.get('content-length'));
         if (res.status === 404) by[f.id] = { missing: true };
         else if (!res.ok || !(bytes > 0)) throw new Error(`The extract server could not say how big ${f.name} is (it answered ${res.status}). Try again later.`);
-        else by[f.id] = { dated: res.url || this.rewrite(f.url), bytes };
+        else by[f.id] = { dated: res.url || this.rewrite(f.url), bytes, asked: Date.now() };
       }
       onOne(++n);
     }
-    this.placesSizes = { at: Date.now(), by: { ...fresh, ...by } };
+    this.placesSizes = { at: this.placesSizes && !anew ? this.placesSizes.at : Date.now(), by: { ...(this.placesSizes ? this.placesSizes.by : {}), ...by } };
     return by;
+  }
+
+  /** Throw away what an unfinished fetch of the places had got: the working files, not the places in use. Nothing while one is running. */
+  async discardPlacesWork() {
+    if (this.job) return false;
+    await fsp.rm(path.join(this.dir, 'places.work'), { recursive: true, force: true }).catch(() => {});
+    this.placesKept = null; this.placesDone = new Set();
+    return true;
   }
 
   /** How much there is to download for the places of these regions. Reads no map data. */
@@ -452,6 +461,8 @@ class MapsLibrary extends EventEmitter {
       const started = Date.now();
       const failed = new Map(); // file id -> why
 
+      const copyOf = (info) => { try { return path.posix.basename(new URL(info.dated).pathname); } catch { return String(info.dated); } };
+      const ask = async (f) => { const info = (await this.extractSizes([f], signal, () => {}, true))[f.id]; state.at[f.id] = info; await save(); return info; };
       const one = async (f) => {
         let info = state.at[f.id];
         const dest = path.join(work, `${f.id}.osm.pbf`);
@@ -460,6 +471,10 @@ class MapsLibrary extends EventEmitter {
         const room = await freeAt(this.dir);
         let have = 0;
         try { have = (await fsp.stat(`${dest}.part`)).size; } catch { have = 0; }
+        // The server replaces every file once a day, and a long run can straddle that. So unless part of this file is
+        // already here, where it is and how big is asked again just before it is fetched, not taken from the start of the run.
+        if (!have && !fs.existsSync(dest) && (!info || info.missing || !(Date.now() - (info.asked || 0) < this.sizesFresh))) info = await ask(f);
+        if (!info || info.missing) throw Object.assign(new Error(`${f.name} is not on the extract server.`), { fatal: true });
         if (room != null && info.bytes - have + 300 * 1024 * 1024 > room) throw Object.assign(new Error(`There is not enough free space to fetch ${f.name}: it needs ${bytesText(info.bytes - have)} while it is read, and ${bytesText(room)} is free. Free some space, or fetch the places the slow way, which needs very little.`), { fatal: true, stop: true });
         tell({ stage: 'download', file: f.name, fileBytes: info.bytes, bytes, downloaded: downloaded + have });
         downloaded += have;
@@ -469,12 +484,11 @@ class MapsLibrary extends EventEmitter {
         else try {
           await this.fetchFile(this.rewrite(info.dated), dest, info.bytes, signal, (n) => { downloaded += n; this.progress({ downloaded }); }, 'extract');
         } catch (err) {
-          if (err.status !== 404 || signal.aborted) throw err;
-          // The copy this was coming from has been taken off the server: begin again from today's.
+          if (!(err.status === 404 || err.status === 416 || err.changed) || signal.aborted) throw err;
+          // The copy this was coming from has been taken off the server or replaced: begin again from today's.
+          this.log(`places: ${f.name}: ${copyOf(info)} is no longer what it was on the server (${err.message}); beginning again from today's copy`);
           await fsp.rm(`${dest}.part`, { force: true });
-          this.placesSizes = null;
-          info = (await this.extractSizes([f], signal))[f.id];
-          state.at[f.id] = info; await save();
+          info = await ask(f);
           if (info.missing) throw Object.assign(new Error(`${f.name} is not on the extract server.`), { fatal: true });
           downloaded = before;
           await this.fetchFile(this.rewrite(info.dated), dest, info.bytes, signal, (n) => { downloaded += n; this.progress({ downloaded }); }, 'extract');
@@ -482,7 +496,15 @@ class MapsLibrary extends EventEmitter {
         // The server publishes a checksum beside each file. When it is there, the file must match it.
         this.progress({ stage: 'check' });
         const sum = await this.fetch(`${this.rewrite(info.dated)}.md5`, { signal, timeoutMs: 30000, headers: { 'user-agent': this.agent } }).then(async (res) => (res.ok ? /^[0-9a-f]{32}/i.exec((await res.text()).trim()) : (drop(res), null))).catch(() => null);
-        if (sum && (await md5Of(dest)) !== sum[0].toLowerCase()) { await fsp.rm(dest, { force: true }); throw new Error(`${f.name} arrived damaged (it does not match the server's checksum).`); }
+        const got = sum ? await md5Of(dest) : '';
+        if (sum && got !== sum[0].toLowerCase()) {
+          // Damaged on the way, or replaced on the server between being measured and being fetched. Either way what was
+          // known of it is forgotten, so that the next go asks the server afresh.
+          this.log(`places: ${f.name}: ${copyOf(info)} (${info.bytes} bytes) does not match the checksum beside it: the server says ${sum[0].toLowerCase()}, the file here is ${got}`);
+          await fsp.rm(dest, { force: true });
+          delete state.at[f.id]; await save();
+          throw Object.assign(new Error(`${f.name} arrived damaged (it does not match the server's checksum).`), { again: true });
+        }
         this.progress({ stage: 'read', readDone: 0, readTotal: 1 });
         const name = `p${state.next++}.json`;
         let result = null;
@@ -494,7 +516,7 @@ class MapsLibrary extends EventEmitter {
         state.done[f.id] = name; state.found += result.count; delete state.at[f.id];
         await save();
         this.placesDone.add(f.id);
-        this.log(`places: ${f.name}: ${result.count} places from ${result.nodes} nodes, ${result.ways} ways and ${result.relations} relations, read in ${Math.round(result.ms / 100) / 10} s${result.unplaced ? `; ${result.unplaced} had no position in this extract` : ''}${sum ? '' : '; no checksum was on the server'}`);
+        this.log(`places: ${f.name} (${copyOf(info)}): ${result.count} places from ${result.nodes} nodes, ${result.ways} ways and ${result.relations} relations, read in ${Math.round(result.ms / 100) / 10} s${result.unplaced ? `; ${result.unplaced} had no position in this extract` : ''}${sum ? '' : '; no checksum was on the server'}`);
         tell();
         if (early && count() < files.length && (!shown || count() - shown >= every)) {
           shown = count();
@@ -507,12 +529,16 @@ class MapsLibrary extends EventEmitter {
         for (const f of todo) {
           if (signal.aborted) throw new Error('Stopped.');
           if (state.done[f.id]) continue;
-          if (!state.at[f.id] || state.at[f.id].missing) { failed.set(f.id, `${f.name} is not on the extract server`); continue; }
+          if (state.at[f.id] && state.at[f.id].missing && round === 1) { failed.set(f.id, `${f.name} is not on the extract server`); continue; }
           if (round === 2 && !failed.has(f.id)) continue;
-          try { await one(f); failed.delete(f.id); } catch (err) {
+          try {
+            // A file that does not match its checksum is fetched once more straight away, from wherever the server now says it is.
+            try { await one(f); } catch (err) { if (!err.again || signal.aborted) throw err; this.log(`places: ${f.name}: fetching it again`); await one(f); }
+            failed.delete(f.id);
+          } catch (err) {
             if (signal.aborted) throw err;
             if (err.stop) throw err;
-            failed.set(f.id, `${f.name}: ${err.message}`);
+            failed.set(f.id, err.message.startsWith(f.name) ? err.message.replace(/\.$/, '') : `${f.name}: ${err.message}`);
             this.log(`places: ${f.name} failed (go ${round} of 2): ${err.message}`);
             downloaded = todo.filter((x) => state.done[x.id]).reduce((a, x) => a + sizeOf(x), 0);
             if (round === 1 && !err.fatal) await this.pause(5000);
@@ -630,14 +656,16 @@ class MapsLibrary extends EventEmitter {
   /** One file, carried on from where a stopped download left it. */
   async fetchFile(url, dest, bytes, signal, onBytes, what = 'routing data') {
     const part = `${dest}.part`;
+    let over = 0;
     for (let attempt = 0; ; attempt++) {
       let have = 0;
       try { have = (await fsp.stat(part)).size; } catch { have = 0; }
-      if (have > bytes) { await fsp.rm(part, { force: true }); have = 0; }
+      // More than the whole file: once, that is a part left from an older copy. Twice, the file on the server is not the size it was said to be.
+      if (have > bytes) { await fsp.rm(part, { force: true }); have = 0; if (++over > 1) throw Object.assign(new Error(`The file on the ${what} server is not the size it was said to be: it has been replaced.`), { changed: true, fatal: true }); }
       if (have === bytes) break;
       try {
         const res = await this.fetch(url, { signal, timeoutMs: 60000, headers: { 'user-agent': this.agent, ...(have ? { range: `bytes=${have}-` } : {}) } });
-        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) { drop(res); throw Object.assign(new Error(`The ${what} server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403, status: res.status }); }
+        if (res.status === 200 && have) { await fsp.rm(part, { force: true }); have = 0; } else if (res.status !== 200 && res.status !== 206) { drop(res); throw Object.assign(new Error(`The ${what} server answered ${res.status}.`), { fatal: res.status === 404 || res.status === 403 || res.status === 416, status: res.status }); }
         const fd = await fsp.open(part, have ? 'a' : 'w');
         try { for await (const chunk of res.body) { await fd.write(chunk); onBytes(chunk.length); if (signal.aborted) throw new Error('Stopped.'); } } finally { await fd.close(); }
       } catch (err) {

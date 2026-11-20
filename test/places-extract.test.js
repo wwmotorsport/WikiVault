@@ -20,18 +20,24 @@ const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
  * from a place in them, and a checksum sits beside a file when `sums` has one for it.
  */
 function server() {
-  const s = { files: { 'x/east-a': A, 'x/east-b': Bf }, day: '261118', sums: { 'x/east-a': md5(A) }, log: [], cut: null, gone: new Set() };
+  const s = { files: { 'x/east-a': A, 'x/east-b': Bf }, day: '261118', sums: { 'x/east-a': md5(A) }, wrongOnce: new Set(), plain: false, log: [], cut: null, gone: new Set() };
   const srv = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     s.log.push(`${req.method} ${u.pathname}${req.headers.range ? ` ${req.headers.range}` : ''}`);
     let m = /^\/(.+)-latest\.osm\.pbf$/.exec(u.pathname);
-    if (m) { if (!s.files[m[1]]) { res.writeHead(404); res.end(); return; } res.writeHead(302, { location: `/${m[1]}-${s.day}.osm.pbf` }); res.end(); return; }
-    m = /^\/(.+)-(\d{6})\.osm\.pbf(\.md5)?$/.exec(u.pathname);
+    if (m && !s.plain) { if (!s.files[m[1]]) { res.writeHead(404); res.end(); return; } res.writeHead(302, { location: `/${m[1]}-${s.day}.osm.pbf` }); res.end(); return; }
+    // `plain`: a server that answers the "-latest" name itself, with whatever today's file is
+    m = /^\/(.+)-(\d{6}|latest)\.osm\.pbf(\.md5)?$/.exec(u.pathname);
     if (!m || !s.files[m[1]] || s.gone.has(`${m[1]}-${m[2]}`)) { res.writeHead(404); res.end('not here'); return; }
-    if (m[3]) { if (!s.sums[m[1]]) { res.writeHead(404); res.end(); return; } res.end(`${s.sums[m[1]]}  ${path.basename(m[1])}-${m[2]}.osm.pbf\n`); return; }
+    if (m[3]) {
+      if (!s.sums[m[1]]) { res.writeHead(404); res.end(); return; }
+      const sum = s.wrongOnce.delete(m[1]) ? md5(Buffer.from('not this file')) : s.sums[m[1]];
+      res.end(`${sum}  ${path.basename(m[1])}-${m[2]}.osm.pbf\n`); return;
+    }
     const all = s.files[m[1]];
     const r = /^bytes=(\d+)-$/.exec(req.headers.range || '');
     const from = r ? Number(r[1]) : 0;
+    if (from >= all.length && r) { res.writeHead(416); res.end(); return; }
     const body = all.subarray(from);
     res.writeHead(r ? 206 : 200, { 'content-length': body.length, ...(r ? { 'content-range': `bytes ${from}-${all.length - 1}/${all.length}` } : {}) });
     if (req.method === 'HEAD') { res.end(); return; }
@@ -90,6 +96,7 @@ test('places from extracts: a run that fails keeps what it read and the part of 
     const lib = await open(dir, s.origin);
     s.cut = (name) => name === 'x/east-b'; // the far file never arrives whole
     await assert.rejects(lib.downloadPlaces(['east'], { near: home }), /1 of the 2 files could not be fetched \(East B: .*\)\. What was read is kept: fetch the places again to carry on\./);
+    assert.ok(!/East B: East B/.test(lib.status().error || ''));
     assert.deepEqual(lib.status().placesKept, { regions: ['east'], done: 1, total: 2, how: 'extract' });
     assert.ok(lib.status().places.partial, 'what was read is in use meanwhile');
     assert.deepEqual(lib.search({ q: 'mercy' }).hits.map((h) => h.n), ['Mercy General']);
@@ -119,7 +126,7 @@ test('places from extracts: a damaged file is refused, a file the server does no
     // Damaged: the checksum beside it says so, and it is not read.
     s.sums['x/east-a'] = md5(Buffer.from('something else'));
     const lib = await open(dir, s.origin);
-    await assert.rejects(lib.downloadPlaces(['east'], { near: home }), /East A: East A arrived damaged/);
+    await assert.rejects(lib.downloadPlaces(['east'], { near: home }), /could not be fetched \(East A arrived damaged \(it does not match the server's checksum\)\)/);
     assert.equal(fs.existsSync(path.join(dir, 'places.work', 'east-a.osm.pbf')), false);
     assert.equal(lib.search({ q: 'mercy' }).total, 1, 'the other file was read all the same, and it holds that hospital too');
     s.sums['x/east-a'] = md5(A);
@@ -167,5 +174,49 @@ test('places from extracts: stopping keeps what is there, and the slow way can s
     const all = new MapsLibrary({ dir: tmp(), registry: real });
     const first = all.extractsFor(['us48'])[0];
     assert.match(first.url, /^https:\/\/download\.geofabrik\.de\/north-america\/us\/[a-z-]+-latest\.osm\.pbf$/);
+  } finally { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('places from extracts: a file replaced on the server during a long run, or a checksum that does not match once, does not fail the run', async () => {
+  const s = await server(); const dir = tmp();
+  const logged = [];
+  try {
+    // A checksum that is wrong once (the server was half-way through publishing): the file is fetched again at once, and the run goes on.
+    const lib = await open(dir, s.origin, { log: (l) => logged.push(l) });
+    s.wrongOnce.add('x/east-a');
+    const info = await lib.downloadPlaces(['east'], { near: home });
+    assert.deepEqual([info.total, info.partial], [8, undefined]);
+    assert.equal(s.log.filter((l) => l === 'GET /x/east-a-261118.osm.pbf').length, 2, 'fetched a second time');
+    assert.ok(logged.some((l) => /East A: east-a-261118\.osm\.pbf \(\d+ bytes\) does not match the checksum beside it: the server says [0-9a-f]{32}, the file here is [0-9a-f]{32}/.test(l)), logged.join('\n'));
+    assert.ok(logged.some((l) => /places: East A \(east-a-261118\.osm\.pbf\): \d+ places/.test(l)), 'the log says which copy each file came from');
+
+    // The day turns over between measuring and fetching: the file is asked for again just before it is fetched, and today's copy is used.
+    const dir2 = tmp();
+    try {
+      const lib2 = await open(dir2, s.origin);
+      await lib2.measurePlaces(['east']);
+      lib2.sizesFresh = 0; // as if the sizes had been asked for long ago
+      s.day = '261119'; s.gone.add('x/east-a-261118'); s.gone.add('x/east-b-261118'); s.log.length = 0;
+      const got = await lib2.downloadPlaces(['east'], { near: home });
+      assert.equal(got.total, 8);
+      assert.deepEqual(s.log.filter((l) => l.startsWith('GET ') && !l.endsWith('.md5')), ['GET /x/east-a-261119.osm.pbf', 'GET /x/east-b-261119.osm.pbf']);
+    } finally { fs.rmSync(dir2, { recursive: true, force: true }); }
+
+    // A server that keeps one name for the newest file: when the file under that name grows or shrinks after it was measured,
+    // that is noticed, the size is asked for again, and the new file is fetched whole. It is never fetched over and over.
+    for (const [name, swap] of [['larger', Buffer.concat([A, Buffer.alloc(0)])], ['smaller', Bf]]) {
+      const dir3 = tmp();
+      try {
+        s.plain = true; s.sums = {}; s.files = { 'x/east-a': name === 'larger' ? Bf : A, 'x/east-b': Bf };
+        const lib3 = await open(dir3, s.origin);
+        await lib3.measurePlaces(['east']);
+        s.files['x/east-a'] = name === 'larger' ? A : swap; // replaced after it was measured
+        s.log.length = 0;
+        const got = await lib3.downloadPlaces(['east'], { near: home });
+        assert.ok(got.total >= 4 && !got.partial, name);
+        const gets = s.log.filter((l) => l.startsWith('GET /x/east-a-latest.osm.pbf') && !l.includes('.md5'));
+        assert.ok(gets.length >= 2 && gets.length <= 4, `${name}: ${gets.join(' | ')}`);
+      } finally { fs.rmSync(dir3, { recursive: true, force: true }); s.plain = false; }
+    }
   } finally { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });

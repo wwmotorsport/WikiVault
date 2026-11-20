@@ -1892,6 +1892,7 @@ function registerIpc() {
     const saved = String(a.q || '').trim() && !(Array.isArray(a.categories) && a.categories.length) && !a.box ? bookHits(String(a.q)) : [];
     return saved.length ? { total: r.total + saved.length, hits: [...saved, ...r.hits] } : r;
   }));
+  handle('maps:places-discard', inMaps(() => maps.discardPlacesWork().then(() => { pushState(); return true; })));
   handle('maps:places-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('places sizes', maps.measurePlaces(mapRegions(a))); }));
   handle('maps:routing-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('routing sizes', maps.measureRouting(mapRegions(a))); }));
   handle('maps:routing-download', inMaps(async (a) => {
