@@ -466,7 +466,7 @@ class MapsLibrary extends EventEmitter {
         if (have !== f.sha256) {
           await fsp.rm(dest, { force: true });
           await this.fetchFile(this.rewrite(base + f.name), dest, f.bytes, signal, (b) => this.progress({ downloaded: got + b, left: Math.max(0, m.bytes - got - b) }), 'places');
-          if (central.sha256(await fsp.readFile(dest)) !== f.sha256) { await fsp.rm(dest, { force: true }); throw new Error(`${f.name} arrived damaged (it does not match its checksum). Fetch the places again.`); }
+          if (central.sha256(await fsp.readFile(dest)) !== f.sha256) { await fsp.rm(dest, { force: true }); throw new Error(`${f.name} arrived damaged (it does not match its checksum). Fetch the places again; if it keeps failing, the places can be built on this computer instead (Other ways, under Fetch the places).`); }
         }
         got += f.bytes; this.progress({ done: n + 1, downloaded: got, left: m.bytes - got });
       }
@@ -480,7 +480,11 @@ class MapsLibrary extends EventEmitter {
       this.loadOverture();
       this.end();
       return this.placesInfo;
-    } catch (err) { const r = this.end(err); if (r.stopped) return null; throw err; }
+    } catch (err) {
+      // What is on the computer is untouched. The other way to the same places is always there, and is named.
+      if (!/Other ways/.test(err.message) && !/Stopped/.test(err.message)) err.message = `The ready-made set of places could not be fetched (${err.message}). What is on this computer is unchanged. Try again, or build the places on this computer instead: Other ways, under Fetch the places.`;
+      const r = this.end(err); if (r.stopped) return null; throw err;
+    }
   }
 
   async measurePlaces(regionIds) {

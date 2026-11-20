@@ -2821,6 +2821,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.30.1': [
+    'The ready-made places are live: about 66 MB in place of 13 GB. Press Update the places once to get them, with their sorting and sizes.',
+    'If the ready-made set cannot be reached, the app still builds the places on this computer as before; that way is also under Other ways.',
+    'Ambulance stations, medical supply shops and children\'s hospitals from Overture are now checked by name as well as by kind.',
+  ],
   '0.30.0': [
     'Places are now fetched ready-made: tens of megabytes in place of 13 GB, built weekly on GitHub by the app\'s own code. Update the places to get them.',
     'Ask understands large and small: "the nearest large hospital", "the biggest military base within 100 miles".',

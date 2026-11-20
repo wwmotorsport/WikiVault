@@ -33,6 +33,8 @@ test('each kind keeps what belongs, moves what belongs elsewhere, marks the less
     ['rest_area', 'Chevron Commercial Cardlock', 'fuel (lesser)'], ['rest_area', "Love's Travel Stop", 'rest_area'], ['rest_area', 'TA Travel Center', 'rest_area'], ['rest_area', 'Minnesota Welcome Center', 'rest_area'],
     ['pharmacy', "Carmichael's Medical Supply", 'medical_supply'], ['pharmacy', 'Main Street Pharmacy & Medical Supply', 'pharmacy'], ['pharmacy', 'CVS Pharmacy', 'pharmacy'], ['pharmacy', 'Farmacias Similares', 'pharmacy'],
     ['townhall', 'City Hall', 'townhall'], ['food_bank', 'Community Food Pantry', 'food_bank'],
+    ['ambulance', 'County EMS Station 4', 'ambulance'], ['ambulance', 'North Valley Volunteer Rescue Squad', 'ambulance'], ['ambulance', 'Jane Example, MD', 'out'], ['ambulance', 'Emergency Winter Shelter', 'out'], ['ambulance', 'Cruz Roja Mexicana', 'ambulance'],
+    ['medical_supply', 'Joy Medical Supply', 'medical_supply'], ['medical_supply', 'Med One Capital', 'out'], ['medical_supply', 'Acme Foodservice Products', 'out'], ['medical_supply', 'AmeriGlide', 'medical_supply'],
   ];
   for (const [cat, name, want] of cases) assert.equal(where(cat, name), want, `${cat}: ${name}`);
 });
@@ -213,4 +215,19 @@ test('the hospital list is fetched in pages and kept only when it arrives whole'
     await assert.rejects(hospitals.fetchList({ dir, cfg, get: async () => Buffer.from('{"error":"x"}') }), /did not arrive in the form expected/);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'official', 'hospitals-us.json'), 'utf8')).count, 1234, 'a failed fetch leaves the list that was there');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('kinds that the first real fetch showed cannot be taken on trust', () => {
+  const { settle } = require('../src/core/place-sort');
+  const brands = { names: { 'golf galaxy': ['shop=sports'], 'trail outfitters': ['shop=outdoor'] }, ids: {} };
+  // A sports-shop brand settles nothing, so the name decides.
+  assert.equal(settle({ c: 'outdoor' }, 'Golf Galaxy', { own: 'sporting_goods_store', brands }), null);
+  assert.deepEqual(settle({ c: 'outdoor' }, 'Trail Outfitters', { own: 'sporting_goods_store', brands }), { c: 'outdoor', by: 'brand' });
+  // Hospital kinds are checked by name like "hospital" itself; a named specialty hospital stays a lesser sort of hospital.
+  assert.deepEqual(settle({ c: 'hospital' }, 'Autism Learning Partners', { own: 'childrens_hospital' }), { c: 'clinic', by: 'name' });
+  assert.deepEqual(settle({ c: 'hospital' }, "St. Mary's Children's Hospital", { own: 'childrens_hospital' }), { c: 'hospital', by: 'kind' });
+  assert.deepEqual(settle({ c: 'hospital', kind: 'Rehabilitation hospital', less: true }, 'Valley Rehabilitation Hospital', { own: 'rehabilitation_hospital' }), { c: 'hospital', kind: 'Rehabilitation hospital', less: true, by: 'kind' });
+  assert.deepEqual(settle({ c: 'hospital', kind: 'Psychiatric hospital', less: true }, 'Calm Minds Counseling', { own: 'psychiatric_hospital' }), { c: 'clinic', by: 'name' });
+  assert.equal(settle({ c: 'ambulance' }, 'Jane Example, NP', { own: 'ambulance_or_ems_service' }), null);
+  assert.deepEqual(settle({ c: 'ambulance' }, 'County EMS', { own: 'ambulance_or_ems_service' }), { c: 'ambulance', by: 'kind' });
 });

@@ -105,6 +105,8 @@ function sortPlace(cat, name) {
   const n = fold(name);
   switch (cat) {
     case 'hospital': return HOSPITAL_YES.test(n) && !HOSPITAL_NO.test(n) ? keep('hospital') : keep('clinic');
+    case 'ambulance': return AMBULANCE.test(n) && !/\b(?:md|do|np|pa|dds|shelter)\b/.test(n) ? keep('ambulance') : null;
+    case 'medical_supply': return MEDICAL_GOODS.test(n) && !/\b(?:capital|finance|financial|insurance|foodservice|billing|staffing|school|college|md|np)\b/.test(n) ? keep('medical_supply') : null;
     case 'propane': return TANK_EXCHANGE.test(n) ? lesser('propane', 'Cylinder exchange at a shop') : keep('propane');
     case 'veterinary':
       if (VACCINATION.test(n)) return lesser('veterinary', 'Visiting vaccination clinic');
@@ -204,7 +206,9 @@ const BRAND_TAGS = {
   'shop=doityourself': fits('hardware'), 'shop=hardware': fits('hardware'), 'shop=trade': fits('hardware'),
   'shop=paint': { c: ['hardware'], kind: 'Paint shop', less: true },
   'shop=country_store': fits('farm_supply', 'hardware'), 'shop=agrarian': fits('farm_supply'),
-  'shop=outdoor': fits('outdoor'), 'shop=sports': fits('outdoor'),
+  'shop=outdoor': fits('outdoor'),
+  // "Sports shop" is as wide in the index as it is everywhere: golf, shoes and team shirts. The name decides.
+  'shop=sports': null,
   'shop=bicycle': { c: ['outdoor'], kind: 'Bicycle shop', less: true },
   'shop=weapons': fits('weapons'), 'shop=hunting': fits('weapons', 'outdoor'), 'shop=fishing': fits('outdoor'),
   'shop=wholesale': fits('wholesale'), 'shop=gas': fits('propane'),
@@ -256,7 +260,11 @@ function byBrand(cat, name, brands, id) {
 }
 
 // Overture kinds that say enough on their own: the name is not asked to confirm them.
-const TRUSTED = new Set(['emergency_department', 'outdoor_store', 'hunting_and_fishing_store', 'archery_store', 'army_and_navy_store', 'military_surplus_store', 'tactical_supply_store', 'gun_and_ammo_store', 'gunsmith', 'bike_store', 'dive_store', 'ski_and_snowboard_store', 'paint_store', 'electrical_supply_store', 'welding_supply_store', 'veterans_hospital', 'childrens_hospital', 'psychiatric_hospital', 'rehabilitation_hospital', 'long_term_care_hospital', 'specialty_hospital', 'medical_supply_store', 'ambulance_or_ems_service', 'warehouse_club_store', 'lumber_store']);
+const TRUSTED = new Set(['emergency_department', 'outdoor_store', 'hunting_and_fishing_store', 'archery_store', 'army_and_navy_store', 'military_surplus_store', 'tactical_supply_store', 'gun_and_ammo_store', 'gunsmith', 'bike_store', 'dive_store', 'ski_and_snowboard_store', 'paint_store', 'electrical_supply_store', 'welding_supply_store', 'warehouse_club_store', 'lumber_store']);
+// The first real fetch by exact kind (November 2026) showed which kinds cannot be taken on trust: Overture files
+// therapy practices as children's hospitals, doctors by name as ambulance services, and lenders as medical suppliers.
+const AMBULANCE = words("ambulances?|ambulancia|ems|emergency medical|medics?|paramedics?|rescue|rescate|first aid|life ?flight|air ?care|air ?med\\w*|medevac|medical transport\\w*|cruz roja|red cross|fire");
+const MEDICAL_GOODS = words("medical|med|meds|health\\w*|mobility|care|oxygen|respiratory|cpap|orthot\\w*|orthop\\w*|prosthe\\w*|surgical|wheelchairs?|scooters?|lifts?|scrubs|uniforms?|hearing|diabet\\w*|pharm\\w*|medica|medico|ortopedi\\w*|ameriglide|apria|lincare|rotech|adapthealth");
 
 /**
  * Where a place from Overture goes, by all that is known of it, strongest first: the brand, Overture's own kind
@@ -276,6 +284,8 @@ function settle(at, name, { own = '', brands = null, brandId = '' } = {}) {
   }
   const s = sortPlace(at.c, name);
   if (!s) return null;
+  // A psychiatric or rehabilitation hospital is a (lesser) hospital by Overture's kind when its name says hospital at all, whatever else the name says.
+  if (at.c === 'hospital' && at.less && s.c === 'clinic' && /\b(?:hospital|hopital|medical cent(?:er|re))\b/.test(fold(name))) return { ...at, by: 'kind' };
   if (s.c !== at.c) return { ...s, by: 'name' };
   return { c: at.c, ...(s.kind || at.kind ? { kind: s.kind || at.kind } : {}), ...(s.less || at.less ? { less: true } : {}), by: s.kind || s.less ? 'name' : 'kind' };
 }

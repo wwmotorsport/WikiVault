@@ -45,6 +45,25 @@ jobs:
             gh release edit places-data --notes-file .github/PLACES-DATA.md --latest=false
           fi
           [ -f "$RUNNER_TEMP/build-log.txt" ] && gh release upload places-data "$RUNNER_TEMP/build-log.txt" --clobber || true
+      - name: Record the build in the repository
+        # A commit a week, of what was built. It is a record worth having, and it is also what keeps this schedule
+        # running: GitHub stops the schedules of a public repository that has had no activity for 60 days.
+        if: success()
+        shell: bash
+        run: |
+          [ -f "$RUNNER_TEMP/out/places-status.md" ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for try in 1 2 3; do
+            git fetch -q origin main && git checkout -q -B main FETCH_HEAD
+            cp "$RUNNER_TEMP/out/places-status.md" docs/PLACES-STATUS.md
+            git add docs/PLACES-STATUS.md
+            git diff --cached --quiet && exit 0
+            git commit -q -m "Places data of $(date -u +%F)"
+            git push -q origin main && exit 0
+            sleep 20
+          done
+          echo "The record could not be pushed; the places were published all the same."
       - name: Remove the branch that asked for this
         if: always() && startsWith(github.ref, 'refs/heads/places-build/')
         shell: bash
