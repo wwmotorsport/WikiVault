@@ -255,7 +255,7 @@ Once the addresses are there, type one in the Places box or as the start or dest
 - A row of the data that names no town, or names the suburb where you wrote the city, is still found when it lies near the town or ZIP code you gave. When the data has it under another town's name, the note says so.
 - Directions to an approximate address carry the same warning above the steps. They will take you to the right street and close to the house, not to the door.
 
-Places that come from Overture say so when opened. They are added only where OpenStreetMap has no place of a like name close by, and they are checked less, so one may have moved or closed.
+Places that come from Overture say so when opened. They are sorted into the map's kinds by their names (see *The nearest place of a kind*), added only where OpenStreetMap has no place of a like name close by, and they are checked less, so one may have moved or closed.
 
 **GPS.** Plug a USB GPS receiver into the computer, open *Directions*, and press *Find my GPS receiver*. The app tries each serial port at the usual speeds until one sends positions, so there is nothing to set. Outdoors or by a window the first position takes a minute or two. Then:
 
@@ -522,7 +522,7 @@ The kinds are the ones in the map's *Kind of place* list, under the words people
 
 The answer lists them nearest first, each with its distance and direction in a straight line, its address and telephone where known, and whether a hospital has an emergency room. The same places are put on the map's *Places* tab and drawn on the map. Each row has *Show on the map* and *Directions*. For the first three, the distance and time by road are worked out too, and if the nearest by road is not the nearest in a straight line, the answer says so.
 
-Hospitals are the ones OpenStreetMap marks as hospitals, plus the places from Overture Maps whose names say they are hospitals. Overture files many doctors' offices and hospital departments under "hospital"; those are listed with the clinics instead, so that they do not crowd out the hospitals.
+The two sources do not sort places alike. OpenStreetMap's are marked by hand, one kind at a time. Overture's come from business listings, which file a doctor's office under "hospital", a roofer under "hardware" and an airport gate under "airport". So each Overture place is put under the right kind when it is read: offices go with the clinics, gun shops with the gun shops, grocers with the supermarkets, and places that are none of the map's kinds (builders, recruiting offices, clothes shops, truck scales) are left out. A few are kept and marked as a lesser sort of their kind, such as a cage of exchange cylinders outside a shop under *Bottled gas and propane*, or a bicycle shop under *Outdoor and sporting goods*: they are named for what they are, and when they would fill a list of the nearest, the three nearest of the full sort are listed with them. The rules go by the name of the place, so now and then one is sorted wrongly.
 
 Two things to know. The list is only as good as the places on the computer: fetch both the OpenStreetMap places and the Overture places on the Setup page. And a question that is not about places ("what is the nearest star to the sun") is left to the articles.
 

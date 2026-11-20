@@ -2,6 +2,19 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.28.3 (2026-11-19)
+
+Every kind of place checked against the other source.
+
+After the hospitals, all 22 kinds that Overture Maps supplies were compared with OpenStreetMap's hand-marked places on a real download (the United States, Canada and Mexico: 990,000 Overture places). Overture's listings are filed under wide kinds, and about one place in five was under the wrong one. Each is now put where it belongs when the places are read; nothing is fetched again. The full findings are in `docs/PLACES-AUDIT.md`.
+
+- **Moved to the right kind (42,000).** Doctors' offices from *Hospitals* to *Clinics and urgent care* (36,000). Aldi, Save A Lot and other grocers from *Department and general stores* to *Supermarkets and grocery* (4,000). Gun shops from *Outdoor and sporting goods* to *Gun and hunting shops* (1,300; Overture's own gun-shop kind had supplied twelve). Supermarket fuel pumps and fleet fuel depots to *Fuel stations*. Medical equipment shops from *Pharmacies* to *Medical supply shops*. Police and fire stations filed under each other.
+- **Left out (116,000).** Builders, roofers and other trades under *Hardware and building supply* (67,000 of 135,000). Shoe, team, golf, pool and clothes shops under *Outdoor and sporting goods* (39,000 of 70,000). Restaurants and collection desks under *Supermarkets and grocery*. Truck scales under *Fuel stations*. Airport gates, terminals and airline desks under *Airports and airfields*. Recruiting offices and veterans' clubs under *Military sites*. Mobile home parks and day camps under *Campsites*. Pet groomers under *Veterinary clinics*. Bank counters under *Department and general stores*.
+- **Kept, but marked as a lesser sort (56,000).** Cages of exchange cylinders outside shops are 44,000 of the 47,500 *Bottled gas and propane* places; visiting vaccination clinics are under *Veterinary clinics*; bicycle shops are under *Outdoor and sporting goods*. Each is named for what it is in lists and on its card. In Ask, when they would fill a list of the nearest, the three nearest of the full sort are listed with them and a note says so.
+- **OpenStreetMap is taken as it is**, with one exception: shoe, team and golf shops among its sports shops are not listed as outdoor shops.
+- **From the next fetch of the Overture places, each keeps Overture's own kind**, so a later check can sort by kind where the name says nothing.
+- The rules go by the words in a place's name (English, French and Spanish), which is all there is to go by in what was fetched. Some places will be sorted wrongly; the kinds with the most left over are *Supermarkets and grocery* and *Department and general stores*.
+
 ## 0.28.2 (2026-11-19)
 
 Hospitals are hospitals.

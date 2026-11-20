@@ -298,6 +298,9 @@ function placeRecord(row, categoryOf, minConfidence) {
   const ad = Array.isArray(row.addresses) ? row.addresses[0] : null;
   if (ad) { const d = clean([ad.freeform, [ad.locality, [ad.region, ad.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ')); if (d) r.d = d; }
   const phone = Array.isArray(row.phones) ? clean(row.phones[0]) : ''; if (phone) r.p = phone;
+  // Overture's own kind is kept: the app's kind may have been reached through a wider kind above it, and place-sort.js
+  // has only the name to tell a doctor's office from a hospital. With this, a later check can go by kind.
+  const own = clean((row.taxonomy && row.taxonomy.primary) || (row.categories && row.categories.primary) || row.basic_category); if (own) r.k = own;
   return r;
 }
 

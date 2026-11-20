@@ -146,17 +146,4 @@ function fresh(base, extra, reach = 0.15) {
   return out;
 }
 
-// Overture's "hospital" kind is used by its sources for almost anything medical: a doctor's office, a therapy
-// practice, a ward, a hospital's gift shop. On a real download, 36,000 of its 52,000 "hospitals" were such places,
-// and they crowded the hospitals out of "the nearest hospital". So a place from Overture counts as a hospital only
-// when its name says it is one and does not say it is a part of one or an office; the rest are listed with the clinics.
-// OpenStreetMap's hospitals are tagged as hospitals by hand and are taken as they are.
-const HOSPITAL_YES = /\b(?:hospitals?|medical cent(?:er|re)s?|med(?:ical)? ctr|regional medical|health cent(?:er|re)|emergency (?:room|department|cent(?:er|re))|infirmary|trauma cent(?:er|re)|hopital|centre hospitalier|hospitalier|sanatorio)\b/;
-const HOSPITAL_NO = /\b(?:suite|ste|primary care|family (?:medicine|practice|health)|internal medicine|pediatrics?|paediatrics?|ob\/?gyn|obstetrics|gynecolog\w*|women'?s (?:care|health)|physical therapy|physiotherap\w*|rehab\w*|sports medicine|orthop\w*|dermatolog\w*|urgent care|sleep|endoscopy|imaging|radiolog\w*|breast|vein|spine|neuro\w*|cardiolog\w*|oncolog\w*|cancer|dental|dentist\w*|eye|vision|hearing|audiolog\w*|chiropract\w*|pharmacy|laborator\w*|lab|associates|institute|group|practice|clinic|office|unit|animal|veterinar\w*|pet|vet|gift shop|cafeteria|parking|foundation|auxiliary|volunteer\w*|school of|college of|department of|dept|outpatient|dialysis|hospice|home health|nursing|assisted living|senior living|behavioral|psychiatr\w*|counsel\w*|therapy|wellness|weight loss|plastic surgery|surgery cent(?:er|re)|surgical|urolog\w*|gastro\w*|allerg\w*|podiatr\w*|foot|pain|diabetes|medical supply|equipment|billing|records|human resources|careers|jobs)\b/;
-/** Whether a place's name is that of a hospital, and not of an office or a part of one. */
-function isHospitalName(name) {
-  const n = fold(name || '');
-  return HOSPITAL_YES.test(n) && !HOSPITAL_NO.test(n);
-}
-
-module.exports = { isHospitalName, boxesOf, quarter, boxTouches, queryFor, categoryOf, recordOf, inRings, km, search, fresh, sameName };
+module.exports = { boxesOf, quarter, boxTouches, queryFor, categoryOf, recordOf, inRings, km, search, fresh, sameName };

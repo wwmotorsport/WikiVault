@@ -362,9 +362,30 @@ function planNear(ask, ctx) {
   if (o.note) notes.push(o.note);
   if (o.others && o.others.length) notes.push(`${o.others.length === 1 ? 'Another person also fits' : 'Other people also fit'}: ${o.others.slice(0, 4).join(', ')}. ${at.label} was used.`);
   if (at.approx) notes.push(`The position of ${at.label} is approximate, so the distances are too. ${String(at.approx).replace(/^Approximate\. /, '')}`);
+  // Some places are a lesser sort of their kind: a cage of exchange cylinders outside a shop is propane, but it is
+  // not a propane supplier, and there are thirty of them to each supplier. They are listed, and named for what they
+  // are, but they do not get to be the whole list: the nearest few of the full sort are always in it.
+  let list = hits.slice(0, want);
+  const lessIn = list.filter((h) => h.less);
+  const keepMain = Math.min(3, want);
+  if (lessIn.length && list.length - lessIn.length < keepMain) {
+    let main = hits.filter((h) => !h.less);
+    if (main.length < keepMain && found.length >= 400) {
+      // The four hundred nearest were nearly all of the lesser sort: look farther for the others (the map gives two thousand at most).
+      const far = ctx.nearby({ cats: ask.cats, q: ask.cats ? '' : ask.what, near: [at.lon, at.lat], limit: 2000 }).filter((h) => !h.less && h.km <= (reach || 250));
+      main = far.slice(0, keepMain).map((h) => ({ ...h, miles: Math.round(h.km * MI * 10) / 10, far: milesText(h.km), wind: h.km < 0.05 ? '' : windOf(at, { lat: h.a, lon: h.o }) }));
+    }
+    const add = main.filter((h) => !list.some((x) => x.i === h.i)).slice(0, keepMain - (list.length - lessIn.length));
+    if (add.length) {
+      for (let i = list.length - 1, room = add.length - Math.max(0, want - list.length); i >= 0 && room > 0; i--) if (list[i].less) { list.splice(i, 1); room--; }
+      list = list.concat(add).sort((a, b) => a.km - b.km);
+      const sorts = [...new Set(lessIn.map((h) => (h.x && h.x.kind) || '').filter(Boolean))].map((s) => s.toLowerCase());
+      notes.push(`Most of the nearest are of a lesser sort${sorts.length ? ` (${sorts.join('; ')})` : ''}, so the nearest ${add.length === 1 ? 'one' : add.length} of the full sort ${add.length === 1 ? 'is' : 'are'} listed with them, though farther away.`);
+    }
+  }
   return {
     kind: 'near', at, what: ask.what, cats: ask.cats, names, one: Boolean(ask.one), how: ask.how, radius: ask.radiusKm ? milesText(ask.radiusKm) : null,
-    total: hits.length, hits: hits.slice(0, want), notes,
+    total: hits.length, hits: list, notes,
     said: `${ask.cats ? names : `Places named "${ask.what}"`} ${ask.radiusKm ? `within ${milesText(ask.radiusKm)} of` : 'nearest to'} ${o.said}`,
   };
 }
