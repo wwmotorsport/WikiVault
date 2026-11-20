@@ -22,11 +22,11 @@ jobs:
         run: |
           {
             date -u
-            for u in north-america/mexico-latest.osm.pbf north-america/us/delaware-latest.osm.pbf north-america/us/delaware-latest.osm.pbf.md5 north-america/canada/prince-edward-island-latest.osm.pbf north-america/us/alabama-latest.osm.pbf; do
-              echo "== HEAD $u"; curl -sS -I -L -m 40 -A "Wikivault places build (github.com/wwmotorsport/WikiVault)" "https://download.geofabrik.de/$u" 2>&1 | grep -i -E "^HTTP|^location|^content-length|^retry|^x-|^server|curl:" | head -12
+            for u in north-america/us/delaware/delaware-latest.osm.pbf north-america/us/delaware/delaware-latest.osm.pbf.md5 north-america/canada/prince-edward-island/prince-edward-island-latest.osm.pbf north-america/us/puerto-rico/puerto-rico-latest.osm.pbf north-america/us/us-virgin-islands/us-virgin-islands-latest.osm.pbf north-america/mexico/mexico-latest.osm.pbf.md5; do
+              echo "== HEAD $u"; curl -sS -I -L -m 40 -A "Wikivault places build (github.com/wwmotorsport/WikiVault)" "https://download.geofabrik.de/$u" 2>&1 | grep -i -E "^HTTP|^location|^content-length|curl:" | head -12
             done
-            echo "== GET range delaware"; curl -sS -L -m 40 -r 0-99 -o /dev/null -w "%{http_code} %{size_download} %{url_effective}\n" "https://download.geofabrik.de/north-america/us/delaware-latest.osm.pbf" 2>&1
-            echo "== node fetch HEAD"; node -e "fetch('https://download.geofabrik.de/north-america/us/delaware-latest.osm.pbf',{method:'HEAD',headers:{'user-agent':'Wikivault'}}).then(r=>console.log(r.status,r.url,r.headers.get('content-length')),e=>console.log('ERR',e.message,e.cause&&e.cause.code))"
+            echo "== index"; curl -sS -L -m 60 -o index.json -w "%{http_code} %{size_download}\n" "https://download.geofabrik.de/index-v1-nogeom.json"
+            node -e "const d=JSON.parse(require('fs').readFileSync('index.json','utf8'));const f=d.features.map(x=>x.properties);console.log(f.length,'regions');for(const id of ['us/delaware','us/north-carolina','us/puerto-rico','us/us-virgin-islands','canada/prince-edward-island','mexico','us/alaska','us/hawaii','us/district-of-columbia','us/california'])console.log(id,JSON.stringify((f.find(x=>x.id===id)||{}).urls&&f.find(x=>x.id===id).urls.pbf),(f.find(x=>x.id===id)||{}).parent);console.log(f.filter(x=>x.parent==='us'||x.parent==='north-america'||x.parent==='canada').map(x=>x.id).join(' '))"
           } 2>&1 | tee probe.txt
           gh release upload places-data probe.txt --clobber --repo "$GITHUB_REPOSITORY"
       - name: Remove the branch that asked for this
