@@ -55,8 +55,21 @@ the three nearest of the full sort are always in it (`planNear` in `src/core/map
   Overture uses. Mending that needs the list of kinds Overture did use (kept in `overture.json` as `others` after a
   fetch), and takes effect at the next fetch of the Overture places.
 
-## Doing it again
+## What 0.29 changed
 
-From 0.28.3 each fetched Overture record keeps Overture's own kind (`k`). After the next fetch, the sorting can go by
-kind first and by name only where the kind is too wide, and this check can be repeated by counting kinds, not by
-reading names. Records fetched before that have no `k` and are sorted by name alone.
+The check above had only names to go by. Three things followed from it.
+
+1. **The list of kinds.** Overture publishes its taxonomy with each release (labs.overturemaps.org, taxonomy explorer;
+   a list of the 2,302 kinds of the 2026-09-23 release is in `test/fixtures`). Against it, 71 of the 120 names in the
+   app's list were not kinds at all, and the fallback to wider kinds was the cause of most of the "left out" groups in
+   the table. The list is now exact, and `matcher` in `overture.js` no longer falls back to a wider kind unless the list
+   says `kind/*`.
+2. **Brands.** `place-sort.js` asks the Name Suggestion Index first. On the download above it knew 30% of the places,
+   confirmed 246,000, moved 4,900 and took out 7,100, and agreed with the name rules nearly everywhere they both spoke.
+3. **Hospitals.** `hospitals.js` lays Medicare's list over the places. Names cannot tell a hospital from an office:
+   the name rule kept about 10,000 "hospitals" in the United States where there are 5,435, and lost the ones named
+   "X Health Y".
+
+Each fetched record now keeps Overture's kind (`k`), and `overture.json` keeps a tally of how places were settled. The
+next check should start from those: count by kind what the name rules still move or drop, and move those decisions
+into the list of kinds where a kind explains them.

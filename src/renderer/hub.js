@@ -103,7 +103,7 @@ function hubItems() {
         bytes: adDone ? 0 : om && om.addresses ? om.addresses.bytes + om.addresses.rows * 14 : null });
       const moreDone = Boolean(m.overture && hubSame(m.overture.regions, regs));
       out.push({ id: 'more', title: 'Places: shops, fuel, hospitals and more', state: jobOf(['overture:places']) ? 'working' : moreDone ? 'done' : w.more && regs.length ? 'todo' : 'off', tick: moreDone ? null : 'more',
-        detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
+        detail: moreDone ? `${m.overture.total.toLocaleString()} places from Overture Maps.${m.overture.sorted >= 2 ? '' : ' Fetched before places were sorted as they arrive: fetch them again in the Map section (Change or update) for sorting by exact kind and the official hospital list. It takes minutes.'}` : 'Places from Overture Maps. Quick to fetch.', bytes: moreDone ? 0 : om && om.places ? Math.round(om.places.bytes / 20) : null });
       const plDone = Boolean(m.places && !m.places.partial && hubSame(m.places.regions || [], regs));
 // Read out of regional extracts: a large download of which little is kept. `bytes` is what is still to
       // download; `keeps` what stays on the disk, a guess until it is done; `room` adds the largest file, held while it is read.

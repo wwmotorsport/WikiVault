@@ -89,7 +89,7 @@ async function askMap(entry, plan, question) {
     for (const h of hits) {
       const li = el('li');
       li.append(el('b', '', nameOf(h)));
-      const facts = [dist(h), several ? h.kind : '', h.less && h.x && h.x.kind ? h.x.kind : '', h.x && h.x.emergency === 'yes' ? 'emergency room' : '', h.s === 'ov' ? 'from Overture Maps' : ''].filter(Boolean).join(' · ');
+      const facts = [dist(h), several ? h.kind : '', h.less && h.x && h.x.kind ? h.x.kind : '', h.x && h.x.emergency === 'yes' ? 'emergency room' : h.x && h.x.emergency === 'no' && h.x.listed ? 'no emergency room' : '', h.x && h.x.listed ? 'on the Medicare list' : '', h.s === 'ov' ? 'from Overture Maps' : ''].filter(Boolean).join(' · ');
       li.append(el('span', 'qa-near-far', facts));
       if (h.d) li.append(el('span', 'qa-near-line', h.d));
       if (h.p) li.append(el('span', 'qa-near-line', h.p));

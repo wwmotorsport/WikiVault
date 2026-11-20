@@ -19,6 +19,7 @@ const extract = require('./map-extract');
 const crypto = require('node:crypto');
 const places = require('./places');
 const placeSort = require('./place-sort');
+const hospitals = require('./hospitals');
 const read1 = (dir, kind) => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'overture', `${kind}.json`), 'utf8')).items; } catch { return []; } };
 const placesExtract = require('./places-extract');
 const routing = require('./routing');
@@ -619,7 +620,7 @@ class MapsLibrary extends EventEmitter {
     await fsp.rename(fresh, live);
     this.placesInfo = { regions: regionIds, date: new Date().toISOString(), total: seen.size, counts, bytes, ...(partial ? { partial } : {}) };
     await writeJson(path.join(this.dir, 'places.json'), this.placesInfo);
-    this.loaded.clear();
+    this.loaded.clear(); this.hospitalList = undefined;
     return this.placesInfo;
   }
 
@@ -755,20 +756,45 @@ class MapsLibrary extends EventEmitter {
     return out;
   }
 
-  recordsOf(id) {
-    if (!this.loaded.has(id)) {
+  /** The brand index packed with the app, for sorting places fetched before they were sorted when fetched. */
+  brands() {
+    if (this.brandIndex === undefined) { try { this.brandIndex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'maps', 'brands.json'), 'utf8')); } catch { this.brandIndex = null; } }
+    return this.brandIndex;
+  }
+
+  baseRecords(id) {
+    {
       const read = (folder) => { try { return JSON.parse(fs.readFileSync(path.join(this.dir, folder, `${id}.json`), 'utf8')).items; } catch { return []; } };
       let items = this.placesInfo ? read('places') : [];
       if (id === 'outdoor') items = items.filter((r) => placeSort.keepsOsm(id, r.n));
       // Overture's places are put under the right kind first (see place-sort.js): a doctor's office fetched as a
       // "hospital" is a clinic, a gun shop fetched as "sporting goods" is a gun shop, an airport gate is nothing.
+      // Places fetched since 0.29 were sorted as they were fetched; older ones are sorted here, by brand and name.
       const ov = this.overture ? (kind) => (this.overture.counts[kind] ? read1(this.dir, kind) : []) : null;
-      const more = ov ? placeSort.sorted(id, ov) : [];
+      const more = !ov ? [] : this.overture.sorted >= 2 ? ov(id) : placeSort.sorted(id, ov, this.brands());
       // Places from Overture are added only where OpenStreetMap has no place of a like name close by.
       const extra = more.length ? places.fresh(items, more) : [];
       const all = extra.length ? items.concat(extra) : items;
       for (const it of all) it.c = id;
-      this.loaded.set(id, all);
+      return all;
+    }
+  }
+
+  /** Medicare's list of the hospitals of the United States, when it has been fetched (see hospitals.js). */
+  hospitalRows() {
+    if (this.hospitalList === undefined) { try { this.hospitalList = JSON.parse(fs.readFileSync(path.join(this.dir, 'official', 'hospitals-us.json'), 'utf8')); } catch { this.hospitalList = null; } }
+    return this.hospitalList && Array.isArray(this.hospitalList.rows) ? this.hospitalList.rows : null;
+  }
+
+  /** The places of one kind: OpenStreetMap's, Overture's sorted, and for hospitals and clinics the official list laid over both. */
+  recordsOf(id) {
+    if (!this.loaded.has(id)) {
+      const rows = id === 'hospital' || id === 'clinic' ? this.hospitalRows() : null;
+      if (rows) {
+        const out = hospitals.lay(rows, this.baseRecords('hospital'), this.baseRecords('clinic'));
+        this.loaded.set('hospital', out.hospital); this.loaded.set('clinic', out.clinic);
+        if (out.stats) this.log(`places: the hospital list of ${String(this.hospitalList.date).slice(0, 10)}: ${out.stats.matched} of its ${out.stats.rows} hospitals found among the places (${out.stats.places} places, ${out.stats.promoted} of them taken from the clinics); ${out.stats.lowered} places Overture calls hospitals are not on it and are marked so`);
+      } else this.loaded.set(id, this.baseRecords(id));
     }
     return this.loaded.get(id);
   }
@@ -779,7 +805,7 @@ class MapsLibrary extends EventEmitter {
     // `around` is where the map is looking: of two streets of one name, the nearer is listed first.
     const found = !chosen && !box && q.trim() ? this.findAddress(q, around || near).hits : [];
     // A kind has places when either source has some, or when Overture has places fetched under another kind that belong to it.
-    const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && (this.overture.counts[id] || (placeSort.FROM[id] || []).some((src) => this.overture.counts[src])));
+    const has = (id) => (this.placesInfo && this.placesInfo.counts[id]) || (this.overture && (this.overture.counts[id] || (!(this.overture.sorted >= 2) && (placeSort.FROM[id] || []).some((src) => this.overture.counts[src]))));
     const ids = (chosen ? categories : this.registry.categories.map((c) => c.id)).filter(has);
     let r = { total: 0, hits: [] };
     const exact = found.some((h) => h.sure && h.how === 'exact') && /^\s*\d/.test(q);
@@ -807,7 +833,7 @@ class MapsLibrary extends EventEmitter {
     // The towns and ZIP codes of the address data, worked out from it once (see buildGazetteer).
     const gaz = this.addresses ? readJsonSync(path.join(this.dir, 'address-towns.json')) : null;
     this.setGazetteer(gaz && gaz.v === 1 && gaz.of === this.gazStamp() ? gaz : null);
-    this.loaded.clear();
+    this.loaded.clear(); this.hospitalList = undefined;
   }
   gazStamp() { return this.addresses ? `${this.addresses.addresses}:${this.addresses.date || ''}:${this.addresses.bytes || ''}` : ''; }
   setGazetteer(gaz) {
@@ -951,8 +977,10 @@ class MapsLibrary extends EventEmitter {
         const need = m.addresses.rows * 60 + 512 * 1024 * 1024;
         if (need > free) throw new Error(`Building the address index needs about ${Math.ceil(need / 1e8) / 10} GB of free space while it works, and there is not that much. Choose fewer regions.`);
       }
-      const data = { dir: this.dir, cfg: this.registry.overture, categories: this.registry.categories.map(({ id, overture: o }) => ({ id, overture: o || [] })), rings, regions: regionIds, kinds, base: this.base, agent: this.agent, fast: Boolean(this.base) };
+      const data = { dir: this.dir, cfg: this.registry.overture, categories: this.registry.categories.map(({ id, overture: o, overtureLess: l }) => ({ id, overture: o || [], overtureLess: l || {} })), rings, regions: regionIds, kinds, base: this.base, agent: this.agent, fast: Boolean(this.base), brands: kinds.includes('places') ? this.brands() : null };
       const result = await this.runOverture(data, job, inline);
+      if (result && result.places) { const s = result.places.sorting || {}; this.log(`maps: Overture places sorted as fetched: ${s.kept || 0} kept, ${s.moved || 0} moved to another kind, ${s.lesser || 0} marked as a lesser sort, ${s.out || 0} left out (by brand ${s['by brand'] || 0}, by Overture's kind ${s['by kind'] || 0}, by name ${s['by name'] || 0}); brand index ${result.places.brands ? `${result.places.brands.from} ${result.places.brands.version}` : 'none'}`); }
+      if (result && result.hospitals) this.log(result.hospitals.error ? `maps: the hospital list could not be fetched (${result.hospitals.error}); hospitals are sorted without it` : `maps: hospital list fetched, ${result.hospitals.count} hospitals`);
       this.loadOverture();
       this.end();
       return result;

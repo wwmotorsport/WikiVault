@@ -61,7 +61,13 @@ test('fetching builds the address index and adds places OpenStreetMap does not h
     assert.ok(seen.includes('places:rows') && seen.includes('addresses:rows') && seen.includes('addresses:index'), [...new Set(seen)].join());
 
     const st = lib.status();
-    assert.deepEqual(st.overture.counts, { hospital: 2, pharmacy: 2, fuel: 1, hardware: 1, weapons: 1 });
+    assert.deepEqual(st.overture.counts, { hospital: 2, pharmacy: 2, fuel: 1, propane: 1, supermarket: 1, hardware: 1, weapons: 1 });
+    // Sorted as they were fetched: the grocer is with the supermarkets, the cage of cylinders is marked, the golf shop and the roofer are not kept.
+    assert.equal(st.overture.sorted, 2);
+    assert.deepEqual(lib.search({ categories: ['supermarket'], near: [-80.86, 35.2] }).hits.map((r) => [r.n, r.k]), [['Aldi', 'discount_store']]);
+    assert.deepEqual(lib.search({ categories: ['propane'], near: [-80.86, 35.2] }).hits.map((r) => [r.n, r.less, r.x.kind]), [['Blue Rhino Propane Exchange', true, 'Cylinder exchange at a shop']]);
+    assert.deepEqual(lib.search({ categories: ['outdoor', 'department'], near: [-80.86, 35.2] }).hits, []);
+    assert.deepEqual([st.overture.sorting.kept, st.overture.sorting.moved, st.overture.sorting.lesser, st.overture.sorting.out, st.overture.brands.from], [7, 1, 1, 1, 'packed']);
     assert.deepEqual([st.addresses.addresses, st.addresses.release, st.addresses.offsets], [146, RELEASE, undefined]);
     assert.ok(st.bytes > 500 && st.categories.find((c) => c.id === 'pharmacy').extra === 2);
     assert.ok(!fs.existsSync(path.join(dir, 'addresses.work')) && !fs.existsSync(path.join(dir, 'overture.work')));
@@ -98,6 +104,41 @@ test('fetching builds the address index and adds places OpenStreetMap does not h
   } finally { await site.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a place is put under its kind by its brand, by Overture\'s own kind, and last by its name', () => {
+  const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'maps', 'registry.json'), 'utf8'));
+  const kindOf = overture.matcher(registry.categories);
+  const brands = { names: { aldi: ['shop=supermarket'], 'cat scale': ['amenity=weighbridge'], puma: ['amenity=fuel'] }, ids: { Q125054: ['shop=supermarket'] } };
+  const row = (name, path, more = {}) => ({ id: 'aaaa-1', bbox: { xmin: -80, ymin: 35 }, names: { primary: name }, taxonomy: { primary: path[path.length - 1], hierarchy: path }, confidence: 0.9, operating_status: 'open', ...more });
+  const put = (name, path, more) => { const r = overture.placeRecord(row(name, path, more), kindOf, 0.7, brands); return r ? `${r.c}${r.less ? ' (lesser)' : ''}${r.x && r.x.kind ? `: ${r.x.kind}` : ''}` : 'out'; };
+  const shop = ['shopping', 'specialty_store'];
+  // Overture's own kind, exactly: kinds under a kept kind are taken only where the list says so.
+  assert.equal(put('Hill Sports', [...shop, 'sporting_goods_store']), 'outdoor');
+  assert.equal(put('Hill Golf', [...shop, 'sporting_goods_store', 'golf_equipment_store']), 'out');
+  assert.equal(put('Hill Wheels', [...shop, 'sporting_goods_store', 'bike_store']), 'outdoor (lesser): Bicycle shop');
+  assert.equal(put('Bob\'s', [...shop, 'sporting_goods_store', 'hunting_and_fishing_store']), 'outdoor', 'a kind that says enough is not asked for a name that agrees');
+  assert.equal(put('Bob\'s Guns', [...shop, 'sporting_goods_store', 'hunting_and_fishing_store']), 'weapons');
+  assert.equal(put('Iron Sights', [...shop, 'gun_and_ammo_store']), 'weapons');
+  assert.equal(put('Iron Smith', [...shop, 'gun_and_ammo_store', 'gunsmith']), 'weapons');
+  assert.equal(put('Seoul Mart', ['shopping', 'food_and_beverage_store', 'grocery_store', 'korean_grocery_store']), 'supermarket');
+  assert.equal(put('County EMS', ['health_care', 'emergency_or_urgent_care_facility', 'ambulance_or_ems_service']), 'ambulance');
+  assert.equal(put('US Army Recruiting', ['community_and_government', 'military_site', 'military_office']), 'out');
+  assert.equal(put('Terminal B', ['travel_and_transportation', 'air_transport_facility_or_service', 'airport', 'airport_terminal']), 'out');
+  assert.equal(put('Pine State Hospital', ['health_care', 'hospital', 'specialty_hospital', 'psychiatric_hospital']), 'hospital (lesser): Psychiatric hospital');
+  const er = overture.placeRecord(row('Eastside ER', ['health_care', 'emergency_or_urgent_care_facility', 'emergency_department']), kindOf, 0.7, brands);
+  assert.deepEqual([er.c, er.k, er.x], ['hospital', 'emergency_department', { kind: 'Emergency department', emergency: 'yes' }]);
+  // The name, where Overture's kind is one it uses loosely.
+  assert.equal(put('Lakeside Family Medicine', ['health_care', 'hospital']), 'clinic');
+  assert.equal(put('Top Notch Roofing', [...shop, 'hardware_home_and_garden_store', 'building_supply_store']), 'out');
+  // The brand, before either: by name, and by Wikidata id when Overture gives one (whatever the branch is called).
+  assert.equal(put('Aldi', ['shopping', 'discount_store']), 'supermarket');
+  assert.equal(put('Fresh Foods No. 12', ['shopping', 'discount_store'], { brand: { wikidata: 'Q125054' } }), 'supermarket');
+  assert.equal(put('CAT Scale', ['travel_and_transportation', 'fueling_station', 'gas_station']), 'out');
+  assert.equal(put('Puma', [...shop, 'sporting_goods_store']), 'out', 'a shoe shop is not moved in with the fuel on the strength of a shared name');
+  // Every kind the app lists is a kind in Overture's published taxonomy.
+  const real = new Set(fs.readFileSync(path.join(__dirname, 'fixtures', 'overture-kinds-2026-09-23.txt'), 'utf8').split('\n').filter(Boolean));
+  for (const c of registry.categories) for (const k of [...(c.overture || []), ...Object.keys(c.overtureLess || {})]) assert.ok(real.has(k.replace('/*', '')), `${c.id}: ${k} is not a kind Overture has`);
+});
+
 test('one kind can be fetched alone, on the main thread; a stop leaves what was there; the release is found without the list', async () => {
   const site = await serve(overtureFiles({ withReleaseList: false }));
   const dir = tmp();
@@ -105,14 +146,14 @@ test('one kind can be fetched alone, on the main thread; a stop leaves what was 
     const lib = new MapsLibrary({ dir, registry: registry(site.origin), ...fast });
     await lib.init();
     const out = await lib.downloadOverture(['us48'], { kinds: ['places'], inline: true });
-    assert.deepEqual([out.release, out.places.total, out.addresses], [RELEASE, 7, undefined]);
+    assert.deepEqual([out.release, out.places.total, out.addresses], [RELEASE, 9, undefined]);
     assert.equal(lib.status().addresses, null);
     assert.equal(lib.search({ q: 'ace' }).hits[0].n, 'Ace Hardware', 'places from Overture alone can be searched');
 
     const going = lib.downloadOverture(['us48'], { kinds: ['addresses'] });
     lib.cancel();
     assert.equal(await going, null);
-    assert.deepEqual([lib.status().job, lib.status().error, lib.status().addresses, lib.status().overture.total], [null, null, null, 7]);
+    assert.deepEqual([lib.status().job, lib.status().error, lib.status().addresses, lib.status().overture.total], [null, null, null, 9]);
     await lib.measureOverture(['us48']);
     await assert.rejects(lib.downloadOverture(['us48'], { kinds: ['addresses'], free: 1000 }), /free space/);
     assert.equal(lib.status().addresses, null);

@@ -15,6 +15,9 @@ const zlib = require('node:zlib');
 const { parquetMetadataAsync, parquetRead } = require('../vendor/parquet/hyparquet.cjs');
 const { fetchLike } = require('./httpx');
 const { AddressBuilder, Spool } = require('./addresses');
+const placeSort = require('./place-sort');
+const hospitals = require('./hospitals');
+const US_REGIONS = new Set(['us48', 'alaska', 'hawaii', 'pr']);
 
 const bytesOf = (b) => new Uint8Array(b.buffer, b.byteOffset, b.length);
 const compressors = {
@@ -26,7 +29,7 @@ const compressors = {
 const THEMES = { addresses: ['addresses', 'address'], places: ['places', 'place'] };
 const COLUMNS = {
   addresses: ['bbox', 'postcode', 'street', 'number', 'address_levels', 'postal_city'],
-  places: ['id', 'bbox', 'names', 'taxonomy', 'basic_category', 'categories', 'confidence', 'operating_status', 'addresses', 'phones'],
+  places: ['id', 'bbox', 'names', 'taxonomy', 'basic_category', 'categories', 'confidence', 'operating_status', 'addresses', 'phones', 'brand'],
 };
 
 class Stopped extends Error { constructor() { super('Stopped.'); this.stopped = true; } }
@@ -275,40 +278,88 @@ async function importAddresses({ dir, cfg, rings, regions, release, net, signal,
 const singular = (s) => String(s || '').toLowerCase().split('_').map((w) => (w.length > 3 && w.endsWith('ies') ? `${w.slice(0, -3)}y` : w.length > 2 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)).join('_');
 const clean = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, 200) : '');
 
-/** Which of the app's categories an Overture place belongs to, by the names in its place in Overture's tree of categories. */
+/**
+ * Which of the app's kinds an Overture place belongs to, by Overture's own kind for it (`taxonomy.primary`).
+ * The app's list (`overture` in the registry) names Overture's kinds exactly, as its published taxonomy has them. A name
+ * ending in `/*` takes the kinds under it too; without that, a kind under a listed one is not taken, which is how a
+ * golf shop stays out of the sporting goods. `overtureLess` lists kinds kept as a lesser sort, with the word for each.
+ * Returns `{ c, kind?, less? }` or null.
+ */
 function matcher(categories) {
-  const map = new Map();
-  for (const c of categories) for (const name of c.overture || []) if (!map.has(singular(name))) map.set(singular(name), c.id);
+  const exact = new Map(); const below = new Map();
+  for (const c of categories) {
+    for (const raw of c.overture || []) {
+      const all = raw.endsWith('/*'); const n = singular(all ? raw.slice(0, -2) : raw);
+      if (!exact.has(n)) exact.set(n, { c: c.id });
+      if (all && !below.has(n)) below.set(n, { c: c.id });
+    }
+  }
+  for (const c of categories) for (const [raw, word] of Object.entries(c.overtureLess || {})) exact.set(singular(raw), { c: c.id, kind: word, less: true });
   return (row) => {
     const t = row.taxonomy || {};
-    const names = [t.primary, row.basic_category, row.categories && row.categories.primary, ...(Array.isArray(t.hierarchy) ? t.hierarchy.slice().reverse() : [])];
-    for (const n of names) { const id = n && map.get(singular(n)); if (id) return id; }
+    const own = t.primary || row.basic_category || (row.categories && row.categories.primary);
+    if (!own) return null;
+    const hit = exact.get(singular(own));
+    if (hit) return hit;
+    const up = Array.isArray(t.hierarchy) ? t.hierarchy : [];
+    for (let i = up.length - 2; i >= 0; i--) { const b = below.get(singular(up[i])); if (b) return b; }
     return null;
   };
 }
 
-/** An Overture place as the app's small record, or null when it is not wanted. */
-function placeRecord(row, categoryOf, minConfidence) {
+/** Overture's own kind for a place. */
+const ownKind = (row) => clean((row.taxonomy && row.taxonomy.primary) || (row.categories && row.categories.primary) || row.basic_category);
+
+/**
+ * An Overture place as the app's small record, sorted into the kind it belongs to, or null when it is not wanted.
+ * `tally`, when given, counts how each place was settled; `inside(lon, lat)` leaves out places beyond the regions.
+ */
+function placeRecord(row, categoryOf, minConfidence, brands = null, tally = null, inside = null) {
   const b = row.bbox; if (!b) return null;
+  if (inside && !inside(b.xmin, b.ymin)) return null;
   if (row.operating_status && row.operating_status !== 'open') return null;
   if (typeof row.confidence === 'number' && row.confidence < minConfidence) return null;
-  const cat = categoryOf(row); if (!cat) return null;
+  const at = categoryOf(row); if (!at) return null;
   const name = clean(row.names && row.names.primary); if (!name) return null;
-  const r = { c: cat, i: `ov${String(row.id || '').replace(/-/g, '').slice(0, 16)}`, a: Math.round(b.ymin * 1e5) / 1e5, o: Math.round(b.xmin * 1e5) / 1e5, n: name, s: 'ov' };
+  const own = ownKind(row);
+  const brandId = clean(row.brand && row.brand.wikidata);
+  const s = placeSort.settle(at, name, { own, brands, brandId });
+  if (tally) { const k = !s ? 'out' : s.c !== at.c ? 'moved' : s.less ? 'lesser' : 'kept'; tally[k] = (tally[k] || 0) + 1; if (s) tally[`by ${s.by}`] = (tally[`by ${s.by}`] || 0) + 1; }
+  if (!s) return null;
+  const r = { c: s.c, i: `ov${String(row.id || '').replace(/-/g, '').slice(0, 16)}`, a: Math.round(b.ymin * 1e5) / 1e5, o: Math.round(b.xmin * 1e5) / 1e5, n: name, s: 'ov' };
   const ad = Array.isArray(row.addresses) ? row.addresses[0] : null;
   if (ad) { const d = clean([ad.freeform, [ad.locality, [ad.region, ad.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ')); if (d) r.d = d; }
   const phone = Array.isArray(row.phones) ? clean(row.phones[0]) : ''; if (phone) r.p = phone;
-  // Overture's own kind is kept: the app's kind may have been reached through a wider kind above it, and place-sort.js
-  // has only the name to tell a doctor's office from a hospital. With this, a later check can go by kind.
-  const own = clean((row.taxonomy && row.taxonomy.primary) || (row.categories && row.categories.primary) || row.basic_category); if (own) r.k = own;
+  // Overture's own kind is kept, so that a later check of the sorting can go by kind.
+  if (own) r.k = own;
+  if (s.kind || own === 'emergency_department') r.x = { ...(s.kind ? { kind: s.kind } : {}), ...(own === 'emergency_department' ? { emergency: 'yes' } : {}) };
+  if (s.less) r.less = true;
   return r;
 }
 
+/**
+ * The brand index for sorting: fetched fresh, so that a chain opened last month is known, or else the copy packed
+ * with the app. Never a reason to fail: the packed copy is always there.
+ */
+async function loadBrands(net, cfg, given = null) {
+  // The worker thread runs from outside the app's archive and cannot read the packed copy itself: it is handed in.
+  let packed = given;
+  if (!packed) try { packed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'maps', 'brands.json'), 'utf8')); } catch { /* none */ }
+  const url = cfg.brands && cfg.brands.url;
+  if (url) {
+    try {
+      const cut = placeSort.reduceBrands(JSON.parse((await net.get(url, { tries: 2, timeoutMs: 45000 })).toString('utf8')));
+      if (Object.keys(cut.names).length > 1000) return { ...cut, from: 'fetched' };
+    } catch (err) { if (err && err.stopped) throw err; }
+  }
+  return packed ? { ...packed, from: 'packed' } : null;
+}
+
 /** Fetch the places of the regions that belong to the app's categories, into `<dir>/overture/<category>.json`. */
-async function importPlaces({ dir, cfg, categories, rings, regions, release, net, signal, onProgress = () => {} }) {
+async function importPlaces({ dir, cfg, categories, rings, regions, release, net, signal, onProgress = () => {}, packedBrands = null }) {
   const work = path.join(dir, 'overture.work');
   const stateFile = path.join(work, 'state.json');
-  const stamp = `${release}|${regions.slice().sort().join(',')}|${cfg.minConfidence}`;
+  const stamp = `${release}|${regions.slice().sort().join(',')}|${cfg.minConfidence}|sorted2`;
   let state = readJson(stateFile);
   if (!state || state.stamp !== stamp) { fs.rmSync(work, { recursive: true, force: true }); state = null; }
   const ids = categories.map((c) => c.id);
@@ -316,6 +367,8 @@ async function importPlaces({ dir, cfg, categories, rings, regions, release, net
   try { spool.restore(state ? state.lengths : null); } catch { fs.rmSync(work, { recursive: true, force: true }); state = null; spool = new Spool(path.join(work, 'found'), ids.length, 'jsonl'); spool.restore(null); }
   state = state || { stamp, done: [], bytes: 0, lengths: null, kept: 0 };
   const categoryOf = matcher(categories);
+  const brands = await loadBrands(net, cfg, packedBrands);
+  const tally = state.tally || {};
 
   onProgress({ stage: 'list', what: 'places' });
   const plan = await planKind(net, cfg, release, 'places', rings, (done, total) => onProgress({ stage: 'list', what: 'places', done, total }));
@@ -325,8 +378,8 @@ async function importPlaces({ dir, cfg, categories, rings, regions, release, net
   onProgress({ stage: 'rows', what: 'places', bytes: plan.bytes, downloaded, kept });
   await eachGroup(net, plan.files, skip, async (rows, g) => {
     for (const row of rows) {
-      const r = placeRecord(row, categoryOf, cfg.minConfidence);
-      if (!r) { const k = (row.taxonomy && row.taxonomy.primary) || row.basic_category; if (k && !categoryOf(row)) passed.set(k, (passed.get(k) || 0) + 1); continue; }
+      const r = placeRecord(row, categoryOf, cfg.minConfidence, brands, tally, (lon, lat) => rings.some((ring) => inRing(ring, lon, lat)));
+      if (!r) { const k = ownKind(row); if (k && !categoryOf(row)) passed.set(k, (passed.get(k) || 0) + 1); continue; }
       if (!rings.some((ring) => inRing(ring, r.o, r.a))) continue;
       const { c, ...rest } = r;
       spool.add(ids.indexOf(c), `${JSON.stringify(rest)}\n`); kept += 1;
@@ -335,7 +388,7 @@ async function importPlaces({ dir, cfg, categories, rings, regions, release, net
     onProgress({ downloaded, kept });
     await new Promise((r) => setImmediate(r));
   }, async (f) => {
-    state.done.push(f.key); state.bytes = downloaded; state.kept = kept; state.lengths = spool.lengths();
+    state.done.push(f.key); state.bytes = downloaded; state.kept = kept; state.lengths = spool.lengths(); state.tally = tally;
     writeJson(stateFile, state);
   }, signal);
 
@@ -350,7 +403,8 @@ async function importPlaces({ dir, cfg, categories, rings, regions, release, net
     fs.writeFileSync(path.join(fresh, `${id}.json`), text); counts[id] = items.length; bytes += Buffer.byteLength(text);
   });
   const others = Object.fromEntries([...passed].sort((a, b) => b[1] - a[1]).slice(0, 400));
-  const info = { release, regions, date: new Date().toISOString(), counts, total: Object.values(counts).reduce((a, n) => a + n, 0), bytes, others };
+  // sorted: 2 says the places were put under the right kinds as they were fetched (by brand, Overture's kind and name).
+  const info = { release, regions, date: new Date().toISOString(), counts, total: Object.values(counts).reduce((a, n) => a + n, 0), bytes, others, sorted: 2, sorting: tally, brands: brands ? { version: brands.version || '', from: brands.from } : null };
   fs.rmSync(path.join(dir, 'overture'), { recursive: true, force: true });
   fs.renameSync(fresh, path.join(dir, 'overture'));
   writeJson(path.join(dir, 'overture.json'), info);
@@ -359,13 +413,18 @@ async function importPlaces({ dir, cfg, categories, rings, regions, release, net
 }
 
 /** Do a whole fetch: places, addresses or both. `post` receives progress. Used in a worker thread and, in tests, directly. */
-async function run({ dir, cfg, categories, rings, regions, kinds, base = null, agent = 'Wikivault', signal = null, fast = false }, post = () => {}) {
+async function run({ dir, cfg, categories, rings, regions, kinds, base = null, agent = 'Wikivault', signal = null, fast = false, brands = null }, post = () => {}) {
   const net = new Net({ agent, signal, rewrite: base ? (u) => { const x = new URL(u); return base + x.pathname + x.search; } : (u) => u, ...(fast ? { pause: () => new Promise((r) => setTimeout(r, 10)) } : {}) });
   const release = await latestRelease(net, cfg);
   const out = { release };
   for (const kind of kinds) {
     const onProgress = (patch) => post({ what: kind, ...patch });
-    if (kind === 'places') out.places = await importPlaces({ dir, cfg, categories, rings, regions, release, net, signal, onProgress });
+    if (kind === 'places') out.places = await importPlaces({ dir, cfg, categories, rings, regions, release, net, signal, onProgress, packedBrands: brands });
+    // With the places of the United States comes Medicare's list of its hospitals, which says which of them are
+    // hospitals and which have an emergency room (see hospitals.js). It is small, and never a reason for the fetch to fail.
+    if (kind === 'places' && cfg.official && cfg.official.hospitalsUS && regions.some((r) => US_REGIONS.has(r))) {
+      try { out.hospitals = await hospitals.fetchList({ dir, cfg: cfg.official.hospitalsUS, get: (url) => net.get(url, { tries: 3, timeoutMs: 60000 }) }); } catch (err) { if (err && err.stopped) throw err; out.hospitals = { error: String(err.message).replace('The Overture server', 'data.cms.gov').replace(/ for [^ ]*\.$/, '.') }; }
+    }
     if (kind === 'addresses') out.addresses = await importAddresses({ dir, cfg, rings, regions, release, net, signal, onProgress });
   }
   return out;

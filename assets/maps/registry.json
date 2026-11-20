@@ -8,7 +8,7 @@
   "https://overpass-api.de/api/interpreter",
   "https://overpass.private.coffee/api/interpreter"
  ],
- "credit": "Map and places: \u00a9 OpenStreetMap contributors, under the Open Database License. Map tiles prepared by Protomaps; regional extracts by Geofabrik.",
+ "credit": "Map and places: © OpenStreetMap contributors, under the Open Database License. Map tiles prepared by Protomaps; regional extracts by Geofabrik.",
  "regions": [
   {
    "id": "us48",
@@ -489,10 +489,17 @@
    "note": "Check \"emergency\" in the details: not every hospital has an emergency room.",
    "overture": [
     "hospital",
+    "general_hospital",
     "childrens_hospital",
-    "emergency_room",
-    "general_hospital"
-   ]
+    "veterans_hospital",
+    "emergency_department"
+   ],
+   "overtureLess": {
+    "specialty_hospital": "Specialty hospital",
+    "psychiatric_hospital": "Psychiatric hospital",
+    "rehabilitation_hospital": "Rehabilitation hospital",
+    "long_term_care_hospital": "Long-term care hospital"
+   }
   },
   {
    "id": "clinic",
@@ -515,11 +522,12 @@
    "overture": [
     "urgent_care_clinic",
     "walk_in_clinic",
-    "public_health_clinic",
     "community_health_center",
-    "medical_center",
-    "urgent_care",
-    "health_clinic"
+    "public_health_clinic",
+    "primary_care_or_general_clinic",
+    "emergency_or_urgent_care_facility",
+    "storefront_clinic",
+    "mobile_clinic"
    ]
   },
   {
@@ -535,7 +543,7 @@
    "overture": [
     "pharmacy",
     "drugstore",
-    "chemist"
+    "pharmacy_and_drug_store"
    ]
   },
   {
@@ -549,8 +557,7 @@
     ]
    ],
    "overture": [
-    "medical_supply",
-    "hospital_equipment_and_supplies"
+    "medical_supply_store"
    ]
   },
   {
@@ -567,8 +574,7 @@
     "veterinarian",
     "animal_hospital",
     "emergency_pet_hospital",
-    "veterinary_clinic",
-    "vet"
+    "veterinary_care"
    ]
   },
   {
@@ -582,9 +588,7 @@
     ]
    ],
    "overture": [
-    "fire_department",
-    "fire_station",
-    "fire_rescue"
+    "fire_station"
    ]
   },
   {
@@ -598,12 +602,7 @@
     ]
    ],
    "overture": [
-    "police_department",
-    "law_enforcement",
-    "police_station",
-    "sheriff",
-    "sheriff_department",
-    "police"
+    "police_station"
    ]
   },
   {
@@ -617,10 +616,7 @@
     ]
    ],
    "overture": [
-    "ambulance_and_ems_services",
-    "ambulance_service",
-    "emergency_medical_service",
-    "ambulance_and_ems"
+    "ambulance_or_ems_service"
    ]
   },
   {
@@ -696,11 +692,6 @@
      "power",
      "plant"
     ]
-   ],
-   "overture": [
-    "power_plants_and_power_plant_service",
-    "power_plant",
-    "power_station"
    ]
   },
   {
@@ -728,8 +719,7 @@
     "gas_station",
     "truck_gas_station",
     "fuel_dock",
-    "fuel_station",
-    "petrol_station"
+    "fueling_station"
    ]
   },
   {
@@ -761,11 +751,7 @@
     ]
    ],
    "overture": [
-    "grocery_store",
-    "supermarket",
-    "specialty_grocery_store",
-    "international_grocery_store",
-    "grocery"
+    "grocery_store/*"
    ]
   },
   {
@@ -779,11 +765,8 @@
     ]
    ],
    "overture": [
-    "wholesale_store",
-    "warehouse_store",
-    "wholesale_club",
-    "wholesale_grocer",
-    "warehouse_club"
+    "warehouse_club_store",
+    "wholesale_grocer"
    ]
   },
   {
@@ -801,8 +784,7 @@
     ]
    ],
    "overture": [
-    "food_banks",
-    "food_pantry"
+    "food_bank"
    ]
   },
   {
@@ -821,8 +803,7 @@
    ],
    "overture": [
     "department_store",
-    "discount_store",
-    "general_store"
+    "discount_store"
    ]
   },
   {
@@ -848,9 +829,14 @@
     "home_improvement_store",
     "building_supply_store",
     "lumber_store",
-    "hardware",
-    "building_supplies"
-   ]
+    "do_it_yourself_store",
+    "hardware_home_and_garden_store"
+   ],
+   "overtureLess": {
+    "paint_store": "Paint shop",
+    "electrical_supply_store": "Electrical supplies",
+    "welding_supply_store": "Welding supplies"
+   }
   },
   {
    "id": "farm_supply",
@@ -863,15 +849,11 @@
     ]
    ],
    "overture": [
-    "farm_equipment_and_supply",
+    "farming_equipment_and_supply_store/*",
     "livestock_feed_and_supply_store",
-    "agricultural_seed_store",
-    "farming_equipment_store",
-    "feed_store",
+    "farm_equipment_and_supply",
     "fertilizer_store",
-    "farm_supply_store",
-    "farm_and_ranch_supply",
-    "feed_and_seed_store"
+    "agricultural_cooperative"
    ]
   },
   {
@@ -889,14 +871,17 @@
     ]
    ],
    "overture": [
-    "outdoor_gear",
-    "sporting_goods",
-    "military_surplus_store",
-    "outdoor_gear_store",
     "sporting_goods_store",
-    "camping_store",
-    "army_surplus_store"
-   ]
+    "outdoor_store",
+    "hunting_and_fishing_store",
+    "archery_store",
+    "tactical_supply_store/*"
+   ],
+   "overtureLess": {
+    "bike_store": "Bicycle shop",
+    "dive_store": "Dive shop",
+    "ski_and_snowboard_store": "Ski shop"
+   }
   },
   {
    "id": "weapons",
@@ -913,15 +898,7 @@
     ]
    ],
    "overture": [
-    "gun_and_ammo",
-    "hunting_and_fishing_supplies",
-    "gunsmith",
-    "guns_and_ammo",
-    "gun_shop",
-    "gun_store",
-    "firearms_dealer",
-    "hunting_supplies",
-    "hunting_store"
+    "gun_and_ammo_store/*"
    ]
   },
   {
@@ -936,15 +913,10 @@
    ],
    "overture": [
     "airport",
-    "domestic_airports",
-    "major_airports",
-    "heliports",
-    "gliderports",
-    "seaplane_bases",
-    "ultralight_airports",
-    "airfield",
     "heliport",
-    "regional_airport"
+    "seaplane_base",
+    "ultralight_airport",
+    "glider_port"
    ]
   },
   {
@@ -962,12 +934,8 @@
     ]
    ],
    "overture": [
-    "rest_areas",
     "rest_stop",
-    "truck_stop",
-    "rest_area",
-    "travel_plaza",
-    "highway_rest_stop"
+    "truck_stop"
    ]
   },
   {
@@ -982,9 +950,7 @@
    ],
    "overture": [
     "campground",
-    "rv_park",
-    "campsite",
-    "camping_ground"
+    "rv_park"
    ]
   },
   {
@@ -996,9 +962,6 @@
      "amenity",
      "ranger_station"
     ]
-   ],
-   "overture": [
-    "ranger_station"
    ]
   },
   {
@@ -1017,11 +980,8 @@
    ],
    "note": "Only sites with a name are kept.",
    "overture": [
-    "armed_forces_branch",
     "military_base",
-    "military",
-    "military_site",
-    "national_guard"
+    "military_site"
    ]
   },
   {
@@ -1040,10 +1000,7 @@
    ],
    "overture": [
     "town_hall",
-    "city_hall",
-    "courthouse",
-    "county_courthouse",
-    "municipal_building"
+    "courthouse"
    ]
   },
   {
@@ -1068,18 +1025,29 @@
  ],
  "routing": {
   "base": "https://brouter.de/brouter/segments4/",
-  "credit": "Routing data: \u00a9 OpenStreetMap contributors, prepared weekly by the BRouter project."
+  "credit": "Routing data: © OpenStreetMap contributors, prepared weekly by the BRouter project."
  },
  "overture": {
   "releases": "https://labs.overturemaps.org/data/releases.json",
   "bucket": "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/",
   "minConfidence": 0.7,
-  "credit": "Addresses and added places: \u00a9 Overture Maps Foundation and its sources, overturemaps.org. Address data includes the US National Address Database and OpenAddresses sources."
+  "credit": "Addresses and added places: © Overture Maps Foundation and its sources, overturemaps.org. Address data includes the US National Address Database and OpenAddresses sources.",
+  "brands": {
+   "url": "https://cdn.jsdelivr.net/npm/name-suggestion-index@8/dist/json/nsi.min.json",
+   "credit": "Brand names and tags: Name Suggestion Index, nsi.guide (BSD-3-Clause)."
+  },
+  "official": {
+   "hospitalsUS": {
+    "url": "https://data.cms.gov/provider-data/api/1/datastore/query/xubh-q36u/0",
+    "page": 500,
+    "credit": "Hospital list: Centers for Medicare & Medicaid Services, Hospital General Information (public domain)."
+   }
+  }
  },
  "extracts": {
   "_": "Regional OpenStreetMap extracts the places are read from, one file to a state or province. A file's address is base + path; the server sends on from '-latest' to the file of the day.",
   "base": "https://download.geofabrik.de/",
-  "credit": "Extracts by Geofabrik GmbH. Map data \u00a9 OpenStreetMap contributors, Open Database License.",
+  "credit": "Extracts by Geofabrik GmbH. Map data © OpenStreetMap contributors, Open Database License.",
   "regions": {
    "us48": [
     {

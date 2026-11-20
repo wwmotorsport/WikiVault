@@ -2257,7 +2257,7 @@ function mapDetails(h) {
   row('Telephone', h.p); row('Hours', h.h); row('Run by', h.w);
   if (h.s === 'ov') box.append(el('p', 'small-print', 'From Overture Maps, not OpenStreetMap. It may have moved or closed.'));
   if (h.c === 'saved') box.append(el('p', h.approx ? 'map-approx' : 'small-print', h.how === 'manual' ? 'From your address book. You placed it on the map yourself.' : h.approx ? `From your address book. ${h.why || 'The position is approximate.'}` : 'From your address book.'));
-  const words = { emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
+  const words = { listed: 'Listed on', emergency: 'Emergency room', beds: 'Beds', speciality: 'Speciality', source: 'Fuel', output: 'Output', kind: 'Kind', population: 'Population', drinkable: 'Drinkable', seasonal: 'Seasonal', access: 'Access', diesel: 'Diesel', lpg: 'LPG', e85: 'E85', iata: 'IATA', icao: 'ICAO' };
   for (const [k, v] of Object.entries(h.x || {})) row(words[k] || k, String(v));
   row('Position', `${h.a.toFixed(5)}, ${h.o.toFixed(5)}`);
   if (h.km != null) row(h.kmFrom ? `From ${h.kmFrom}, in a straight line` : 'From the middle of the map', `${(h.km * 0.621371).toFixed(1)} miles`);
@@ -2810,6 +2810,12 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.29.0': [
+    'Places are now sorted as they are fetched: by each chain\'s brand, by Overture\'s own exact kind, and only then by name.',
+    'Hospitals in the United States are checked against Medicare\'s official list, which also says whether each has an emergency room.',
+    'To get this, fetch the addresses and added places again (Map, Change or update). It takes minutes; the large places download is not needed again.',
+    'New from Overture: ambulance stations, medical supply shops, emergency departments and gun shops, which the old list of kinds had missed.',
+  ],
   '0.28.3': [
     'Places from Overture Maps are now sorted into the right kinds: offices out of Hospitals, builders out of Hardware, gun shops into Gun shops, and more.',
     'Propane: cylinder exchange cages are marked as such, and the nearest suppliers are always listed with them.',

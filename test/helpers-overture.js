@@ -50,13 +50,19 @@ function placeRows() {
   const rows = []; let n = 0;
   const add = (name, hierarchy, lon, lat, more = {}) => rows.push({ id: `0000${n++}-aaaa-bbbb-cccc-00000000000${n}`, bbox: at(lon, lat), names: { primary: name }, taxonomy: { primary: hierarchy[hierarchy.length - 1], hierarchy }, basic_category: hierarchy[hierarchy.length - 1], confidence: 0.95, operating_status: 'open', addresses: [{ freeform: '1 Test Rd', locality: 'Charlotte', postcode: '28202', region: 'NC' }], phones: ['+17045550100'], ...more });
   add('Mercy Hospital', ['health_care', 'hospital'], -80.84, 35.21);
-  add('Little Ones Hospital', ['health_care', 'hospital', 'childrens_hospital'], -80.83, 35.24);
-  add('CVS Pharmacy', ['health_care', 'pharmacy'], -80.8401, 35.2301); // the tests have a "CVS" from OpenStreetMap 20 m away
-  add('Corner Drugs', ['health_care', 'pharmacy'], -80.79, 35.27);
-  add('Ace Hardware', ['shopping', 'home_and_garden', 'hardware_store'], -80.82, 35.25);
-  add('Carolina Arms', ['shopping', 'sporting_goods', 'gun_and_ammo'], -80.81, 35.26);
-  add('Pump and Go', ['travel_and_transportation', 'gas_station'], -80.80, 35.22, { phones: null, addresses: null });
+  add('Little Ones Hospital', ['health_care', 'hospital', 'specialty_hospital', 'childrens_hospital'], -80.83, 35.24);
+  add('CVS Pharmacy', ['shopping', 'specialty_store', 'pharmacy_and_drug_store', 'pharmacy'], -80.8401, 35.2301); // the tests have a "CVS" from OpenStreetMap 20 m away
+  add('Corner Drugs', ['shopping', 'specialty_store', 'pharmacy_and_drug_store', 'pharmacy'], -80.79, 35.27);
+  add('Ace Hardware', ['shopping', 'specialty_store', 'hardware_home_and_garden_store', 'hardware_store'], -80.82, 35.25);
+  add('Carolina Arms', ['shopping', 'specialty_store', 'gun_and_ammo_store'], -80.81, 35.26);
+  add('Pump and Go', ['travel_and_transportation', 'fueling_station', 'gas_station'], -80.80, 35.22, { phones: null, addresses: null });
   add('Beans', ['food_and_drink', 'cafe'], -80.84, 35.22); // not a kind the app keeps
+  // Sorting as places are fetched: a grocer Overture files as a discount store, a kind under a kept kind that is not
+  // itself kept, a lesser sort of a kind, and a builder filed as a building supplier.
+  add('Aldi', ['shopping', 'discount_store'], -80.86, 35.20);
+  add('Fairway Golf', ['shopping', 'specialty_store', 'sporting_goods_store', 'golf_equipment_store'], -80.86, 35.21);
+  add('Blue Rhino Propane Exchange', ['services_and_business', 'b2b_service', 'supplier_or_distributor', 'propane_supplier'], -80.86, 35.22);
+  add('Top Notch Roofing', ['shopping', 'specialty_store', 'hardware_home_and_garden_store', 'building_supply_store'], -80.86, 35.23);
   add('Gone Hardware', ['shopping', 'hardware_store'], -80.83, 35.22, { operating_status: 'permanently_closed' });
   add('Maybe Hardware', ['shopping', 'hardware_store'], -80.83, 35.23, { confidence: 0.3 });
   add(null, ['shopping', 'hardware_store'], -80.83, 35.231);
