@@ -1640,7 +1640,7 @@
   }
  },
  "central": {
-  "manifest": "https://github.com/wwmotorsport/wikivault/releases/download/places-data/places-manifest.json",
+  "manifest": "https://github.com/wwmotorsport/WikiVault/releases/download/places-data/places-manifest.json",
   "maxAgeDays": 60
  }
 }
