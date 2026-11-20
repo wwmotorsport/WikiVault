@@ -11,7 +11,7 @@ Everything from finding the installer to reading your first article. Allow ten m
 ### 1. Get the installer
 
 <!-- download:start -->
-The direct link is **[Wikivault-Setup-0.26.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.26.1/Wikivault-Setup-0.26.1.exe)** (Version 0.26.1, 139 MB).
+The direct link is **[Wikivault-Setup-0.30.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.30.1/Wikivault-Setup-0.30.1.exe)** (Version 0.30.1, 139 MB).
 <!-- download:end -->
 
 The installer is not in the list of files on the repository's front page, because GitHub does not allow files that large there. To find it by hand:
