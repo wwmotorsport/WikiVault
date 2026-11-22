@@ -1942,6 +1942,8 @@ function registerIpc() {
   handle('gps:want', ({ id }) => { gpsWanted = id ? String(id) : null; return true; });
   // What Windows knows about its ports, for saying why a receiver was not found; and the search's own account, for the log.
   handle('gps:hardware', () => serialPorts.query());
+  // Connecting to a known receiver by itself: the window's request for the ports is made as if a click were behind it.
+  handle('gps:gesture', () => (win && !win.isDestroyed() ? win.webContents.executeJavaScript('typeof gpsRequestPorts === "function" ? gpsRequestPorts() : 0', true) : 0));
   handle('gps:log', ({ lines }) => { for (const l of (Array.isArray(lines) ? lines : []).slice(0, 60)) log(`gps: ${String(l).slice(0, 300)}`); return true; });
   handle('gps:fake', () => { try { return process.env.WIKIVAULT_GPS_FAKE ? fs.readFileSync(process.env.WIKIVAULT_GPS_FAKE, 'utf8') : null; } catch { return null; } });
 

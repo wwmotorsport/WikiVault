@@ -346,6 +346,22 @@
               <ul id="map-key-list"></ul>
             </div>
           </aside>
+          <aside class="map-gps folded" id="map-gps" aria-label="GPS receiver: whether it is connected, and what it reports" hidden>
+            <button type="button" class="map-gps-pill" id="map-gps-pill" aria-expanded="false" aria-controls="map-gps-body" title="Open the GPS panel: position, speed, satellites and the controls"><span class="map-gps-lamp" aria-hidden="true"></span><span id="map-gps-pill-text">GPS: not connected</span></button>
+            <div id="map-gps-body" hidden>
+              <div class="map-gps-head"><span class="map-gps-lamp" aria-hidden="true"></span><b id="map-gps-title">GPS: not connected</b><button type="button" class="map-key-toggle" id="map-gps-hide" title="Fold the GPS panel down to a button">Hide</button></div>
+              <p class="map-gps-status" id="map-gps-status"></p>
+              <dl class="map-gps-facts" id="map-gps-facts"></dl>
+              <div class="map-gps-acts">
+                <button type="button" class="btn small" id="map-gps-find">Find my GPS receiver</button>
+                <button type="button" class="btn small" id="map-gps-from" hidden>Start from my position</button>
+                <button type="button" class="btn small" id="map-gps-centre" hidden>Show where I am</button>
+                <button type="button" class="btn small" id="map-gps-off" hidden>Disconnect</button>
+              </div>
+              <label class="map-check" id="map-gps-follow-row" hidden><input type="checkbox" id="map-gps-follow"><span>Keep the map on my position</span></label>
+              <label class="map-check" id="map-gps-speak-row" hidden><input type="checkbox" id="map-gps-speak"><span>Speak the turns</span></label>
+            </div>
+          </aside>
           <div class="map-key-tip" id="map-key-tip" role="note" hidden>
             <p><b>Key and layers.</b> <span id="map-key-tip-text"></span></p>
             <div class="map-key-tip-acts"><button type="button" class="btn small" id="map-key-tip-ok">Got it</button><button type="button" class="link-btn" id="map-key-tip-never">Don't show this again</button></div>
@@ -847,6 +863,7 @@
   <script src="hub-calc.js"></script>
   <script src="nmea.js"></script>
   <script src="gps-why.js"></script>
+  <script src="gps-facts.js"></script>
   <script src="guide.js"></script>
   <script src="app.js"></script>
   <script src="gps.js"></script>

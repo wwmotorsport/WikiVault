@@ -1979,7 +1979,7 @@ function mapKeyTipMove(ev) {
   if (!on && !tip.hidden) { const t = tip.getBoundingClientRect(); on = near({ left: Math.min(k.left, t.left), right: Math.max(k.right, t.right), top: Math.min(k.top, t.top), bottom: Math.max(k.bottom, t.bottom) }, 14); }
   if (on) { clearTimeout(mapTip.timer); mapTip.timer = 0; if (tip.hidden) mapKeyTip(true); } else if (!tip.hidden && !mapTip.timer) mapTip.timer = setTimeout(() => mapKeyTip(false), 500);
 }
-function paintMapLook() { paintMapKey(); }
+function paintMapLook() { paintMapKey(); if (typeof paintGps === 'function') paintGps(); }
 function mapApplyLook(restyle) {
   try { localStorage.setItem('wikivault-map-look', JSON.stringify(mapLook)); } catch { /* not kept, that is all */ }
   $('map-canvas').parentElement.style.background = WikivaultMapStyle.background(mapLook);
@@ -2875,6 +2875,10 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.34.0': [
+    'A GPS panel in the bottom right corner of the map: folded, a button that says whether the receiver is connected; open, your speed, heading, position, satellites and the trip.',
+    'A GPS receiver is set up once. After that it connects by itself when Wikivault starts and whenever it is plugged in.',
+  ],
   '0.33.1': [
     'When a GPS receiver is not found, the app now says why: no driver, not plugged in, or a port that is silent. The GPS box sits above the route, where it can be seen.',
   ],

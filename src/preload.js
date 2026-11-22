@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   mapsAddress: (q, near) => call('maps:address', { q, near }),
   gpsWant: (id) => call('gps:want', { id }),
   gpsHardware: () => call('gps:hardware'),
+  gpsGesture: () => call('gps:gesture'),
   gpsLog: (lines) => call('gps:log', { lines }),
   gpsFake: () => call('gps:fake'),
   hubSave: (patch) => call('hub:save', patch),

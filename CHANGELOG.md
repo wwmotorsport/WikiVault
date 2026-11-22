@@ -2,6 +2,14 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.34.0 (2026-11-22)
+
+A GPS panel on the map, and a receiver that is set up once.
+
+- **A GPS panel in the corner of the map.** In the bottom right corner, the twin of the key in the bottom left. Folded, it is a button with a lamp that says whether a receiver is connected: green when it has a position (with your speed beside it), amber while it is connected and waiting for a position or being looked for, red when it was lost, grey when there is none. Open, it shows your speed, heading (when moving), position, how sure the position is, height, satellites in use, the time from the satellites and the receiver's port, with the controls that are also in the Directions panel: find, disconnect, start from my position, show where I am, keep the map on my position, speak the turns. On a trip it leads with the next turn, the distance left and the time you should arrive. It folds away while the map is waiting for a click, and remembers whether you left it open.
+- **Set up once.** A receiver that has worked is remembered (which USB device, and at what speed). From then on it is connected by itself when Wikivault starts and whenever it is plugged in, straight at the speed it worked at, and only that device's port is opened. Its row on the Options and Setup page turns to *Done* and stays so. *Disconnect* leaves it alone until you ask for it, plug it in again, or next start Wikivault. A receiver connected with 0.33.1 is picked up once and remembered.
+- **What was wrong on 0.33.0.** The first real receiver (a GlobalSat BU-353N5) was not found by 0.33.0 and was found at once by 0.33.1, on the same port with the same driver: the search had not listened long enough at 4800 baud, or had not told the port it was ready. No driver was missing.
+
 ## 0.33.1 (2026-11-22)
 
 Finding a GPS receiver: the app says what it found, where you can see it.

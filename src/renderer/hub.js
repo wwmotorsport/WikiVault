@@ -131,9 +131,17 @@ function hubItems() {
     }
   }
   // 6. Things that are set up, not downloaded
-  out.push({ id: 'gps', title: 'GPS receiver', state: 'info', detail: gps.status === 'fix' ? 'Connected, with a position.' : gps.status === 'waiting' ? 'Connected, waiting for a position.' : gps.status === 'searching' ? `${gps.detail}...` : gps.status === 'off' && gps.detail ? `Not found. ${gps.detail}` : gps.detail ? gps.detail : 'A USB receiver shows where you are on the map and leads you turn by turn. Plug it in and press the button.',
-    bytes: 0, done: gps.status === 'fix' || gps.status === 'waiting', action: m && m.routing ? { label: gps.status === 'off' || gps.status === 'lost' ? 'Find my GPS receiver' : 'Open the map', run: () => { hubClosePop(); mapGo.tab = 'go'; showView('map'); render(); if (gps.status === 'off' || gps.status === 'lost') gpsFind(); } } : null, note: m && m.routing ? '' : 'Needs the map and the directions first.',
-    link: (gps.status === 'off' || gps.status === 'lost') && typeof gpsBuy === 'function' ? gpsBuy() : null });
+  // Set up once: a receiver that has worked is remembered, and connects by itself from then on.
+  const gpsSet = typeof gpsKnown === 'function' && Boolean(gpsKnown());
+  const gpsOn = gps.status === 'fix' || gps.status === 'waiting';
+  const gpsIdle = gps.status === 'off' || gps.status === 'lost';
+  out.push({ id: 'gps', title: 'GPS receiver', state: 'info',
+    detail: gps.status === 'fix' ? 'Connected, with a position. It connects by itself whenever it is plugged in.' : gps.status === 'waiting' ? 'Connected, waiting for a position. It connects by itself whenever it is plugged in.' : gps.status === 'searching' ? `${gps.detail}...`
+      : gps.detail ? (gps.status === 'off' && !gpsSet ? `Not found. ${gps.detail}` : gps.detail)
+        : gpsSet ? (gps.paused ? 'Set up. Disconnected for now: it connects again when it is plugged in again or Wikivault is next started.' : 'Set up. Not plugged in at the moment: it connects by itself when it is.')
+          : 'A USB receiver shows where you are on the map and leads you turn by turn. Plug it in and press the button.',
+    bytes: 0, done: gpsSet || gpsOn, action: m && m.routing ? { label: gpsOn ? 'Open the map' : gpsSet ? 'Look for it now' : 'Find my GPS receiver', run: () => { hubClosePop(); mapGo.tab = 'go'; showView('map'); render(); if (gpsIdle) gpsFind(); } } : null, note: m && m.routing ? '' : 'Needs the map and the directions first.',
+    link: gpsIdle && !gpsSet && typeof gpsBuy === 'function' ? gpsBuy() : null });
   const b = state.book;
   if (b) {
     const acc = [b.accounts.google ? 'Google' : '', b.accounts.icloud ? 'iCloud' : ''].filter(Boolean);
