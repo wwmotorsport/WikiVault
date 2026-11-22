@@ -45,7 +45,7 @@
     const lines = [];
     for (const p of hw.ports) lines.push(`Windows port: ${p.name}${p.vid ? ` [USB ${p.vid}:${p.pid}${MAKERS[p.vid] ? `, ${MAKERS[p.vid]}` : ''}]` : p.bluetooth ? ' [Bluetooth]' : ''}${p.ok ? '' : ' [not working]'}`);
     for (const d of hw.unready) lines.push(`Windows has no working driver for: ${d.name}${d.vid ? ` [USB ${d.vid}:${d.pid}${MAKERS[d.vid] ? `, ${MAKERS[d.vid]}` : ''}]` : ''} (code ${d.code})`);
-    tried.forEach((t, i) => lines.push(`port ${i + 1} of ${tried.length}${t.vid ? ` [USB ${hex(t.vid)}:${hex(t.pid)}]` : ' [not USB]'}: ${t.results.map((r) => `${r.speed} ${r.how}${r.bytes ? ` (${r.bytes} bytes)` : ''}`).join(', ') || 'not tried'}`));
+    tried.forEach((t, i) => lines.push(`port ${i + 1} of ${tried.length}${t.vid ? ` [USB ${hex(t.vid)}:${hex(t.pid)}]` : ' [not USB]'}: ${t.results.map((r) => `${r.speed} ${r.how}${r.bytes ? ` (${r.bytes} bytes)` : ''}${r.errors ? ` [${r.errors} line errors]` : ''}`).join(', ') || 'not tried'}`));
 
     // A USB device Windows could not set up is the receiver more often than not: a serial chip's maker settles it.
     const stuck = hw.unready.filter((d) => MAKERS[d.vid]).concat(hw.unready.filter((d) => !MAKERS[d.vid]));

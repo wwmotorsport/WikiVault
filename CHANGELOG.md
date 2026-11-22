@@ -2,6 +2,14 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.34.1 (2026-11-22)
+
+Finding the GPS receiver no longer depends on luck.
+
+- **Fixed: the receiver was found only on some tries.** Both *Find my GPS receiver* buttons run the same search, and it could fail several times and then succeed with nothing changed. A serial line makes small mistakes, most often a character cut in half because the port was opened in the middle of it. The browser reports each one as an error and then offers a fresh stream on the same port; the search took the first such error for a silent port and moved on. A receiver that sees many satellites at 4800 baud never pauses between sentences, so nearly every opening lands inside a character, and the search succeeded only when it happened not to. The search now reads past these mistakes, and counts them in the log.
+- **Fixed: the same mistake could drop a receiver that was connected.** A full buffer or a damaged character while driving ended the connection as "the receiver stopped answering". These are read past as well, and the port is opened with a much larger buffer so that a busy moment does not overflow it. Only a port that is really gone, or one that produces nothing but mistakes, is given up on.
+- **In the log.** How many mistakes were read past when a receiver was found, and when it was lost and why.
+
 ## 0.34.0 (2026-11-22)
 
 A GPS panel on the map, and a receiver that is set up once.

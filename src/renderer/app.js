@@ -2875,6 +2875,9 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.34.1': [
+    'Fixed: a GPS receiver was sometimes not found, or found only after several tries. Small mistakes on its line were taken for silence; they are now read past.',
+  ],
   '0.34.0': [
     'A GPS panel in the bottom right corner of the map: folded, a button that says whether the receiver is connected; open, your speed, heading, position, satellites and the trip.',
     'A GPS receiver is set up once. After that it connects by itself when Wikivault starts and whenever it is plugged in.',

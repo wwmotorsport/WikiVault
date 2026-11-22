@@ -37,50 +37,37 @@ function gpsSay(text) {
  */
 async function gpsProbe(port, baudRate) {
   // A port that belongs to something else (a paired Bluetooth device that is switched off, say) can take a long time to refuse.
-  // It is given a few seconds, and then left out altogether.
-  const opened = await Promise.race([port.open({ baudRate }).then(() => 'open', () => 'refused'), gpsWait(4000).then(() => 'slow')]);
+  // It is given a few seconds, and then left out altogether. The buffer is a large one: a receiver that never
+  // pauses fills a small one whenever the map keeps the computer busy for a moment.
+  const opened = await Promise.race([port.open({ baudRate, bufferSize: 65536 }).then(() => 'open', () => 'refused'), gpsWait(4000).then(() => 'slow')]);
   if (opened === 'slow') { port.wikivaultSlow = true; return { how: 'slow', bytes: 0 }; }
   if (opened !== 'open') return { how: 'refused', bytes: 0 };
   // Some USB-to-serial chips send nothing until the computer says it is ready to listen.
   try { await port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch { /* not every port has the lines */ }
   const probe = new WikivaultNmea.Reader();
-  const reader = port.readable.getReader();
   const dec = new TextDecoder('latin1');
   // A receiver speaks once a second, and at 4800 baud one burst takes most of that second: listen through two of them.
-  const until = Date.now() + (port.getInfo().usbVendorId ? 2600 : 1700);
-  let bytes = 0;
-  try {
-    while (Date.now() < until && probe.sentences < 2) {
-      const r = await Promise.race([reader.read(), gpsWait(until - Date.now()).then(() => null)]);
-      if (!r) break;
-      if (r.done) break;
-      bytes += r.value.length;
-      probe.push(dec.decode(r.value, { stream: true }));
-    }
-  } catch { /* a port that cannot be read is not the receiver */ }
-  if (probe.sentences >= 2) return { got: { reader, dec, start: probe } };
-  try { await reader.cancel(); } catch { /* already closed */ }
-  try { reader.releaseLock(); await port.close(); } catch { /* already closed */ }
-  return { how: bytes ? 'noise' : 'silent', bytes };
+  // Mistakes on the line (the port is usually opened in the middle of a character) are read past, not taken for silence.
+  const s = await WikivaultGpsRead.sample(port, probe, { ms: port.getInfo().usbVendorId ? 2600 : 1700, decoder: dec });
+  if (s.reader) return { got: { reader: s.reader, dec, start: probe }, errors: s.errors };
+  try { await port.close(); } catch { /* already closed */ }
+  return { how: s.bytes || s.errors ? 'noise' : 'silent', bytes: s.bytes, errors: s.errors };
 }
 
-/** Keep reading the connected receiver until it is unplugged or disconnected. */
+/** Keep reading the connected receiver until it is unplugged or disconnected. Mistakes on the line are read past. */
 async function gpsListen(port, reader, dec) {
   const nmea = new WikivaultNmea.Reader(gpsOnFix);
   gps.port = port; gps.reader = reader; gps.stopping = false;
-  try {
-    for (;;) {
-      const r = await reader.read();
-      if (r.done) break;
-      nmea.push(dec.decode(r.value, { stream: true }));
-    }
-  } catch { /* unplugged */ }
-  try { reader.releaseLock(); await port.close(); } catch { /* already gone */ }
+  const end = await WikivaultGpsRead.follow(port, reader, { onText: (t) => nmea.push(t), stopping: () => gps.stopping, onReader: (r) => { gps.reader = r; }, decoder: dec });
+  try { await port.close(); } catch { /* already gone */ }
+  if (gps.port !== port) return; // disconnected, or already looked for again
   gps.port = null; gps.reader = null;
-  if (!gps.stopping) { gps.status = 'lost'; gps.detail = gpsKnown() ? 'The receiver was unplugged or stopped answering. Plug it in again and it is picked up by itself.' : 'The receiver stopped answering. Plug it in again and press the button.'; gps.fix = null; gps.progress = null; gps.autoAfter = Date.now() + 3000; gpsDraw(); paintGps(); gpsBanner(null); }
+  if (!gps.stopping) {
+    gps.status = 'lost'; gps.detail = gpsKnown() ? 'The receiver was unplugged or stopped answering. Plug it in again and it is picked up by itself.' : 'The receiver stopped answering. Plug it in again and press the button.'; gps.fix = null; gps.progress = null; gps.autoAfter = Date.now() + 3000; gpsDraw(); paintGps(); gpsBanner(null);
+    api.gpsLog([`receiver lost (${end.why === 'gone' ? 'the port is gone' : end.why === 'errors' ? 'nothing but mistakes on the line' : 'its stream closed'}), ${end.errors} mistakes on the line read past while it was connected`]).catch(() => {});
+  }
 }
 
-/** Look for a receiver on every serial port. Started by a click, which the browser requires before it will show the ports. */
 /**
  * Ask for every serial port, one request each. The browser wants a click behind a request; when the app connects
  * by itself the main process stands in for the click. The ports are left in gps.asked; returns how many.
@@ -125,13 +112,13 @@ async function gpsFind({ quiet = false, given = null } = {}) {
         gps.detail = `Trying port ${ports.indexOf(port) + 1} of ${ports.length} at ${speed} baud`; paintGps();
         if (port.wikivaultSlow) { t.results.push({ speed, how: 'slow', bytes: 0 }); break; }
         const r = await gpsProbe(port, speed);
-        if (!r.got) { t.results.push({ speed, how: r.how, bytes: r.bytes }); if (r.how === 'refused' && t.results.length >= 2) break; continue; }
+        if (!r.got) { t.results.push({ speed, how: r.how, bytes: r.bytes, errors: r.errors || 0 }); if (r.how === 'refused' && t.results.length >= 2) break; continue; }
         gps.status = 'waiting'; gps.detail = ''; gps.info = { speed, ...info };
         localStorage.setItem('wikivault-gps-on', '1');
         try { localStorage.setItem('wikivault-gps-known', JSON.stringify({ vid: t.vid, pid: t.pid, speed, date: new Date().toISOString() })); } catch { /* found again by the button, then */ }
         paintGps(); if (typeof renderHub === 'function' && view === 'hub') renderHub();
-        api.gpsLog([`receiver found${quiet ? ' by itself' : ''} on port ${ports.indexOf(port) + 1} of ${ports.length}${t.vid ? ` [USB ${t.vid.toString(16)}:${t.pid.toString(16)}]` : ''} at ${speed} baud`]).catch(() => {});
-        gpsListen(port, r.got.reader, r.got.dec);
+        api.gpsLog([`receiver found${quiet ? ' by itself' : ''} on port ${ports.indexOf(port) + 1} of ${ports.length}${t.vid ? ` [USB ${t.vid.toString(16)}:${t.pid.toString(16)}]` : ''} at ${speed} baud${r.errors ? `, after reading past ${r.errors} mistakes on the line` : ''}`]).catch(() => {});
+        gps.listening = gpsListen(port, r.got.reader, r.got.dec);
         return;
       }
     }
@@ -167,6 +154,8 @@ async function gpsReplay(text) {
 async function gpsOff(quiet) {
   gps.stopping = true;
   try { if (gps.reader) await gps.reader.cancel(); } catch { /* already closed */ }
+  // The port is closed by the reading that was going on: wait for that, so that it can be opened again at once.
+  if (gps.listening) { await Promise.race([gps.listening, gpsWait(1500)]); gps.listening = null; }
   gps.port = null; gps.reader = null; gps.fix = null; gps.guide = null; gps.route = null;
   gps.progress = null;
   // Disconnected by the user: left alone until it is asked for, plugged in again, or the app is next started.
