@@ -2875,6 +2875,9 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.33.1': [
+    'When a GPS receiver is not found, the app now says why: no driver, not plugged in, or a port that is silent. The GPS box sits above the route, where it can be seen.',
+  ],
   '0.33.0': [
     'Addresses the downloaded data cannot place can be looked up online. The address book asks once; only the street address is sent, never a name or number.',
     'A town is no longer placed at a namesake in another state when its own state\'s addresses are not downloaded.',

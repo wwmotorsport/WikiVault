@@ -256,6 +256,18 @@
               </div>
             </form>
             <p class="small-print" id="map-pick-note" hidden></p>
+            <fieldset class="map-field" id="gps-box">
+              <legend>GPS receiver</legend>
+              <p class="small-print" id="gps-status">Not connected.</p>
+              <div class="actions">
+                <button type="button" class="btn small" id="gps-find">Find my GPS receiver</button>
+                <button type="button" class="btn small" id="gps-from" hidden>Start from my position</button>
+                <button type="button" class="btn small" id="gps-off" hidden>Disconnect</button>
+              </div>
+              <p class="small-print" id="gps-buy" hidden><span id="gps-buy-text"></span> <button type="button" class="link-btn" id="gps-buy-link"></button></p>
+              <label class="map-check" id="gps-follow-row" hidden><input type="checkbox" id="gps-follow"><span>Keep the map on my position</span></label>
+              <label class="map-check" id="gps-speak-row" hidden><input type="checkbox" id="gps-speak"><span>Speak the turns</span></label>
+            </fieldset>
             <div id="map-route-out" aria-live="polite"></div>
             <fieldset class="map-field">
               <legend>Blocked roads and areas</legend>
@@ -271,18 +283,6 @@
                 <button class="btn small" type="button" id="map-block-add">Mark on map</button>
               </div>
               <ul class="map-blocks" id="map-blocks"></ul>
-            </fieldset>
-            <fieldset class="map-field" id="gps-box">
-              <legend>GPS receiver</legend>
-              <p class="small-print" id="gps-status">Not connected.</p>
-              <div class="actions">
-                <button type="button" class="btn small" id="gps-find">Find my GPS receiver</button>
-                <button type="button" class="btn small" id="gps-from" hidden>Start from my position</button>
-                <button type="button" class="btn small" id="gps-off" hidden>Disconnect</button>
-              </div>
-              <p class="small-print" id="gps-buy" hidden><span id="gps-buy-text"></span> <button type="button" class="link-btn" id="gps-buy-link"></button></p>
-              <label class="map-check" id="gps-follow-row" hidden><input type="checkbox" id="gps-follow"><span>Keep the map on my position</span></label>
-              <label class="map-check" id="gps-speak-row" hidden><input type="checkbox" id="gps-speak"><span>Speak the turns</span></label>
             </fieldset>
           </div>
           <div id="map-pane-book" hidden>
@@ -846,6 +846,7 @@
   <script src="map-style.js"></script>
   <script src="hub-calc.js"></script>
   <script src="nmea.js"></script>
+  <script src="gps-why.js"></script>
   <script src="guide.js"></script>
   <script src="app.js"></script>
   <script src="gps.js"></script>

@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
   mapsOvertureDownload: (regions, kinds) => call('maps:overture-download', { regions, kinds }),
   mapsAddress: (q, near) => call('maps:address', { q, near }),
   gpsWant: (id) => call('gps:want', { id }),
+  gpsHardware: () => call('gps:hardware'),
+  gpsLog: (lines) => call('gps:log', { lines }),
   gpsFake: () => call('gps:fake'),
   hubSave: (patch) => call('hub:save', patch),
   bookList: () => call('book:list'),

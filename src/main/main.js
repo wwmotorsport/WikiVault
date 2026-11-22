@@ -39,6 +39,7 @@ const tune = require('../core/tune');
 const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText, open: openRequest, readBody } = require('../core/httpx');
 const geocode = require('../core/geocode-online');
+const serialPorts = require('../core/serial-ports');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -1939,6 +1940,9 @@ function registerIpc() {
   }));
   handle('maps:overture-measure', inMaps((a) => { if (maps.status().job) throw new Error('Something is already being fetched for the map.'); return mapJob('Overture sizes', maps.measureOverture(mapRegions(a))); }));
   handle('gps:want', ({ id }) => { gpsWanted = id ? String(id) : null; return true; });
+  // What Windows knows about its ports, for saying why a receiver was not found; and the search's own account, for the log.
+  handle('gps:hardware', () => serialPorts.query());
+  handle('gps:log', ({ lines }) => { for (const l of (Array.isArray(lines) ? lines : []).slice(0, 60)) log(`gps: ${String(l).slice(0, 300)}`); return true; });
   handle('gps:fake', () => { try { return process.env.WIKIVAULT_GPS_FAKE ? fs.readFileSync(process.env.WIKIVAULT_GPS_FAKE, 'utf8') : null; } catch { return null; } });
 
   handle('hub:save', (patch) => {

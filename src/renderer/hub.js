@@ -131,7 +131,7 @@ function hubItems() {
     }
   }
   // 6. Things that are set up, not downloaded
-  out.push({ id: 'gps', title: 'GPS receiver', state: 'info', detail: gps.status === 'fix' ? 'Connected, with a position.' : gps.status === 'waiting' ? 'Connected, waiting for a position.' : 'A USB receiver shows where you are on the map and leads you turn by turn. Plug it in and press the button.',
+  out.push({ id: 'gps', title: 'GPS receiver', state: 'info', detail: gps.status === 'fix' ? 'Connected, with a position.' : gps.status === 'waiting' ? 'Connected, waiting for a position.' : gps.status === 'searching' ? `${gps.detail}...` : gps.status === 'off' && gps.detail ? `Not found. ${gps.detail}` : gps.detail ? gps.detail : 'A USB receiver shows where you are on the map and leads you turn by turn. Plug it in and press the button.',
     bytes: 0, done: gps.status === 'fix' || gps.status === 'waiting', action: m && m.routing ? { label: gps.status === 'off' || gps.status === 'lost' ? 'Find my GPS receiver' : 'Open the map', run: () => { hubClosePop(); mapGo.tab = 'go'; showView('map'); render(); if (gps.status === 'off' || gps.status === 'lost') gpsFind(); } } : null, note: m && m.routing ? '' : 'Needs the map and the directions first.',
     link: (gps.status === 'off' || gps.status === 'lost') && typeof gpsBuy === 'function' ? gpsBuy() : null });
   const b = state.book;

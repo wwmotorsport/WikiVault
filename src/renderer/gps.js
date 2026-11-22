@@ -13,7 +13,7 @@ const gps = {
   speak: localStorage.getItem('wikivault-gps-speak') === '1',
   guide: null, route: null, heard: {}, spoken: [], rerouteAt: 0, arrived: false, info: null,
 };
-const GPS_SPEEDS = [4800, 9600, 38400, 115200];
+const GPS_SPEEDS = [4800, 9600, 38400, 115200, 19200, 57600];
 const gpsWait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The position as an end of a route, or null when there is none. */
@@ -25,29 +25,38 @@ function gpsSay(text) {
   try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch { /* no voice on this computer */ }
 }
 
-/** Read from a port for a moment and say whether it sends GPS sentences. Leaves the port open when it does. */
+/**
+ * Read from a port for a moment and say whether it sends GPS sentences. Leaves the port open when it does.
+ * Returns { got: { reader, dec, start } } or { how, bytes }: 'refused' (would not open), 'slow' (did not answer
+ * in time), 'silent' (opened and sent nothing), 'noise' (sent something that is not GPS sentences).
+ */
 async function gpsProbe(port, baudRate) {
   // A port that belongs to something else (a paired Bluetooth device that is switched off, say) can take a long time to refuse.
   // It is given a few seconds, and then left out altogether.
   const opened = await Promise.race([port.open({ baudRate }).then(() => 'open', () => 'refused'), gpsWait(4000).then(() => 'slow')]);
-  if (opened === 'slow') { port.wikivaultSlow = true; return null; }
-  if (opened !== 'open') return null;
+  if (opened === 'slow') { port.wikivaultSlow = true; return { how: 'slow', bytes: 0 }; }
+  if (opened !== 'open') return { how: 'refused', bytes: 0 };
+  // Some USB-to-serial chips send nothing until the computer says it is ready to listen.
+  try { await port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch { /* not every port has the lines */ }
   const probe = new WikivaultNmea.Reader();
   const reader = port.readable.getReader();
   const dec = new TextDecoder('latin1');
-  const until = Date.now() + 1700;
+  // A receiver speaks once a second, and at 4800 baud one burst takes most of that second: listen through two of them.
+  const until = Date.now() + (port.getInfo().usbVendorId ? 2600 : 1700);
+  let bytes = 0;
   try {
     while (Date.now() < until && probe.sentences < 2) {
       const r = await Promise.race([reader.read(), gpsWait(until - Date.now()).then(() => null)]);
       if (!r) break;
       if (r.done) break;
+      bytes += r.value.length;
       probe.push(dec.decode(r.value, { stream: true }));
     }
   } catch { /* a port that cannot be read is not the receiver */ }
-  if (probe.sentences >= 2) return { reader, dec, start: probe };
+  if (probe.sentences >= 2) return { got: { reader, dec, start: probe } };
   try { await reader.cancel(); } catch { /* already closed */ }
   try { reader.releaseLock(); await port.close(); } catch { /* already closed */ }
-  return null;
+  return { how: bytes ? 'noise' : 'silent', bytes };
 }
 
 /** Keep reading the connected receiver until it is unplugged or disconnected. */
@@ -70,7 +79,8 @@ async function gpsListen(port, reader, dec) {
 async function gpsFind() {
   if (gps.status === 'searching') return;
   await gpsOff(true);
-  gps.status = 'searching'; gps.detail = 'Looking at the serial ports'; paintGps();
+  gps.status = 'searching'; gps.detail = 'Looking at the serial ports'; paintGps(); gpsShow();
+  const tried = [];
   try {
     if (state.gpsFake) { gpsReplay(await api.gpsFake()); return; }
     if (!navigator.serial) throw new Error('This computer does not let the app read serial ports.');
@@ -83,23 +93,36 @@ async function gpsFind() {
     }
     // USB devices first: a receiver is one, and the ports built into the computer or made by Bluetooth are not.
     ports = ports.slice().sort((a, b) => Number(Boolean(b.getInfo().usbVendorId)) - Number(Boolean(a.getInfo().usbVendorId)));
-    if (!ports.length) throw new Error('No serial port was found. Plug the receiver in, wait for Windows to finish setting it up, and try again. Some receivers need a driver from the maker.');
     for (const port of ports) {
-      for (const speed of GPS_SPEEDS) {
+      const info = port.getInfo();
+      const t = { vid: info.usbVendorId || 0, pid: info.usbProductId || 0, results: [] };
+      tried.push(t);
+      // The speeds receivers are sold at come first; the rest are only worth trying on a USB device.
+      for (const speed of info.usbVendorId ? GPS_SPEEDS : GPS_SPEEDS.slice(0, 4)) {
         gps.detail = `Trying port ${ports.indexOf(port) + 1} of ${ports.length} at ${speed} baud`; paintGps();
-        if (port.wikivaultSlow) break;
-        const got = await gpsProbe(port, speed);
-        if (!got) continue;
-        gps.status = 'waiting'; gps.detail = ''; gps.info = { speed, ...port.getInfo() };
+        if (port.wikivaultSlow) { t.results.push({ speed, how: 'slow', bytes: 0 }); break; }
+        const r = await gpsProbe(port, speed);
+        if (!r.got) { t.results.push({ speed, how: r.how, bytes: r.bytes }); if (r.how === 'refused' && t.results.length >= 2) break; continue; }
+        gps.status = 'waiting'; gps.detail = ''; gps.info = { speed, ...info };
         localStorage.setItem('wikivault-gps-on', '1');
         paintGps();
-        gpsListen(port, got.reader, got.dec);
+        api.gpsLog([`receiver found on port ${ports.indexOf(port) + 1} of ${ports.length}${t.vid ? ` [USB ${t.vid.toString(16)}:${t.pid.toString(16)}]` : ''} at ${speed} baud`]).catch(() => {});
+        gpsListen(port, r.got.reader, r.got.dec);
         return;
       }
     }
-    throw new Error(`${ports.length === 1 ? 'A serial port was found, but nothing on it' : `${ports.length} serial ports were found, but nothing on them`} is sending GPS positions. Check that the receiver is plugged in and its light is on.`);
-  } catch (err) { gps.status = 'off'; gps.detail = err.message; paintGps(); }
+    // Not found: Windows is asked what it knows about its ports, which tells a missing driver from an unplugged receiver.
+    gps.detail = 'Asking Windows about its ports'; paintGps();
+    let hardware = null;
+    try { hardware = WikivaultGpsWhy.readHardware(await api.gpsHardware()); } catch { /* the search's own account will do */ }
+    const why = WikivaultGpsWhy.explain({ tried, hardware });
+    api.gpsLog(['no receiver found', ...why.lines, why.text]).catch(() => {});
+    throw new Error(why.text);
+  } catch (err) { gps.status = 'off'; gps.detail = err.message; paintGps(); gpsShow(); if (typeof renderHub === 'function' && view === 'hub') renderHub(); }
 }
+
+/** Bring the GPS box into sight: what the search says is of no use below the edge of the panel. */
+function gpsShow() { const box = $('gps-box'); if (box && view === 'map' && box.offsetParent) box.scrollIntoView({ block: 'nearest' }); }
 
 /** For the tests: play back recorded sentences as if a receiver were sending them. */
 async function gpsReplay(text) {

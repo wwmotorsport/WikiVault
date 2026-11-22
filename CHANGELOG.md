@@ -2,6 +2,15 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.33.1 (2026-11-22)
+
+Finding a GPS receiver: the app says what it found, where you can see it.
+
+- **Fixed: the answer was out of sight.** *Find my GPS receiver* did answer, but in a box at the very bottom of the Directions panel, under the turns of whatever route was showing, so pressing the button looked like nothing happening. The GPS box is now directly under *Get directions*, above the route, and is brought into view when a search starts and when it ends. The row on the Options and Setup page shows the result too.
+- **It says why.** "Nothing is sending GPS positions" did not tell a receiver with no driver from one that is not plugged in. When a search fails the app now asks Windows about its ports (read-only, on this computer) and says which it is: the ports found belong to Bluetooth or the computer and the receiver has none of its own; Windows can see a USB device it has no driver for, named, which is most likely the receiver; or the receiver's port is there and would not open, stayed silent, or sent something that is not GPS sentences.
+- **A more patient search.** A receiver's port is listened to for longer at each speed (at 4800 baud one second's worth of sentences takes most of a second to arrive), two more speeds are tried on USB ports, and the port is told the computer is ready to listen, which some USB-to-serial chips wait for.
+- **In the log.** The ports Windows knows, what each port did at each speed, and the conclusion are written to the log, as is the port and speed a receiver was found at.
+
 ## 0.33.0 (2026-11-20)
 
 Addresses the downloaded data cannot place can be looked up online, once you say yes.
