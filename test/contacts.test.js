@@ -52,7 +52,7 @@ test('the book places addresses, keeps what the user changed, and follows its so
     const book = new AddressBook(path.join(dir, 'book.json'), { locate: (a) => { asked += 1; return known[a] || null; } }).load();
     const cards = vcard.parse(APPLE);
     const r = book.importContacts(cards, 'icloud', { account: 'ada@example.com' });
-    assert.deepEqual(r, { contacts: 4, entries: 4, added: 4, removed: 0, located: 2 });
+    assert.deepEqual(r, { contacts: 4, entries: 4, added: 4, removed: 0, located: 2, skipped: 1, fromNotes: 0 });
     assert.deepEqual(book.summary().sources.icloud.account, 'ada@example.com');
     assert.deepEqual([book.summary().count, book.summary().withAddress, book.summary().located, book.summary().approximate], [4, 3, 2, 1]);
     const [home, work] = book.list().filter((e) => e.name === 'Ada Okafor');

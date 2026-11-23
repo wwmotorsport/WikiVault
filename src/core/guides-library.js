@@ -15,7 +15,8 @@ const { Engine } = require('./engine');
 const { GuidesEngine } = require('./guides-engine');
 const { build, readCatalog } = require('./guide-build');
 
-const MADE = 1; // the version of the conversion; a collection made by an older one can be made again
+const MADE = 2; // the version of the conversion (2: scanned pages are read for their words); a collection made by an older one can be brought up to date
+const OWN = 'mine'; // the collection of the user's own books
 
 // The collections offered. `prefix` is how the file is named on the Kiwix server, before its date.
 const COLLECTIONS = [
@@ -25,6 +26,9 @@ const COLLECTIONS = [
   { id: 'knots', prefix: 'zimgit-knots_en_', name: 'Knots', about: 'Knots, hitches and lashings, and what each is for.', approxBytes: 23e6 },
   { id: 'disaster', prefix: 'zimgit-post-disaster_en_', name: 'After a disaster', about: 'Shelter, sanitation, power, repairs and getting by after a disaster. The largest collection.', approxBytes: 615e6, caution: true },
 ];
+
+/** A guide made before scanned pages were read, most of whose pages have no words: worth converting afresh. */
+const needsReading = (g) => g.read == null && g.pages > 0 && g.words < g.pages * 25;
 
 async function dirBytes(dir) {
   let total = 0;
@@ -59,8 +63,9 @@ class GuidesLibrary extends EventEmitter {
    * @param {() => Promise<string|null>} o.engineBin  where the reader engine (kiwix-serve) is, or null
    * @param {(pdf:string, o:{onPage:Function, signal:AbortSignal}) => Promise<{pages:number, outline:Array}>} o.convert
    */
-  constructor({ dir, getSettings = () => ({}), engineBin = async () => null, convert, readZim = readZimWithEngine, download = downloadFile, log = () => {} }) {
+  constructor({ dir, getSettings = () => ({}), engineBin = async () => null, convert, recognise = null, readZim = readZimWithEngine, download = downloadFile, log = () => {} }) {
     super();
+    this.recognise = recognise; // (picture bytes) => paragraphs of text, for scanned pages; null when there is no reader
     this.dir = dir; this.getSettings = getSettings; this.engineBin = engineBin; this.convert = convert; this.readZim = readZim; this.download = download; this.log = log;
     this.engine = new GuidesEngine({ dir, log });
     this.jobs = new Map();   // id -> { phase, progress, error, abort }
@@ -83,11 +88,12 @@ class GuidesLibrary extends EventEmitter {
       articles: this.engine.docs.length,
       bytes: this.engine.cols.reduce((n, c) => n + (c.bytes || 0), 0),
       busy: [...this.jobs.values()].some((j) => j.phase !== 'idle'),
+      own: (() => { const h = have.get(OWN); const j = this.jobs.get(OWN); return { books: h ? h.guides.map((g) => ({ id: g.id, title: g.title, pages: g.pages, articles: g.sections.length, words: g.words })) : [], bytes: h ? h.bytes || 0 : 0, phase: j ? j.phase : 'idle', progress: j ? j.progress : null, error: j ? j.error : null }; })(),
       collections: COLLECTIONS.map((c) => {
         const h = have.get(c.id); const j = this.jobs.get(c.id);
         return {
           id: c.id, name: c.name, about: c.about, caution: Boolean(c.caution), approxBytes: c.approxBytes,
-          have: h ? { date: h.date, guides: h.guides.length, articles: h.guides.reduce((n, g) => n + g.sections.length, 0), bytes: h.bytes || 0, skipped: h.skipped || 0 } : null,
+          have: h ? { date: h.date, guides: h.guides.length, articles: h.guides.reduce((n, g) => n + g.sections.length, 0), bytes: h.bytes || 0, skipped: h.skipped || 0, old: (h.made || 1) < MADE && h.guides.some(needsReading) } : null,
           phase: j ? j.phase : 'idle', progress: j ? j.progress : null, error: j ? j.error : null,
           latest: this.latest[c.id] || null,
         };
@@ -133,6 +139,125 @@ class GuidesLibrary extends EventEmitter {
     this.jobs.delete(id);
     await this.engine.reload();
     this.log(`guides: ${id} removed`);
+    this.emit('change');
+    return true;
+  }
+
+  /** Start a job of another kind (bringing a collection up to date, adding the user's own books) in the same queue. */
+  start(id, work) {
+    const now = this.jobs.get(id);
+    if (now && now.phase !== 'idle') return false;
+    const job = { phase: 'waiting', progress: null, error: null, abort: new AbortController() };
+    this.jobs.set(id, job);
+    this.emit('change');
+    this.queue = this.queue.then(async () => {
+      try { await work(job); job.error = null; } catch (err) {
+        const cancelled = err.name === 'AbortError' || job.abort.signal.aborted;
+        job.error = cancelled ? null : err.message;
+        this.log(`guides: ${id}: ${cancelled ? 'cancelled' : `failed: ${err.message}`}`);
+      }
+      job.phase = 'idle'; job.progress = null;
+      await this.engine.reload().catch(() => {});
+      this.emit('change');
+    }).catch(() => {});
+    return true;
+  }
+
+  async saveCollection(colDir, col) {
+    col.bytes = await dirBytes(colDir);
+    await fsp.writeFile(path.join(colDir, 'collection.json'), JSON.stringify(col));
+  }
+
+  /**
+   * Bring a collection made by an older version up to date without fetching it again: the guides whose scanned
+   * pages have no words are converted afresh from the PDFs that were kept, this time with their words read.
+   */
+  improve(id) {
+    if (!COLLECTIONS.some((x) => x.id === id) && id !== OWN) throw new Error('Unknown collection.');
+    return this.start(id, async (job) => {
+      const colDir = path.join(this.dir, id);
+      const col = JSON.parse(await fsp.readFile(path.join(colDir, 'collection.json'), 'utf8'));
+      const todo = col.guides.filter(needsReading);
+      for (const [i, g] of todo.entries()) {
+        if (job.abort.signal.aborted) { const e = new Error('Cancelled'); e.name = 'AbortError'; throw e; }
+        job.phase = 'converting'; job.progress = { done: i, total: todo.length, title: g.title, page: 0, pages: g.pages }; this.emit('change');
+        const fresh = path.join(colDir, `${g.id}.new`);
+        const from = { save: (_file, dest) => fsp.copyFile(path.join(colDir, g.id, 'original.pdf'), dest) };
+        try {
+          const meta = await this.convertGuide(g.id, fresh, { file: 'original.pdf', title: g.title, about: g.about, author: g.author }, from, job.abort.signal, (page, pages) => { job.progress = { done: i, total: todo.length, title: g.title, page, pages }; this.emit('progress'); });
+          await fsp.rm(path.join(colDir, g.id), { recursive: true, force: true });
+          await fsp.rename(fresh, path.join(colDir, g.id));
+          col.guides[col.guides.indexOf(g)] = meta;
+        } catch (err) {
+          await fsp.rm(fresh, { recursive: true, force: true }).catch(() => {});
+          if (err.name === 'AbortError' || job.abort.signal.aborted) throw err;
+          this.log(`guides: ${id}: "${g.title}" was left as it was: ${err.message}`);
+        }
+      }
+      col.made = MADE;
+      await this.saveCollection(colDir, col);
+      this.log(`guides: ${id}: brought up to date, ${todo.length} guides converted afresh`);
+    });
+  }
+
+  /**
+   * Add the user's own books: PDF files (scanned or not) that become guides of the collection "My books".
+   * @param {Array<{file:string,title:string,temp?:boolean}>} books  `temp`: the file was made for this and is removed after
+   */
+  addOwn(books) {
+    const list = (books || []).filter((b) => b && b.file);
+    if (!list.length) return false;
+    const colDir = path.join(this.dir, OWN);
+    const now = this.jobs.get(OWN);
+    // Books chosen while others are being converted join the same run.
+    if (now && now.phase !== 'idle' && now.more) { now.more.push(...list); return true; }
+    const more = list.slice();
+    const started = this.start(OWN, async (job) => {
+      job.more = more;
+      await fsp.mkdir(colDir, { recursive: true });
+      let col = null;
+      try { col = JSON.parse(await fsp.readFile(path.join(colDir, 'collection.json'), 'utf8')); } catch { col = null; }
+      if (!col) col = { id: OWN, name: 'My books', about: 'Books and documents you added yourself.', caution: false, own: true, made: MADE, date: null, guides: [], bytes: 0 };
+      let done = 0; const failed = [];
+      while (job.more.length) {
+        const b = job.more.shift();
+        if (job.abort.signal.aborted) { const e = new Error('Cancelled'); e.name = 'AbortError'; throw e; }
+        const next = Math.max(0, ...col.guides.map((g) => Number(g.id.slice(1)) || 0), ...(await fsp.readdir(colDir).catch(() => [])).map((n) => Number((/^g(\d+)/.exec(n) || [])[1]) || 0)) + 1;
+        const gid = `g${String(next).padStart(3, '0')}`;
+        const title = String(b.title || path.basename(b.file).replace(/\.pdf$/i, '')).replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || 'Untitled';
+        job.phase = 'converting'; job.progress = { done, total: done + 1 + job.more.length, title, page: 0, pages: 0 }; this.emit('change');
+        try {
+          const meta = await this.convertGuide(gid, path.join(colDir, gid), { file: b.file, title, about: '', author: '' }, { save: (file, dest) => fsp.copyFile(file, dest) }, job.abort.signal, (page, pages) => { job.progress = { done, total: done + 1 + job.more.length, title, page, pages }; this.emit('progress'); });
+          col.guides.push(meta);
+          await this.saveCollection(colDir, col);
+          await this.engine.reload();
+          this.log(`guides: a book was added: ${meta.pages} pages, ${meta.sections.length} articles${meta.read ? `, ${meta.read} pages read from scans` : ''}`);
+        } catch (err) {
+          await fsp.rm(path.join(colDir, gid), { recursive: true, force: true }).catch(() => {});
+          if (err.name === 'AbortError' || job.abort.signal.aborted) { if (b.temp) await fsp.rm(b.file, { force: true }).catch(() => {}); throw err; }
+          failed.push(`"${title}" (${err.message})`);
+        }
+        if (b.temp) await fsp.rm(b.file, { force: true }).catch(() => {});
+        done += 1; this.emit('change');
+      }
+      if (!col.guides.length) await fsp.rm(colDir, { recursive: true, force: true }).catch(() => {});
+      if (failed.length) throw new Error(`${failed.length === 1 ? 'One book' : `${failed.length} books`} could not be added: ${failed.join('; ')}`);
+    });
+    if (started) this.jobs.get(OWN).more = more; // so that books chosen before the run begins join it too
+    return started;
+  }
+
+  /** Remove one of the user's own books. */
+  async removeOwn(gid) {
+    if (!/^g\d{3,5}$/.test(String(gid))) throw new Error('Unknown book.');
+    await this.queue;
+    const colDir = path.join(this.dir, OWN);
+    let col = null;
+    try { col = JSON.parse(await fsp.readFile(path.join(colDir, 'collection.json'), 'utf8')); } catch { return false; }
+    col.guides = col.guides.filter((g) => g.id !== gid);
+    await fsp.rm(path.join(colDir, gid), { recursive: true, force: true });
+    if (col.guides.length) await this.saveCollection(colDir, col); else await fsp.rm(colDir, { recursive: true, force: true });
+    await this.engine.reload();
     this.emit('change');
     return true;
   }
@@ -226,15 +351,23 @@ class GuidesLibrary extends EventEmitter {
     await source.save(d.file, pdf, signal);
     const pages = [];
     const notes = [];
+    let readPages = 0; let blank = 0;
     const result = await this.convert(pdf, {
-      signal,
+      signal, ocr: Boolean(this.recognise),
       onPage: async (p) => {
         for (const img of p.images || []) {
           if (!/^p\d{4}(?:-\d{1,3})?\.webp$/.test(img.name)) continue;
           await fsp.writeFile(path.join(gDir, 'i', img.name), Buffer.from(img.bytes));
         }
         if (p.note) notes.push(p.note);
-        pages.push({ n: p.n, w: p.w, h: p.h, whole: Boolean(p.whole), paras: p.paras || [], figs: p.figs || [], img: p.img || null });
+        let paras = p.paras || [];
+        // A scanned page with no words behind it: its picture is read for them.
+        if (p.ocr && this.recognise) {
+          try { const read = await this.recognise(p.ocr); if (read.length) { paras = read.map((text) => ({ text })); readPages += 1; } }
+          catch (err) { notes.push(`page ${p.n} could not be read for its words (${err.message})`); }
+        }
+        if (p.whole && !paras.some((b) => b.text)) blank += 1;
+        pages.push({ n: p.n, w: p.w, h: p.h, whole: Boolean(p.whole), paras, figs: p.figs || [], img: p.img || null });
         onProgress(p.n, p.total);
       },
     });
@@ -244,11 +377,12 @@ class GuidesLibrary extends EventEmitter {
     if (!made.sections.length) throw new Error('nothing readable was found in it');
     for (const [i, s] of made.sections.entries()) await fsp.writeFile(path.join(gDir, `s${i + 1}.json`), JSON.stringify({ title: s.title, from: s.from, to: s.to, blocks: s.blocks }));
     await fsp.writeFile(path.join(gDir, 'text.json'), JSON.stringify(made.sections.map((s) => s.text)));
-    const meta = { id: gid, title: d.title, about: d.about || '', author: d.author || '', pages: pages.length, words: made.words, sections: made.sections.map((s) => ({ title: s.title, from: s.from, to: s.to, words: s.words })) };
+    const meta = { id: gid, title: d.title, about: d.about || '', author: d.author || '', pages: pages.length, words: made.words, read: readPages, blank, sections: made.sections.map((s) => ({ title: s.title, from: s.from, to: s.to, words: s.words })) };
     await fsp.writeFile(path.join(gDir, 'guide.json'), JSON.stringify(meta));
     if (notes.length) this.log(`guides: "${d.title}": ${notes.length} pages with trouble (${notes[0]})`);
+    if (readPages) this.log(`guides: "${d.title}": the words of ${readPages} scanned pages were read`);
     return meta;
   }
 }
 
-module.exports = { GuidesLibrary, COLLECTIONS, MADE, readZimWithEngine };
+module.exports = { GuidesLibrary, COLLECTIONS, MADE, OWN, readZimWithEngine };

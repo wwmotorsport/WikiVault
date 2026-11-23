@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -17,8 +17,10 @@
     "fetch-java": "node scripts/fetch-java.js"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
     "adm-zip": "^0.5.16",
-    "node-html-parser": "^7.0.1"
+    "node-html-parser": "^7.0.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@protomaps/basemaps": "^5.7.2",
@@ -38,7 +40,13 @@
       "assets/**/*",
       "package.json",
       "LICENSE",
-      "THIRD-PARTY-NOTICES.txt"
+      "THIRD-PARTY-NOTICES.txt",
+      "!node_modules/tesseract.js-core/*.wasm.js",
+      "!node_modules/tesseract.js-core/tesseract-core.*",
+      "!node_modules/tesseract.js-core/tesseract-core-simd.*",
+      "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*",
+      "!node_modules/@tesseract.js-data/eng/4.0.0_best_int/**",
+      "!node_modules/tesseract.js/dist/**"
     ],
     "directories": {
       "output": "dist"
@@ -78,7 +86,21 @@
     "asarUnpack": [
       "assets/routing/**",
       "src/core/**",
-      "src/vendor/parquet/**"
+      "src/vendor/parquet/**",
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**",
+      "node_modules/@tesseract.js-data/**",
+      "node_modules/bmp-js/**",
+      "node_modules/is-url/**",
+      "node_modules/node-fetch/**",
+      "node_modules/whatwg-url/**",
+      "node_modules/tr46/**",
+      "node_modules/webidl-conversions/**",
+      "node_modules/wasm-feature-detect/**",
+      "node_modules/zlibjs/**",
+      "node_modules/regenerator-runtime/**",
+      "node_modules/idb-keyval/**",
+      "node_modules/opencollective-postinstall/**"
     ],
     "extraResources": [
       {

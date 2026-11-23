@@ -2,6 +2,19 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.37.0 (2026-11-23)
+
+Scanned pages are read for their words, your own books can be added, and more libraries are offered.
+
+- **Text recognition for scanned pages.** A page of a guide that is a scan with no words behind it used to be shown as a picture that could be read but not found. Its words are now read from the picture when the guide is converted, so the page is found by search and used by Ask; it is still shown as the picture, with the words under it, and the link to the same page of the original. The reader (Tesseract, with its English data) is packed with the app: nothing is fetched and no page leaves the computer. It takes a second or two a page.
+- **Collections converted by 0.36 can be brought up to date.** A collection with scanned books whose words were never read says so and has a *Read its scans* button. It converts those books afresh from the PDFs that were kept; nothing is downloaded again.
+- **Your own books.** Under *Survival Guides*, *Your own books* takes PDF files (scanned or not), or a folder of photographs or scans of pages (JPEG or PNG, named in page order; a photograph taken with the camera turned is stood upright). Each becomes a book in a collection called *My books*, converted, read and searched like the rest, and each can be removed. Nothing you add leaves the computer.
+- **More libraries to add.** Twelve more from Kiwix, each optional: *Military medicine manuals*, *Ready.gov*, questions and answers on the *outdoors*, *cooking*, *amateur radio*, *vehicle repair*, *gardening* and *home repair*, *iFixit repair guides*, *Energypedia*, *Gardenology* and *US Army publications*. They are ordinary Kiwix libraries: fetched, checked, opened, searched and updated like Wikibooks. Army publications is a copy of the Army's publications site, and its manuals open as PDFs; they are not converted into articles.
+- **Everything optional is in the one list.** The Survival Guides and every library above have a tick in the downloads list at the top of *Options and Setup*, so the one button fetches whatever is ticked.
+- **Fixed: a contacts list made by hand was not read.** A CSV file was understood only with the column names Google and Outlook write. A plain list is now read too: *Name* (or first and last name), *Address* or *Full Address* (alone, or with town, state and ZIP code in their own columns), *Phone*, *Email*.
+- **Fixed: addresses that landed in a contact's note.** A list uploaded to an account can put each address in the note instead of the address. When a contact has no address and its note is one, the note is used as the address. This holds for Google, iCloud and files.
+- **Import says what it left out.** After an import, the message says how many contacts were left out for having neither an address nor a telephone number, and how many addresses came from notes.
+
 ## 0.36.0 (2026-11-23)
 
 Survival Guides: a library of practical guides, made on this computer from the PDF collections Kiwix publishes.

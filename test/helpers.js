@@ -53,12 +53,12 @@ async function startDownloadServer() {
     log.push(`${req.method} ${url.pathname} ${req.headers.range || ''}`.trim());
     const dir = '/zim/wikipedia/';
     // Every Kiwix project has its own folder; here they share one set of files, told apart by name.
-    const project = (/^\/zim\/([a-z]+)\/$/.exec(url.pathname) || [])[1];
-    if (!project) url.pathname = url.pathname.replace(/\/zim\/[a-z]+\//, dir);
+    const project = (/^\/zim\/([a-z_]+)\/$/.exec(url.pathname) || [])[1];
+    if (!project) url.pathname = url.pathname.replace(/\/zim\/[a-z_]+\//, dir);
 
     if (project) {
       // The folder "other" holds what has no folder of its own: the guide collections and a few small projects.
-      const rows = [...files.keys()].filter((n) => (project === 'other' ? /^(zimgit-|appropedia_|mdwiki_)/.test(n) : n.startsWith(`${project}_`))).map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
+      const rows = [...files.keys()].filter((n) => (['other', 'zimit', 'stack_exchange'].includes(project) ? !/^(wikipedia|wikibooks|wikiversity|ifixit)_/.test(n) : n.startsWith(`${project}_`))).map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       return res.end(`<html><body><pre><a href="../">../</a>\n${rows}\n</pre></body></html>`);
     }

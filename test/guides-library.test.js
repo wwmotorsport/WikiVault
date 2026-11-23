@@ -27,10 +27,15 @@ function kiwix(body) {
 // A stand-in for the converter window: every "PDF" is two pages of text, the first with a picture.
 const para = (text, o = {}) => ({ text, size: 10, lines: 3, x0: 60, x1: 500, y0: 300, y1: 340, li: false, ...o });
 function fakeConvert(log) {
-  return async (pdf, { onPage, signal }) => {
+  return async (pdf, o) => {
+    const { onPage, signal } = o;
     log.push(path.basename(path.dirname(pdf)));
     const name = fs.readFileSync(pdf, 'utf8');
     if (/broken/.test(name)) throw new Error('not a PDF');
+    if (/scan/.test(name)) { // a scanned book: every page a picture, with no words behind it
+      for (const n of [1, 2]) await onPage({ n, total: 2, w: 400, h: 600, whole: true, scan: true, words: 0, paras: [], figs: [], img: { name: `p000${n}.webp`, w: 680, h: 1020 }, images: [{ name: `p000${n}.webp`, bytes: new Uint8Array([82, 73, 70, 70]) }], ...(o.ocr ? { ocr: new Uint8Array([n]) } : {}) });
+      return { pages: 2, outline: [] };
+    }
     await onPage({ n: 1, total: 2, w: 612, h: 792, whole: false, words: 9, paras: [para('BOILING WATER', { size: 18, lines: 1 }), para(`Boil the water from ${name} for one minute to make it safe.`), { fig: 0, y0: 400, y1: 500, x0: 60, x1: 300 }], figs: [{ box: [60, 400, 300, 500], text: 'pot lid steam', img: { name: 'p0001-1.webp', w: 480, h: 200 } }], images: [{ name: 'p0001-1.webp', bytes: new Uint8Array([82, 73, 70, 70]) }, { name: '../evil.webp', bytes: new Uint8Array([1]) }] });
     if (signal.aborted) { const e = new Error('Cancelled'); e.name = 'AbortError'; throw e; }
     await onPage({ n: 2, total: 2, w: 612, h: 792, whole: false, words: 7, paras: [para('Filters made of sand and charcoal clear cloudy water.')], figs: [], images: [] });
@@ -59,7 +64,7 @@ test('a collection is fetched, checked, converted and served: pages, pictures, s
     const s = lib.status();
     const water = s.collections.find((c) => c.id === 'water');
     assert.strictEqual(water.error, null);
-    assert.deepStrictEqual({ ...water.have, bytes: 0 }, { date: '2024-08', guides: 2, articles: 2, bytes: 0, skipped: 1 });
+    assert.deepStrictEqual({ ...water.have, bytes: 0 }, { date: '2024-08', guides: 2, articles: 2, bytes: 0, skipped: 1, old: false });
     assert.ok(water.have.bytes > 0 && s.ready && s.articles === 2 && !s.busy);
     assert.deepStrictEqual(converted, ['g001', 'g002', 'g003']);
     assert.ok(lines.some((l) => /"A broken one" could not be converted and was left out: not a PDF/.test(l)));
@@ -154,4 +159,73 @@ test('a real collection file is opened with the reader engine: its catalog is re
     await source.save('Water (1).pdf', path.join(dir, 'one.pdf'));
     assert.strictEqual(fs.readFileSync(path.join(dir, 'one.pdf')).subarray(0, 5).toString(), '%PDF-');
   } finally { await source.close(); await fsp.rm(dir, { recursive: true, force: true }); }
+});
+
+test('scanned pages are read for their words; your own books are added and removed; an older collection is brought up to date', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wv-guides-'));
+  const seen = [];
+  const recognise = async (bytes) => { seen.push(bytes[0]); return bytes[0] === 1 ? ['The bowline is the king of knots.', 'It makes a loop that will not slip.'] : []; };
+  const lib = new GuidesLibrary({ dir, engineBin: async () => 'kiwix-serve', convert: fakeConvert([]), recognise, readZim, log: () => {} });
+  const books = path.join(dir, 'from');
+  try {
+    await fsp.mkdir(books);
+    await fsp.writeFile(path.join(books, 'Old_Knot_Book.pdf'), 'scan of a knot book');
+    await fsp.writeFile(path.join(books, 'notes.pdf'), 'my notes');
+    await fsp.writeFile(path.join(books, 'bad.pdf'), 'broken');
+    await lib.init();
+    assert.strictEqual(lib.addOwn([{ file: path.join(books, 'Old_Knot_Book.pdf') }, { file: path.join(books, 'bad.pdf') }]), true);
+    assert.strictEqual(lib.addOwn([{ file: path.join(books, 'notes.pdf'), title: 'Camp notes', temp: true }]), true); // joins the run under way
+    await lib.queue;
+    const own = lib.status().own;
+    assert.deepStrictEqual(own.books.map((b) => [b.id, b.title, b.pages, b.articles]), [['g001', 'Old Knot Book', 2, 1], ['g002', 'Camp notes', 2, 1]]);
+    assert.match(own.error, /^One book could not be added: "bad" \(not a PDF\)$/);
+    assert.deepStrictEqual(seen, [1, 2]);
+    assert.ok(fs.existsSync(path.join(books, 'Old_Knot_Book.pdf')) && !fs.existsSync(path.join(books, 'notes.pdf'))); // the user's file stays; one made for the purpose goes
+    assert.ok(fs.existsSync(path.join(dir, 'mine', 'g001', 'original.pdf')));
+    // The words read from the scan are found by search, and the page is still shown as its picture.
+    const hit = await lib.engine.search('bowline loop');
+    assert.deepStrictEqual(hit.items.map((i) => [i.title, i.path]), [['Old Knot Book', 'mine/g001/1']]);
+    const page = await fetchText(lib.engine.urlForPath('mine/g001/1'));
+    assert.match(page.text, /<figure class="whole">.*p0001\.webp/s);
+    assert.match(page.text, /<details class="words"><summary>The words on page 1, as read from the scan<\/summary><p>The bowline is the king of knots\.<\/p>/);
+    assert.match((await fetchText(lib.engine.homeUrl())).text, /<h2 id="mine">My books<\/h2>/);
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'mine', 'g001', 'guide.json'), 'utf8'));
+    assert.deepStrictEqual([meta.read, meta.blank], [1, 1]);
+
+    assert.strictEqual(await lib.removeOwn('g002'), true);
+    assert.deepStrictEqual(lib.status().own.books.map((b) => b.id), ['g001']);
+    await assert.rejects(lib.removeOwn('../x'), /Unknown book/);
+
+    // A collection made before scans were read: marked as old, and brought up to date from its own PDFs.
+    const file = path.join(dir, 'mine', 'collection.json');
+    const col = JSON.parse(fs.readFileSync(file, 'utf8'));
+    col.made = 1; delete col.guides[0].read; col.guides[0].words = 0;
+    fs.writeFileSync(file, JSON.stringify(col));
+    fs.writeFileSync(path.join(dir, 'mine', 'g001', 'text.json'), '[""]');
+    await lib.engine.reload();
+    assert.strictEqual((await lib.engine.search('bowline')).total, 0);
+    seen.length = 0;
+    assert.strictEqual(lib.improve('mine'), true);
+    await lib.queue;
+    assert.deepStrictEqual(seen, [1, 2]);
+    assert.strictEqual((await lib.engine.search('bowline')).total, 1);
+    assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).made, 2);
+    assert.deepStrictEqual(fs.readdirSync(path.join(dir, 'mine')).sort(), ['collection.json', 'g001']);
+
+    await lib.removeOwn('g001');
+    assert.ok(!fs.existsSync(path.join(dir, 'mine')));
+    assert.strictEqual(lib.status().ready, false);
+  } finally { await lib.close(); await fsp.rm(dir, { recursive: true, force: true }); }
+});
+
+test('the words the reader is unsure of are left out: a drawing read as letters does not become text', () => {
+  const { fromBlocks, tidy } = require('../src/core/ocr');
+  const w = (text, confidence) => ({ text, confidence });
+  const blocks = [{ paragraphs: [
+    { lines: [{ words: [w('SQUARE', 96), w('KNOT:', 93), w('The', 95), w('basic', 91), w('tie', 90), w('for', 94), w('join-', 88)] }, { words: [w('ing', 90), w('two', 95), w('ropes.', 92)] }] },
+    { lines: [{ words: [w('RIESE,', 21), w('SOD', 30), w('ED', 18), w('N', 12), w('Ag', 25)] }] },
+    { lines: [{ words: [w('==', 80), w('|', 75)] }] },
+  ] }];
+  assert.deepStrictEqual(fromBlocks(blocks), ['SQUARE KNOT: The basic tie for joining two ropes.']);
+  assert.deepStrictEqual(tidy('One line\nand the next.\n\n. , . _ -\n\nA second para-\ngraph.'), ['One line and the next.', 'A second paragraph.']);
 });

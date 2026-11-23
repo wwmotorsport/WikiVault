@@ -6,6 +6,7 @@
 
 const PAGE_MS = 90000;      // a page that takes longer than this to draw is kept as text only
 const MAX_SIDE = 1500;      // pixels: the widest a drawn page is made
+const READ_SIDE = 2300;     // pixels: the longer side of a scanned page drawn to have its words read (about 200 dots to the inch)
 const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error('took too long')), ms))]);
 const blobOf = (canvas, type, quality) => new Promise((ok) => canvas.toBlob(ok, type, quality));
 
@@ -57,15 +58,28 @@ async function convertOne(job) {
         Object.assign(out, { w: Math.round(view.width), h: Math.round(view.height), whole: plan.whole, scan: plan.scan, paras: plan.paras, figs: plan.figs, words: plan.words });
         if (plan.whole || plan.figs.length) {
           try {
-            const scale = Math.min(plan.whole ? 1.7 : 2, MAX_SIDE / Math.max(view.width, view.height));
+            // A scanned page with no words behind it is drawn large, so that its words can be read from the picture.
+            const toRead = Boolean(job.ocr) && plan.whole && plan.words < 8;
+            const shown = Math.min(plan.whole ? 1.7 : 2, MAX_SIDE / Math.max(view.width, view.height));
+            const scale = toRead ? Math.max(shown, Math.min(3.4, READ_SIDE / Math.max(view.width, view.height))) : shown;
             const vp = page.getViewport({ scale });
-            const canvas = document.createElement('canvas'); canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+            let canvas = document.createElement('canvas'); canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
             const ctx = canvas.getContext('2d', { alpha: false });
             ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             await withTimeout(page.render({ canvasContext: ctx, viewport: vp, intent: 'print' }).promise, PAGE_MS);
+            if (toRead) {
+              const blob = await blobOf(canvas, 'image/jpeg', 0.9);
+              if (blob) out.ocr = new Uint8Array(await blob.arrayBuffer());
+              if (scale > shown * 1.05) { // the picture that is kept is the size it is shown at
+                const small = document.createElement('canvas'); small.width = Math.ceil(view.width * shown); small.height = Math.ceil(view.height * shown);
+                const sctx = small.getContext('2d', { alpha: false }); sctx.imageSmoothingQuality = 'high';
+                sctx.drawImage(canvas, 0, 0, small.width, small.height);
+                canvas.width = 0; canvas.height = 0; canvas = small;
+              }
+            }
             const name = `p${String(n).padStart(4, '0')}`;
             if (plan.whole) {
-              const img = await picture(canvas, null, scale, { whole: true });
+              const img = await picture(canvas, null, shown, { whole: true });
               if (img) { out.img = { name: `${name}.webp`, w: img.w, h: img.h }; out.images.push({ name: out.img.name, bytes: img.bytes }); }
             } else {
               for (const [i, f] of plan.figs.entries()) {

@@ -210,8 +210,17 @@ A size that cannot be fetched this way is greyed out and says what is short. Goi
 - the words become headings, paragraphs and lists, in reading order;
 - every photograph, drawing, diagram and table is cut out as an image and put where it stood on the page; click one to see it full size;
 - running heads, page numbers and footnote marks are taken out;
-- a page that is a scan of paper, or more picture than text, is shown whole, with *The words on page N, as read from the scan* underneath;
+- a page that is a scan of paper, or more picture than text, is shown whole, with *The words on page N, as read from the scan* underneath. When a scan has no words behind it, the app reads them from the picture (text recognition), so that the page can still be found by search and used by Ask. The reading is good on clean print and rougher on old or small type;
 - a long document is divided into articles by its own contents, with links to the next and the one before.
+
+**Your own books.** Under the collections, *Your own books* adds what you already have:
+
+- *Add PDFs*: one or more PDF files, scanned or not.
+- *Add a folder of page pictures*: a folder of photographs or scans of pages, as JPEG or PNG files named in page order (`page 1`, `page 2` ... `page 10` sort correctly). The folder becomes one book, named after the folder. A photograph taken with the camera turned is stood upright.
+
+Each is converted like the collections, scanned pages are read for their words, and the book appears under *My books* in the library, with a *Remove* beside it in the list. Your files are copied, not moved, and nothing you add leaves the computer. For the best reading, photograph pages flat, square on and in even light.
+
+**Bringing an older collection up to date.** A collection converted before scanned pages were read (version 0.36) says that some of its books cannot be searched, and has a *Read its scans* button. It converts just those books again from the PDFs already on the disk.
 
 **The original is always there.** Small page numbers in the right margin, and *Open the original document* at the foot of every article, open the PDF itself at that page. Use it whenever exact layout matters, such as a table of doses.
 
@@ -223,12 +232,18 @@ A size that cannot be fetched this way is greyed out and says what is short. Goi
 
 ## More libraries: Wikibooks, Wikiversity, Appropedia and a medical encyclopedia
 
-**Library > More libraries** also lists four other collections that Kiwix publishes:
+**Library > More libraries** also lists other collections that Kiwix publishes:
 
 - **Wikibooks**: free textbooks and manuals, including first aid, cooking, gardening, repairs, languages, mathematics and science.
 - **Wikiversity**: courses, lessons and learning material arranged by subject and level.
 - **Appropedia**: practical know-how for living with little: water, sanitation, growing food, building, energy and making do.
 - **Medical encyclopedia (MDWiki)**: the medical articles of Wikipedia, checked and kept by WikiProject Medicine. Reference only.
+- **Military medicine manuals** and **Ready.gov**: field and survival medicine, and the United States government's emergency guidance.
+- **Questions and answers**: the outdoors, cooking, amateur radio, vehicle repair, gardening and home repair, each a library of its own.
+- **iFixit repair guides**, **Energypedia** (power without the grid) and **Gardenology** (plants and how to grow them).
+- **US Army publications**: a copy of the Army's publications site. It is large, and its manuals open as PDFs in the reader; they are not converted into articles.
+
+Every one of these, and the Survival Guides, also has a tick in the downloads list at the top of *Options and Setup*, so the one button there fetches whatever is ticked.
 
 Each shows its real download size, read from Kiwix. **Download** fetches the newest edition with images, checks it against the published checksum and opens it. Both are small next to Wikipedia (a few gigabytes each), and the app refuses a download that would not fit on the library drive.
 
@@ -348,7 +363,8 @@ Everyday words are understood wherever a relationship is searched for, in the Pl
 - **Google**, the simple way: your Google address and an *app password*, made at myaccount.google.com/apppasswords once 2-Step Verification is on. It can be withdrawn there at any time. Google's own documentation says its contacts server wants the full sign-in, and yet it has gone on accepting app passwords; if yours is refused, use the other way.
 - **Google**, the other way: sign in on Google's own page in your browser, through a "client" that you register with Google once, free. The dialog lists the steps. While the client's status is *Testing*, Google ends the sign-in every seven days and you sign in again; the contacts already copied stay. Publishing it to *In production* removes the limit, but Google asks for a home page and a privacy policy page first.
 - **Apple iCloud** needs your Apple Account's e-mail address and an *app-specific password*, made at account.apple.com. Your usual password does not work here, and the app-specific one can be withdrawn at any time.
-- **A file**: a vCard (.vcf) file from any contacts program, or a CSV file from Google Contacts or Outlook.
+- **A file**: a vCard (.vcf) file from any contacts program, or a CSV file: one from Google Contacts or Outlook, or a list of your own whose first row names its columns in plain words, such as *Name*, *Address* (or *Full Address*, or the street with *City*, *State* and *Zip* in their own columns), *Phone* and *Email*.
+- **An address in the note.** If a contact has no address but its note is one (this happens when a list is uploaded to an account and the addresses land in the notes), the note is used as its address. The message after an import says how many addresses came from notes, and how many contacts were left out for having neither an address nor a telephone number.
 
 The sign-ins are kept encrypted by Windows for your user account, in the app's own data folder, and go only to Google or Apple. A contact with two addresses becomes two entries. An entry you change is yours from then on, and reading the account again leaves it alone.
 

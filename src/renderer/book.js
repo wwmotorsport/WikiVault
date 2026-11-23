@@ -264,7 +264,7 @@ async function bookDo(work, done) {
   await bookLoad();
   paintAccounts();
 }
-const bookTold = (name) => (r) => `${name}: ${r.contacts.toLocaleString()} contacts read, ${r.entries.toLocaleString()} entries kept, ${r.located.toLocaleString()} placed on the map.`;
+const bookTold = (name) => (r) => `${name}: ${r.contacts.toLocaleString()} contacts read, ${r.entries.toLocaleString()} entries kept, ${r.located.toLocaleString()} placed on the map.${r.fromNotes ? ` ${r.fromNotes.toLocaleString()} had ${r.fromNotes === 1 ? 'its' : 'their'} address in the note, and it was used.` : ''}${r.skipped ? ` ${r.skipped.toLocaleString()} left out: no address and no telephone number.` : ''}`;
 $('book-lookup-yes').addEventListener('click', () => bookLookupSet(true));
 $('book-lookup-no').addEventListener('click', () => bookLookupSet(false));
 $('book-lookup-change').addEventListener('click', () => bookLookupSet(!(state?.book && state.book.lookup)));

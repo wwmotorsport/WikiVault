@@ -94,7 +94,7 @@ function parseCsv(text) {
   const out = [];
   for (const r of rows.slice(1)) {
     const get = (name) => { const i = at(name); return i >= 0 ? clean(r[i]) : ''; };
-    const c = { uid: '', name: get('Name') || [get('First Name'), get('Middle Name'), get('Last Name')].filter(Boolean).join(' '), org: get('Organization Name') || get('Organization 1 - Name') || get('Company'), note: get('Notes').slice(0, 2000), addresses: [], phones: [], emails: [] };
+    const c = { uid: '', name: get('Name') || get('Full Name') || get('Display Name') || get('Contact Name') || get('Contact') || [get('First Name') || get('First') || get('Given Name'), get('Middle Name'), get('Last Name') || get('Last') || get('Family Name') || get('Surname')].filter(Boolean).join(' '), org: get('Organization Name') || get('Organization 1 - Name') || get('Company') || get('Organization'), note: (get('Notes') || get('Note')).slice(0, 2000), addresses: [], phones: [], emails: [] };
     head.forEach((h, i) => {
       const v = clean(r[i]); if (!v) return;
       let m;
@@ -110,6 +110,22 @@ function parseCsv(text) {
       const street = get(`Address ${n} - Street`); if (!street) continue;
       c.addresses.push({ label: (get(`Address ${n} - Label`) || get(`Address ${n} - Type`)).replace(/^\* ?/, '').toLowerCase(), text: [street, [get(`Address ${n} - City`), [get(`Address ${n} - Region`), get(`Address ${n} - Postal Code`)].filter(Boolean).join(' ')].filter(Boolean).join(', '), get(`Address ${n} - Country`)].filter(Boolean).join('\n') });
     }
+    // A list somebody made by hand, with columns named in plain words: "Address" or "Full Address" (alone, or with
+    // the town, state and ZIP code in columns of their own), "Phone", "Email".
+    if (!c.addresses.length) {
+      const first = (re) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? clean(r[i]) : ''; };
+      const street = first(/^(?:(?:full|mailing|street|home|postal|complete)\s+)?address(?:\s*(?:line\s*)?1)?$|^street$/i);
+      const two = first(/^(?:address\s*(?:line\s*)?2|apt|apartment|unit|suite)$/i);
+      const town = first(/^(?:city|town)$/i); const st = first(/^(?:state|province|region|st)$/i); const zip = first(/^(?:zip|zip\s*code|postal\s*code|postcode)$/i);
+      if (street) {
+        const rest = [town, [st, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        // A full address in one cell already names its town; the separate columns are added only when it does not.
+        const whole = rest && !(town && street.toLowerCase().includes(town.toLowerCase())) ? [[street, two].filter(Boolean).join(', '), rest].join(', ') : [street, two].filter(Boolean).join(', ');
+        c.addresses.push({ label: '', text: whole });
+      }
+    }
+    if (!c.phones.length) head.forEach((h, i) => { const v = clean(r[i]); if (v && /^(?:(?:mobile|cell|home|work|primary)\s+)?(?:phone|telephone|mobile|cell)(?:\s*(?:number|no\.?|#))?$/i.test(h)) c.phones.push({ label: (/^(mobile|cell|home|work)/i.exec(h) || ['', ''])[1].toLowerCase(), value: v }); });
+    if (!c.emails.length) head.forEach((h, i) => { const v = clean(r[i]); if (v && /^e-?mail(?:\s+address)?$/i.test(h)) c.emails.push(v); });
     if (!c.name) c.name = c.org || c.emails[0] || '';
     if (c.name || c.addresses.length || c.phones.length) out.push(c);
   }

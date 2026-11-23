@@ -2887,6 +2887,12 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.37.0': [
+    'Scanned pages in the Survival Guides are now read for their words, so they can be searched and used by Ask. A collection added before has a "Read its scans" button.',
+    'Your own books: under Survival Guides, add PDF files or a folder of page photographs, and they are converted and searched like the rest.',
+    'Twelve more libraries to add, from military medicine to home repair, and everything optional now has a tick in the downloads list.',
+    'Contacts: a plain list (Name, Address) is read, and an address that landed in a contact\'s note is used.',
+  ],
   '0.36.0': [
     'Survival Guides, a new library under Options and Setup, More libraries: practical guides on water, first aid, food, knots and disasters, converted on this computer into articles with their pictures and diagrams in place.',
     'The guides are searched and asked about like Wikipedia: choose Survival Guides in the library list at the top. Every article links to the original PDF at the same page.',

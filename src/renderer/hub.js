@@ -129,6 +129,14 @@ function hubItems() {
       out.push({ id: `lib:${lib.id}`, title: lib.name, state: libBusy ? 'working' : lib.active ? 'done' : on ? 'todo' : 'off', tick: lib.active || libBusy ? null : `lib:${lib.id}`,
         detail: lib.active ? `${lib.active.date ? `${editionName(lib.active.date)} edition` : 'Local edition'}, ${bytes(lib.active.bytes)}.` : lib.about || '', bytes: lib.active ? 0 : hub.sizes.libs[lib.id] ?? null, needsWikipedia: true });
     }
+    // 6. The Survival Guides: every collection not yet added, fetched and converted one after the other.
+    if (state.guides) {
+      const g = state.guides; const missing = g.collections.filter((c) => !c.have); const got = g.collections.length - missing.length;
+      const gBusy = g.collections.some((c) => c.phase !== 'idle');
+      out.push({ id: 'guides', title: 'Survival Guides', state: gBusy ? 'working' : !missing.length ? 'done' : w.guides ? 'todo' : 'off', tick: !missing.length || gBusy ? null : 'guides',
+        detail: got ? `${got} of ${g.collections.length} collections added, ${g.articles.toLocaleString('en-US')} articles.` : 'Practical guides on water, first aid and medicine, food, knots and disasters, converted on this computer into articles with their pictures.',
+        bytes: missing.reduce((n, c) => n + ((c.latest && c.latest.bytes) || c.approxBytes), 0), needsWikipedia: true });
+    }
   }
   // 6. Things that are set up, not downloaded
   // Set up once: a receiver that has worked is remembered, and connects by itself from then on.
@@ -165,6 +173,7 @@ function hubHave(id) {
   if (id === 'wikipedia') return of(e);
   if (id.startsWith('lib:')) return of((state.libraries || []).find((x) => x.id === id.slice(4)));
   if (id === 'school') return (s && s.bytes) || null;
+  if (id === 'guides') return (state.guides && state.guides.bytes) || null;
   if (!m) return null;
   if (id === 'places') return ((m.places && m.places.bytes) || 0) + ((m.overture && m.overture.bytes) || 0) || null;
   const kept = { map: m.map, routing: m.routing, addresses: m.addresses }[id];
@@ -187,6 +196,7 @@ function hubProgress(it) {
   if (it.id === 'wikipedia') pr = fetched(state.edition, 'Wikipedia');
   else if (it.id.startsWith('lib:')) pr = fetched((state.libraries || []).find((x) => x.id === it.id.slice(4)), it.title);
   else if (it.id === 'school') { const j = state.school && state.school.job; if (j) pr = { value: j.done || 0, max: j.total || 1, text: `${j.kind === 'index' ? 'Reading the books so that they can be searched' : 'Fetching the books'}: ${j.done || 0} of ${j.total || 0}${j.current ? `, now ${j.current}` : ''}`, bytesNow: j.kind === 'download' ? j.bytes || 0 : null, left: null }; }
+  else if (it.id === 'guides') { const c = state.guides && state.guides.collections.find((x) => x.phase !== 'idle'); if (c) pr = { text: `${c.name}: ${typeof guidesPhase === 'function' ? guidesPhase(c) : 'working'}`, left: null }; }
   else if (it.id === 'ai') pr = { text: state.ai.busy || 'Timing the models on this computer to pick the best one', left: null };
   else { const j = state.maps && state.maps.job; if (j) { const v = mapJobView(j); pr = { value: v.value, max: v.max, text: [v.title, String(v.detail || '').split(/\. (?=[A-Z])/).slice(0, 1).join('. ')].filter(Boolean).join(': ').replace(/\.$/, ''), bytesNow: v.bytesNow, left: v.bytesNow != null && v.max ? Math.max(0, v.max - v.bytesNow) : null }; } }
   if (!pr) return null;
@@ -427,6 +437,15 @@ async function hubRun(only = null) {
       await hubUntil(() => Boolean(state.edition && state.edition.active)); // the other libraries open in Wikipedia's reader, so they wait for it
       for (const l of libs) await step(`lib:${l.id}`, async () => { await api.extraDownload(l.id); const lib = () => state.libraries.find((x) => x.id === l.id); await hubUntil(() => BUSY.includes(lib().phase), 6000).catch(() => {}); await hubUntil(() => !BUSY.includes(lib().phase)); if (!lib().active) throw new Error(lib().error || 'It did not finish.'); });
     }
+    await step('guides', async () => {
+      await hubUntil(() => Boolean(state.edition && state.edition.active)); // the guides are read with Wikipedia's engine, so they wait for it
+      const busyNow = () => state.guides.collections.some((x) => x.phase !== 'idle');
+      for (const c of state.guides.collections.filter((x) => !x.have && x.phase === 'idle')) await api.guidesAdd(c.id);
+      await hubUntil(busyNow, 6000).catch(() => {});
+      await hubUntil(() => !busyNow(), 12 * 3600 * 1000);
+      const bad = state.guides.collections.find((x) => !x.have);
+      if (bad) throw new Error(bad.error || 'It did not finish.');
+    });
   } finally {
     hub.running = false; hub.current = null;
     await api.hubSave({ running: false }).catch(() => {});

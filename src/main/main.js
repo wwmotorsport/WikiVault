@@ -43,6 +43,8 @@ const serialPorts = require('../core/serial-ports');
 const { TrackStore } = require('../core/tracks');
 const { GuidesLibrary } = require('../core/guides-library');
 const { convertPdf, convertHandlers, convertClose } = require('./convert-window');
+const { Reader: TextReader } = require('../core/ocr');
+const { pdfFromJpegs, byName } = require('../core/jpeg-pdf');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -181,6 +183,19 @@ const LIBRARIES = {
   wikiversity: { name: 'Wikiversity', project: 'wikiversity', approxBytes: 3 * 2 ** 30, about: 'Courses, lessons and learning material arranged by subject and level.' },
   appropedia: { name: 'Appropedia', project: 'appropedia', folder: 'other', late: true, approxBytes: 0.6 * 2 ** 30, about: 'Practical know-how for living with little: water, sanitation, growing food, building, energy and making do. Written by volunteers, like Wikipedia.' },
   mdwiki: { name: 'Medical encyclopedia (MDWiki)', project: 'mdwiki', folder: 'other', late: true, approxBytes: 2.2 * 2 ** 30, about: 'The medical articles of Wikipedia, checked and kept by WikiProject Medicine: illnesses, injuries, medicines and treatments. Reference only, not a substitute for a trained person.' },
+  // Kiwix libraries of other kinds, each named by the start of its file name and the folder it is in on the server.
+  milmed: { name: 'Military medicine manuals', folder: 'zimit', prefix: 'irp.fas.org_en_military-medicine_', late: true, approxBytes: 0.06 * 2 ** 30, about: 'United States military manuals on first aid, field medicine and survival medicine. Reference only.' },
+  readygov: { name: 'Ready.gov', folder: 'zimit', prefix: 'ready.gov_en_all_', late: true, approxBytes: 1.9 * 2 ** 30, about: 'The United States government\'s guidance on getting ready for, and through, storms, floods, fires, power cuts and other emergencies.' },
+  outdoors: { name: 'Outdoors questions and answers', folder: 'stack_exchange', prefix: 'outdoors.stackexchange.com_en_all_', late: true, approxBytes: 0.14 * 2 ** 30, about: 'Camping, hiking, shelter, fire, water and getting by outdoors, as questions answered by people who do it.' },
+  cooking: { name: 'Cooking questions and answers', folder: 'stack_exchange', prefix: 'cooking.stackexchange.com_en_all_', late: true, approxBytes: 0.23 * 2 ** 30, about: 'Cooking, keeping and preserving food, as questions and answers.' },
+  hamradio: { name: 'Amateur radio questions and answers', folder: 'stack_exchange', prefix: 'ham.stackexchange.com_en_all_', late: true, approxBytes: 0.08 * 2 ** 30, about: 'Radio for when the telephone network is down: equipment, antennas, licences and operating.' },
+  mechanics: { name: 'Vehicle repair questions and answers', folder: 'stack_exchange', prefix: 'mechanics.stackexchange.com_en_all_', late: true, approxBytes: 0.33 * 2 ** 30, about: 'Looking after and repairing cars, trucks and motorcycles.' },
+  gardening: { name: 'Gardening questions and answers', folder: 'stack_exchange', prefix: 'gardening.stackexchange.com_en_all_', late: true, approxBytes: 0.9 * 2 ** 30, about: 'Growing food and looking after soil, plants and trees.' },
+  diy: { name: 'Home repair questions and answers', folder: 'stack_exchange', prefix: 'diy.stackexchange.com_en_all_', late: true, approxBytes: 1.9 * 2 ** 30, about: 'Plumbing, wiring, heating, building and repairs about the house.' },
+  ifixit: { name: 'iFixit repair guides', folder: 'ifixit', prefix: 'ifixit_en_all_', late: true, approxBytes: 3.3 * 2 ** 30, about: 'Step-by-step repair guides with photographs, for telephones, computers, appliances, tools and vehicles.' },
+  energypedia: { name: 'Energypedia', project: 'energypedia', folder: 'other', late: true, approxBytes: 0.75 * 2 ** 30, about: 'Power without the grid: solar, small hydro, wind, cooking stoves and batteries.' },
+  gardenology: { name: 'Gardenology', folder: 'other', prefix: 'gardenology.org_en_all_', late: true, approxBytes: 0.11 * 2 ** 30, about: 'An encyclopedia of plants and how to grow them.' },
+  armypubs: { name: 'US Army publications', folder: 'zimit', prefix: 'armypubs_en_all_', late: true, approxBytes: 7.7 * 2 ** 30, about: 'A copy of the Army\'s publications site: field manuals and technical manuals, as PDF documents that open in the reader. Large, and its manuals are opened as they are, not converted into articles.' },
 };
 const extras = new Map();   // id -> { manager, engine }
 const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
@@ -672,6 +687,27 @@ async function closeExtras() {
 
 // ---------------------------------------------------------------- survival guides
 
+// The reader of scanned pages (text recognition), started when the first scanned page comes and let go when idle.
+const textReader = new TextReader({ log: (m) => log(m) });
+
+/** A folder of page pictures (JPEG or PNG), made into one PDF so that it is converted like any other book. */
+async function folderToPdf(folder) {
+  const names = (await fsp.readdir(folder)).filter((n) => /\.(jpe?g|png)$/i.test(n)).sort(byName).slice(0, 1500);
+  if (!names.length) throw new Error('That folder has no page pictures in it. They should be JPEG or PNG files, named in page order.');
+  const pages = [];
+  for (const n of names) {
+    const file = path.join(folder, n);
+    if (/\.png$/i.test(n)) { const img = nativeImage.createFromPath(file); if (!img.isEmpty()) pages.push(img.toJPEG(90)); } else pages.push(await fsp.readFile(file));
+  }
+  const made = pdfFromJpegs(pages);
+  if (!made.pages) throw new Error('None of the pictures in that folder could be used.');
+  const dest = path.join(settings.dataDir, 'guides', 'incoming', `own-${Date.now()}.pdf`);
+  await fsp.mkdir(path.dirname(dest), { recursive: true });
+  await fsp.writeFile(dest, made.pdf);
+  log(`guides: a folder of ${made.pages} page pictures was made into a book${made.left ? ` (${made.left} could not be used)` : ''}`);
+  return dest;
+}
+
 async function initGuides() {
   if (guides) { guides.removeAllListeners(); await guides.close().catch(() => {}); guides = null; }
   if (!settings.dataDir) return;
@@ -679,7 +715,7 @@ async function initGuides() {
     dir: path.join(settings.dataDir, 'guides'),
     getSettings: () => settings,
     engineBin: () => locateEngine({ configuredPath: settings.enginePath, engineDir: engineDir() }),
-    convert: convertPdf, log,
+    convert: convertPdf, recognise: (bytes) => textReader.read(bytes), log,
   });
   let last = 0;
   g.on('change', () => {
@@ -722,7 +758,7 @@ async function ensureExtra(id) {
   x.manager = new EditionManager({
     dataDir: extraDir(id),
     // Same servers and update rhythm as Wikipedia. Never staged: these are small next to Wikipedia.
-    getSettings: () => ({ ...settings, project: LIBRARIES[id].project, folder: LIBRARIES[id].folder, flavour: 'maxi', stagingDir: null }),
+    getSettings: () => ({ ...settings, project: LIBRARIES[id].project || id, folder: LIBRARIES[id].folder, filePrefix: LIBRARIES[id].prefix, flavour: 'maxi', stagingDir: null }),
     probe: async (file) => probeZim(await ensureEngineBinary(), file, { log }),
     activate: (zimPath) => startExtraEngine(id, zimPath),
     log: (m) => log(`${id}: ${m}`),
@@ -740,7 +776,7 @@ async function ensureExtra(id) {
 async function extraInfo(id) {
   const lib = LIBRARIES[id];
   if (!lib) throw new Error('Unknown library.');
-  const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, project: lib.project, folder: lib.folder, language: settings.language, flavour: 'maxi' });
+  const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, project: lib.project || id, folder: lib.folder, prefix: lib.prefix, language: settings.language, flavour: 'maxi' });
   const bytes = await catalog.fetchRemoteSize(latest.url);
   const info = { date: latest.date, file: latest.file, bytes: bytes || null };
   extraLatest[id] = info;
@@ -1977,6 +2013,21 @@ function registerIpc() {
     return guides.add(String(id));
   }));
   handle('guides:cancel', inGuides(({ id }) => guides.cancel(String(id))));
+  handle('guides:improve', inGuides(({ id }) => guides.improve(String(id))));
+  handle('guides:own-remove', inGuides(({ id }) => guides.removeOwn(String(id))));
+  handle('guides:own-add', inGuides(async ({ kind }) => {
+    const folder = kind === 'folder';
+    let paths = process.env.WIKIVAULT_TEST_OWN_BOOK ? [process.env.WIKIVAULT_TEST_OWN_BOOK] : null;
+    if (!paths) {
+      const r = await dialog.showOpenDialog(win, folder
+        ? { title: 'Choose a folder of page pictures', properties: ['openDirectory'] }
+        : { title: 'Add your own books (PDF)', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+      if (r.canceled || !r.filePaths.length) return false;
+      paths = r.filePaths;
+    }
+    if (folder) return guides.addOwn([{ file: await folderToPdf(paths[0]), title: path.basename(paths[0]), temp: true }]);
+    return guides.addOwn(paths.filter((p) => /\.pdf$/i.test(p)).map((p) => ({ file: p })));
+  }));
   handle('guides:remove', inGuides(({ id }) => guides.remove(String(id))));
   handle('library:extra-info', ({ id }) => extraInfo(String(id)));
   handle('library:extra-download', ({ id }) => downloadExtra(String(id)));
@@ -2056,7 +2107,7 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { title: 'Choose a contacts file', properties: ['openFile'], filters: [{ name: 'Contacts (vCard or CSV)', extensions: ['vcf', 'vcard', 'csv'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
     const contacts = vcard.parseAny(await fsp.readFile(r.filePaths[0], 'utf8'));
-    if (!contacts.length) throw new Error('No contacts were found in that file. It should be a vCard (.vcf) file, or a CSV file exported from Google Contacts or Outlook.');
+    if (!contacts.length) throw new Error('No contacts were found in that file. It should be a vCard (.vcf) file, or a CSV file: one exported from Google Contacts or Outlook, or a list of your own with a row of column names such as Name, Address, Phone.');
     const out = book.importContacts(contacts, 'file', { name: path.basename(r.filePaths[0]) });
     pushState();
     lookupAddresses().catch(() => {});
@@ -2501,7 +2552,7 @@ if (!app.requestSingleInstanceLock()) {
     if (engine) engine.stopping = true;
     try { engine?.proc?.kill(); } catch { /* already gone */ }
     for (const x of extras.values()) { if (x.engine) { x.engine.stopping = true; try { x.engine.proc?.kill(); } catch { /* already gone */ } } }
-    guides?.close().catch(() => {}); convertClose();
+    guides?.close().catch(() => {}); convertClose(); textReader.close().catch(() => {});
     try { fs.rmSync(enginePidFile(), { force: true }); } catch { /* fine */ }
   });
 }

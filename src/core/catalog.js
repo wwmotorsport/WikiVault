@@ -27,9 +27,9 @@ function parseEditions(text, prefix) {
  * Newest published edition, e.g. wikipedia_en_all_maxi_2026-10.zim.
  * @returns {Promise<{file:string,url:string,date:string}>}
  */
-async function findLatestEdition({ baseUrl, project = 'wikipedia', folder, language = 'en', flavour = 'maxi', signal } = {}) {
+async function findLatestEdition({ baseUrl, project = 'wikipedia', folder, prefix: named, language = 'en', flavour = 'maxi', signal } = {}) {
   const base = trimBase(baseUrl);
-  const prefix = `${project}_${language}_all_${flavour}_`;
+  const prefix = named || `${project}_${language}_all_${flavour}_`; // a library that is not a Wikimedia project is named by the start of its file name
   const dirUrl = `${base}/zim/${folder || project}/`; // most projects have a folder of their own; a few share one
   const errors = [];
 

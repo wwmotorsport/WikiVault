@@ -16,15 +16,15 @@ function convertHandIn() {
   if (!convertWaiting || !convertJob || convertJob.handed) return;
   const give = convertWaiting; convertWaiting = null;
   convertJob.handed = true;
-  fsp.readFile(convertJob.file).then((buf) => give({ id: convertJob.id, data: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) }), (err) => { const j = convertJob; convertJob = null; convertWaiting = give; j.reject(err); });
+  fsp.readFile(convertJob.file).then((buf) => give({ id: convertJob.id, ocr: Boolean(convertJob.ocr), data: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) }), (err) => { const j = convertJob; convertJob = null; convertWaiting = give; j.reject(err); });
 }
 function convertClose() { clearTimeout(convertIdle); const w = convertWin; convertWin = null; convertWaiting = null; if (w && !w.isDestroyed()) w.destroy(); }
-function convertPdf(file, { onPage, signal } = {}) {
+function convertPdf(file, { onPage, signal, ocr = false } = {}) {
   if (convertJob) return Promise.reject(new Error('Another document is being converted.'));
   clearTimeout(convertIdle);
   return new Promise((resolve, reject) => {
     convertSeq += 1;
-    convertJob = { id: convertSeq, file, onPage, signal, resolve, reject, handed: false };
+    convertJob = { id: convertSeq, file, onPage, signal, ocr, resolve, reject, handed: false };
     if (!convertWin || convertWin.isDestroyed()) {
       convertWin = new BrowserWindow({ show: false, width: 900, height: 700, webPreferences: { preload: path.join(__dirname, '..', 'convert-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true } });
       const w = convertWin;

@@ -41,7 +41,7 @@ The [user guide](docs/USER-GUIDE.md#installing-step-by-step) has the same steps 
 |---|---|
 | A local copy of Wikipedia | Downloads a Kiwix edition of English Wikipedia from download.kiwix.org: everything with images (110+ GB), every article without images (about a quarter of that), or introductions only. Setup shows the real sizes and whether each fits. Resumes after any interruption. |
 | More than Wikipedia | English Wikibooks (textbooks and manuals), Wikiversity (courses and lessons), Appropedia (practical know-how) and MDWiki (a medical encyclopedia) can be added from Options and Setup and are searched, read, asked about and updated the same way. |
-| Survival Guides | Collections of practical PDF guides (water, first aid and medicine, food, knots, after a disaster) are fetched from Kiwix and converted on your computer into articles: the text as text, every picture and diagram as an image in its place, the original PDF one click away. They are searched and asked about like Wikipedia. |
+| Survival Guides | Collections of practical PDF guides (water, first aid and medicine, food, knots, after a disaster) are fetched from Kiwix and converted on your computer into articles: the text as text, every picture and diagram as an image in its place, the original PDF one click away. Scanned pages are read for their words (text recognition, on your computer). Your own PDFs, or a folder of page photographs, can be added as books of your own. All of it is searched and asked about like Wikipedia. |
 | Regular backups | Checks daily for a newer edition (Kiwix publishes roughly monthly). Downloads it, verifies it, switches to it, and only then deletes the old one. |
 | Offline search | Title suggestions as you type and full-text search over every article, served by the Kiwix reader engine on 127.0.0.1. |
 | Local AI | Finds the passages that match your question, hands only those to a local model, and shows the answer with numbered links to the source articles. |
@@ -172,6 +172,7 @@ build/installer.nsh  installer and uninstaller additions (close running copy, cl
   guides-library.js  Survival Guides: fetches a collection of PDF guides, has each converted, keeps the result
   guide-build.js, guide-html.js  a guide's pages made into articles (running heads out, headings, sections), and those articles as HTML
   guides-engine.js  serves the guides to the reader and answers search, suggestions and Ask, in place of kiwix-serve
+  ocr.js, jpeg-pdf.js  reading the words of a scanned page (Tesseract, packed with the app), and making a PDF from a folder of page pictures
   central-places.js, place-sort.js, hospitals.js  the ready-made places set, how places are sorted into kinds, and the official hospital list
   relations.js   pins, relationship groups and ties, and the everyday words for a tie
   map-ask.js     requests typed into Ask that are for the map: recognised, and their places found

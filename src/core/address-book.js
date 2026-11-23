@@ -25,6 +25,22 @@ const oneLine = (s) => String(s || '').replace(/\s*\n\s*/g, ', ').replace(/\s+/g
 const whoOf = (c) => crypto.createHash('sha1').update(String(c.uid || fold(c.name))).digest('hex').slice(0, 12);
 const keyOf = (c, address) => crypto.createHash('sha1').update(`${c.uid || fold(c.name)}|${fold(oneLine(address))}`).digest('hex').slice(0, 16);
 
+/**
+ * The address in a contact's note, when the note is one: a line (or the whole note) with a house number or PO box, a
+ * street, and a town with its state or a ZIP code. Anything else in a note is left as a note.
+ */
+function noteAddress(note) {
+  const text = String(note || '').trim();
+  if (!text || text.length > 300) return '';
+  const tries = [text.replace(/\s*\n\s*/g, ', '), ...text.split('\n').map((s) => s.trim())].filter(Boolean);
+  for (const t of tries) {
+    if (!/^(?:\d+[A-Za-z]?\s+\S|P\.?\s?O\.?\s*Box\s+\d)/i.test(t)) continue;
+    const row = geocode.rowOf(t);
+    if ((row && row.street && (row.zip || (row.city && row.state))) || /,\s*[A-Za-z]{2}\s+\d{5}(?:-\d{4})?$/.test(t)) return t;
+  }
+  return '';
+}
+
 class AddressBook {
   /** `locate(address)` returns { lat, lon, how, why } or null; it is the app's address search. */
   constructor(file, { locate = () => null, log = () => {} } = {}) { this.file = file; this.locate = locate; this.log = log; this.entries = []; this.sources = {}; this.next = 1; }
@@ -103,9 +119,11 @@ class AddressBook {
   /**
    * Bring in the contacts of one source ('google', 'icloud', or 'file'), replacing what came from it before.
    * Entries the user has changed or made are left alone, and an address already placed is not looked up again.
-   * Returns { contacts, entries, added, removed, located }.
+   * Returns { contacts, entries, added, removed, located, skipped, fromNotes }: `skipped` are contacts with neither an
+   * address nor a telephone number (there is nothing to find them by), `fromNotes` those whose address was in their note.
    */
   importContacts(contacts, source, info = {}) {
+    let skipped = 0; let fromNotes = 0;
     const before = new Map(this.entries.filter((e) => e.src === source).map((e) => [e.key, e]));
     // The user's marks are carried over when an address changes in the account, which gives the entry a new key.
     const people = new Map();
@@ -114,7 +132,10 @@ class AddressBook {
     const fresh = []; const seen = new Set();
     for (const c of contacts) {
       const phones = (c.phones || []).map((p) => (p.label ? `${p.value} (${p.label})` : p.value)).join('; ').slice(0, 300);
-      const places = (c.addresses || []).length ? c.addresses : [{ label: '', text: '' }];
+      let places = (c.addresses || []).length ? c.addresses : [{ label: '', text: '' }];
+      // An address typed (or imported) into a contact's note, where a list uploaded to an account can land: used as its address.
+      if (!(c.addresses || []).length) { const inNote = noteAddress(c.note); if (inNote) { places = [{ label: '', text: inNote }]; fromNotes += 1; } }
+      if (!phones && !places.some((a) => String(a.text || '').trim())) skipped += 1;
       for (const a of places) {
         const address = String(a.text || '').trim();
         if (!address && !phones) continue; // nothing to find them by
@@ -145,7 +166,7 @@ class AddressBook {
     this.entries = this.entries.filter((e) => e.src !== source).concat(fresh);
     this.sources[source] = { ...(this.sources[source] || {}), ...info, date: new Date().toISOString(), contacts: contacts.length, entries: fresh.length, error: null };
     this.save();
-    return { contacts: contacts.length, entries: fresh.length, added: fresh.filter((e) => !before.has(e.key)).length, removed, located: fresh.filter((e) => e.lat != null).length };
+    return { contacts: contacts.length, entries: fresh.length, added: fresh.filter((e) => !before.has(e.key)).length, removed, located: fresh.filter((e) => e.lat != null).length, skipped, fromNotes };
   }
 
   /** Forget a source and, unless told to keep them, the entries that came from it. */
@@ -230,4 +251,4 @@ class AddressBook {
   }
 }
 
-module.exports = { AddressBook, oneLine, fold };
+module.exports = { noteAddress, AddressBook, oneLine, fold };
