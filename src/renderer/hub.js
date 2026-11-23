@@ -526,7 +526,7 @@ function optPaint(items) {
   if (!state || !$('opt-downloads')) return;
   const e = state.edition; const active = Boolean(e && e.active); const left = items.filter(hubLeft);
   const wiki = items.find((it) => it.id === 'wikipedia');
-  const libs = (state.libraries || []).filter((l) => l.active).length;
+  const libs = (state.libraries || []).filter((l) => l.active).length + (state.guides && state.guides.collections.some((c) => c.have) ? 1 : 0);
   const ai = state.ai || {}; const aiOn = Boolean(state.settings && state.settings.ai && state.settings.ai.enabled);
   const flags = {
     downloads: left.length ? ['todo', `${left.length} to fetch`] : ['ok', 'Complete'],

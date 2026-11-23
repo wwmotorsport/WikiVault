@@ -57,7 +57,8 @@ async function startDownloadServer() {
     if (!project) url.pathname = url.pathname.replace(/\/zim\/[a-z]+\//, dir);
 
     if (project) {
-      const rows = [...files.keys()].filter((n) => n.startsWith(`${project}_`)).map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
+      // The folder "other" holds what has no folder of its own: the guide collections and a few small projects.
+      const rows = [...files.keys()].filter((n) => (project === 'other' ? /^(zimgit-|appropedia_|mdwiki_)/.test(n) : n.startsWith(`${project}_`))).map((n) => `<a href="${n}">${n}</a>  2026-11-01 10:00  ${files.get(n).length}`).join('\n');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       return res.end(`<html><body><pre><a href="../">../</a>\n${rows}\n</pre></body></html>`);
     }

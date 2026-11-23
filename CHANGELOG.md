@@ -2,6 +2,20 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.36.0 (2026-11-23)
+
+Survival Guides: a library of practical guides, made on this computer from the PDF collections Kiwix publishes.
+
+- **A new library: Survival Guides.** Under *Options and Setup > More libraries*. Five collections can be added, each on its own: *Water*, *First aid and medicine*, *Food*, *Knots* and *After a disaster*. Kiwix publishes these as bundles of PDF documents, which its own reader can only list and open; no words inside them can be searched. Wikivault fetches a bundle, checks it against its published checksum, and converts every document into articles.
+- **Text as text, pictures as pictures.** The words of each page become headings, paragraphs and lists in reading order (columns read one after the other, running heads and page numbers taken out, words broken at a line's end mended). Every photograph, drawing, diagram and table is cut out of the page as an image file and put in the article where it stood, the way pictures sit in a Wikipedia article. A page that is a scan, or more picture than text, is shown whole as a picture of itself, with the words read from it underneath so that it can still be found.
+- **Long documents become several articles.** By the document's own table of contents where it has one, otherwise by its large headings, otherwise every ten pages or so. Each article links to the one before and after, and to the guide's contents.
+- **The original is kept.** Every article has small page numbers in the margin and a link at the foot; each opens the original PDF at that page. Where the conversion is not good enough (a dosage table, a fine drawing), the document as printed is one click away.
+- **Searched and asked like Wikipedia.** Survival Guides appears in the library list at the top. With it open, the search box suggests titles and searches the full text, and Ask finds its passages there, answers from them and links to the articles. (Wiki golf stays with the other libraries: it is played from link to link, and guides do not link to one another.)
+- **On this computer.** Converting is done here, in a window that is never shown and that can reach neither the network nor any file; nothing inside a PDF is run. It takes a few minutes for a small collection and can be left to run while the app is used. If the app is closed part way, it carries on from the last finished document. The bundle is deleted once converted; the PDFs, pictures and text take two to two and a half times the size of the download.
+- **Not professional advice.** The first page of the library and every article of the medical collections say so.
+- **Two more libraries to add.** *Appropedia* (practical know-how for water, sanitation, food, building and energy) and *Medical encyclopedia (MDWiki)* (the medical articles of Wikipedia kept by WikiProject Medicine) are offered beside Wikibooks and Wikiversity. They are ordinary Kiwix libraries and work like the others.
+- **Not yet:** the Survival Guides are added from *More libraries*, not by the one button at the top of the page, and collections are not checked for newer editions by themselves.
+
 ## 0.35.0 (2026-11-23)
 
 Smoother live navigation, a map that can turn with you, and a record of where you have been.

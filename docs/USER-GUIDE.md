@@ -64,7 +64,7 @@ Everything the app can download and every setting is on one page, opened with **
 | Downloads | Everything the app can fetch, with ticks, sizes, the room on the disk, and one button to fetch all that is ticked |
 | The library and where it is kept | Which edition is here, its folder, moving it, and the partition |
 | Wikipedia: updates and size | Checking for a newer edition, automatic updates, and how much of Wikipedia to keep |
-| More libraries | Wikibooks, Wikiversity and others |
+| More libraries | Survival Guides, Wikibooks, Wikiversity and others |
 | Answers from the local model | Switching answers on, tuning them to the computer, choosing a model |
 | About | The version, licences and the guided tour |
 
@@ -199,12 +199,36 @@ The other size is downloaded and checked while you keep using the copy you have,
 
 A size that cannot be fetched this way is greyed out and says what is short. Going to a smaller size removes content; getting it back means downloading the larger size again. While a switch is under way, **Keep the size I have** stops it and deletes what had been fetched.
 
-## More libraries: Wikibooks and Wikiversity
+## Survival Guides
 
-**Library > More libraries** lists two other collections that Kiwix publishes:
+**Options and Setup > More libraries > Survival Guides** is a library of practical guides: finding and treating water, first aid and medicine, preparing and preserving food, knots, and getting by after a disaster. It is made on your computer from collections of PDF documents that the Kiwix project gathers and publishes.
+
+**Adding a collection.** Each collection has its own *Add* button with the size of its download, and *Add all* takes the lot. The app fetches the collection, checks it against its published checksum, takes the documents out and converts them one by one; the row says which document and page it is on. Small collections take a few minutes, the largest (*After a disaster*, about 600 MB) a good deal longer. You can keep using the app meanwhile. If the app is closed part way, the conversion carries on from the last finished document the next time you press *Add*. *Cancel* stops it and removes what was made; *Remove* deletes a collection you no longer want.
+
+**What the conversion does.** A PDF is a picture of printed pages, and the reader that Kiwix makes can only open one like a file: it cannot search inside it. Wikivault reads each page and rebuilds it as an article:
+
+- the words become headings, paragraphs and lists, in reading order;
+- every photograph, drawing, diagram and table is cut out as an image and put where it stood on the page; click one to see it full size;
+- running heads, page numbers and footnote marks are taken out;
+- a page that is a scan of paper, or more picture than text, is shown whole, with *The words on page N, as read from the scan* underneath;
+- a long document is divided into articles by its own contents, with links to the next and the one before.
+
+**The original is always there.** Small page numbers in the right margin, and *Open the original document* at the foot of every article, open the PDF itself at that page. Use it whenever exact layout matters, such as a table of doses.
+
+**Reading, searching and asking.** Choose *Survival Guides* in the library list at the left of the top bar, or press *Open* on its box. The first page lists every guide by collection. The search box suggests titles as you type and searches the full text of every article. Ask answers from the guides and links to the articles it used, exactly as it does for Wikipedia.
+
+**Room on the disk.** The downloaded bundle is deleted after it is converted. What is kept (the PDFs, the pictures and the text) comes to two to two and a half times the size of the download.
+
+**A caution.** These are reference guides, some of them old, and none replaces a trained person. Medical guidance in particular changes over time. The library says so on its first page and on every article of the medical collections.
+
+## More libraries: Wikibooks, Wikiversity, Appropedia and a medical encyclopedia
+
+**Library > More libraries** also lists four other collections that Kiwix publishes:
 
 - **Wikibooks**: free textbooks and manuals, including first aid, cooking, gardening, repairs, languages, mathematics and science.
 - **Wikiversity**: courses, lessons and learning material arranged by subject and level.
+- **Appropedia**: practical know-how for living with little: water, sanitation, growing food, building, energy and making do.
+- **Medical encyclopedia (MDWiki)**: the medical articles of Wikipedia, checked and kept by WikiProject Medicine. Reference only.
 
 Each shows its real download size, read from Kiwix. **Download** fetches the newest edition with images, checks it against the published checksum and opens it. Both are small next to Wikipedia (a few gigabytes each), and the app refuses a download that would not fit on the library drive.
 
@@ -616,6 +640,7 @@ When no article contains every word, the search is retried without filler words 
 | Partial downloads | `<library>\downloads\` |
 | Edition state | `<library>\state.json` |
 | Wikibooks, Wikiversity | `<library>\more\wikibooks\`, `<library>\more\wikiversity\` (each with its own `zim\`, `downloads\` and `state.json`) |
+| Survival Guides | `<library>\guides\` (a folder for each collection; in it a folder for each guide with `original.pdf`, its pictures in `i\`, and its articles) |
 | Settings, log, reader engine | `%APPDATA%\Wikivault\` (`settings.json`, `wikivault.log`, `engine\`) |
 | The map and its places | `<library>\maps\` (`map.pmtiles`, `places\`) |
 | School books, their text index and your progress (School is in development and not in this version) | `<library>\school\` (`g5\`, `index\`, `progress-g5.json`) |

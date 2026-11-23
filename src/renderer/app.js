@@ -1465,11 +1465,12 @@ $('lib-flavour-keep').addEventListener('click', () => guard(async () => {
 
 // More libraries (Wikibooks, Wikiversity): a switcher in the top bar and a section on the Library page.
 const libInfoAsked = new Set();
-function libraryName(id) { return id === 'wikipedia' ? 'Wikipedia' : (state.libraries.find((l) => l.id === id)?.name || id); }
+function libraryName(id) { return id === 'wikipedia' ? 'Wikipedia' : id === 'guides' ? 'Survival Guides' : (state.libraries.find((l) => l.id === id)?.name || id); }
 
 function renderLibraries() {
   const libs = state.libraries || [];
   const ready = libs.filter((l) => l.ready);
+  if (state.guides && state.guides.ready) ready.push({ id: 'guides', name: 'Survival Guides' });
   const select = $('lib-select');
   select.hidden = !ready.length;
   const key = ['wikipedia', ...ready.map((l) => l.id)].join('|');
@@ -1485,7 +1486,12 @@ function renderLibraries() {
   if (view !== 'hub') return;
   renderLibraryFlavours();
   const haveWikipedia = Boolean(state.edition?.active);
-  $('more-libs').replaceChildren(...libs.map((lib) => {
+  const guidesFirst = typeof guidesBox === 'function' ? guidesBox() : null;
+  // The Survival Guides box stays where it is (see guides.js); the boxes after it are made afresh.
+  const moreHost = $('more-libs');
+  if (guidesFirst && moreHost.firstElementChild !== guidesFirst) moreHost.prepend(guidesFirst);
+  for (const n of [...moreHost.children]) if (n !== guidesFirst) n.remove();
+  moreHost.append(...libs.map((lib) => {
     const box = el('div', 'more-lib');
     box.dataset.lib = lib.id;
     box.append(el('h3', '', lib.name), el('p', '', lib.about));
@@ -2881,6 +2887,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.36.0': [
+    'Survival Guides, a new library under Options and Setup, More libraries: practical guides on water, first aid, food, knots and disasters, converted on this computer into articles with their pictures and diagrams in place.',
+    'The guides are searched and asked about like Wikipedia: choose Survival Guides in the library list at the top. Every article links to the original PDF at the same page.',
+    'Two more libraries can be added: Appropedia (practical know-how) and a medical encyclopedia (MDWiki).',
+  ],
   '0.35.0': [
     'On a drive, the mark for where you are now glides instead of jumping, and the GPS panel lets you keep the map north up or have it turn with the way you are travelling.',
     'Trips: tick "Keep a record of where I go" and each drive is kept on this computer. See them on the map as lines or dots, and find a trip by date or by town on the new Trips tab.',
@@ -3091,7 +3102,7 @@ const TOUR_PAGES = [
       [['lib-partition'], 'Partition', 'Give the library a partition of its own, change its size, or put it back in an ordinary folder.'],
       [['lib-update-status', 'lib-update-actions'], 'Updates', 'Check for a newer edition now, fetch new ones automatically, start with Windows, and how many connections a download uses.'],
       [['lib-flavour-set'], 'How much of Wikipedia', 'Everything with pictures, without pictures, or a smaller selection. Changing it downloads the other kind.'],
-      [['more-libs'], 'More libraries', 'Wikibooks, Wikiversity and others, each fetched and opened like Wikipedia.'],
+      [['more-libs'], 'More libraries', 'Survival Guides, Wikibooks, Wikiversity, Appropedia and a medical encyclopedia, each fetched once and opened like Wikipedia.'],
       [['ai-status', 'ai-enabled'], 'Answers', 'The model that writes answers: on or off, tuned to this computer, and which model on which part of it.'],
       [['about-tour'], 'About', 'The version, the licences, and this guide.'],
     ] },
@@ -4068,6 +4079,7 @@ function render() {
   $('edition-label').textContent = active ? (active.date ? `${editionName(active.date)} edition` : 'Local edition') : 'No edition yet';
   const openLib = state.activeLibrary !== 'wikipedia' && (state.libraries || []).find((l) => l.id === state.activeLibrary);
   if (openLib?.active) $('edition-label').textContent = `${openLib.name}, ${openLib.active.date ? `${editionName(openLib.active.date)} edition` : 'local edition'}`;
+  if (state.activeLibrary === 'guides' && state.guides) $('edition-label').textContent = `Survival Guides, ${state.guides.articles.toLocaleString('en-US')} articles`;
   const busy = (e && BUSY.includes(e.phase)) || state.engine.installing;
   $('edition-dot').className = `dot ${busy ? 'busy' : e?.error || state.engine.error ? 'bad' : active ? 'ok' : ''}`;
   $('edition-stamp').title = busy ? 'An update is in progress' : active ? 'Stored and verified on this laptop' : 'Nothing downloaded yet';

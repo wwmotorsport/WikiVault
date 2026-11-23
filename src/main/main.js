@@ -41,6 +41,8 @@ const { fetchText, open: openRequest, readBody } = require('../core/httpx');
 const geocode = require('../core/geocode-online');
 const serialPorts = require('../core/serial-ports');
 const { TrackStore } = require('../core/tracks');
+const { GuidesLibrary } = require('../core/guides-library');
+const { convertPdf, convertHandlers, convertClose } = require('./convert-window');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -177,6 +179,8 @@ let engine = null;
 const LIBRARIES = {
   wikibooks: { name: 'Wikibooks', project: 'wikibooks', approxBytes: 6 * 2 ** 30, about: 'Free textbooks and manuals: first aid, cooking, gardening, repairs, languages, mathematics, science and much more.' },
   wikiversity: { name: 'Wikiversity', project: 'wikiversity', approxBytes: 3 * 2 ** 30, about: 'Courses, lessons and learning material arranged by subject and level.' },
+  appropedia: { name: 'Appropedia', project: 'appropedia', folder: 'other', late: true, approxBytes: 0.6 * 2 ** 30, about: 'Practical know-how for living with little: water, sanitation, growing food, building, energy and making do. Written by volunteers, like Wikipedia.' },
+  mdwiki: { name: 'Medical encyclopedia (MDWiki)', project: 'mdwiki', folder: 'other', late: true, approxBytes: 2.2 * 2 ** 30, about: 'The medical articles of Wikipedia, checked and kept by WikiProject Medicine: illnesses, injuries, medicines and treatments. Reference only, not a substitute for a trained person.' },
 };
 const extras = new Map();   // id -> { manager, engine }
 const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
@@ -241,8 +245,12 @@ async function followSisterLink(url) {
   return `That page is not in the offline copy of ${name}.`;
 }
 
-const cur = () => (extras.get(activeLib)?.engine?.running ? extras.get(activeLib).engine : engine);
-const curLibId = () => (extras.get(activeLib)?.engine?.running ? activeLib : 'wikipedia');
+// The Survival Guides: a library of its own kind (converted PDF guides, served by the app itself).
+let guides = null;
+const guidesOpen = () => activeLib === 'guides' && Boolean(guides?.engine.running);
+const cur = () => (guidesOpen() ? guides.engine : extras.get(activeLib)?.engine?.running ? extras.get(activeLib).engine : engine);
+const curLibId = () => (guidesOpen() ? 'guides' : extras.get(activeLib)?.engine?.running ? activeLib : 'wikipedia');
+const libName = (id) => (id === 'wikipedia' ? 'Wikipedia' : id === 'guides' ? 'Survival Guides' : LIBRARIES[id]?.name || id);
 let engineState = { installing: null, error: null, version: null };
 let engineRestarts = [];
 let blockerId = null;
@@ -376,8 +384,11 @@ async function partitionInfo() {
   for (const [id, lib] of Object.entries(LIBRARIES)) {
     const have = extras.get(id)?.manager.snapshot().active?.bytes || 0;
     otherBytes += have;
-    otherAllowance += 2 * 1.15 * Math.max(have, extraLatest[id]?.bytes || lib.approxBytes);
+    // The two that were always offered are allowed for before they are fetched; the later additions once they are here.
+    otherAllowance += 2 * 1.15 * (lib.late ? have : Math.max(have, extraLatest[id]?.bytes || lib.approxBytes));
   }
+  const guidesBytes = guides?.status().bytes || 0;
+  if (guidesBytes > 0) { otherBytes += guidesBytes; otherAllowance += guidesBytes * 1.5; }
   if (schoolBytes() > 0) { otherBytes += schoolBytes(); otherAllowance += schoolBytes(); }
   if (mapsBytes() > 0) { otherBytes += mapsBytes(); otherAllowance += mapsBytes(); }
   const base = { editionBytes: edition.bytes, volumeFree: analysis.volumeFree, partitionSize: analysis.partitionSize, sizeMin: analysis.sizeMin, otherBytes, otherAllowance };
@@ -393,6 +404,7 @@ function libraryBreakdown() {
   const wikipedia = editions?.snapshot().active?.bytes || 0;
   let others = 0;
   for (const id of Object.keys(LIBRARIES)) others += extras.get(id)?.manager.snapshot().active?.bytes || 0;
+  others += guides?.status().bytes || 0;
   const schoolPart = schoolBytes(); const mapsPart = mapsBytes();
   return { wikipedia, others, school: schoolPart, maps: mapsPart, total: wikipedia + others + schoolPart + mapsPart };
 }
@@ -513,6 +525,7 @@ async function getState() {
       return { id, name: lib.name, about: lib.about, ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
     }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
+    guides: guides ? guides.status() : null,
     book: bookState(),
     tracks: tracksState(),
     gpsFake: Boolean(process.env.WIKIVAULT_GPS_FAKE),
@@ -644,6 +657,7 @@ async function initLibrary() {
     .map((id) => ensureExtra(id).catch((err) => log(`${id}: ${err.message}`))));
   await initSchool().catch((err) => log(`school: ${err.stack || err.message}`));
   await initMaps().catch((err) => log(`maps: ${err.stack || err.message}`));
+  await initGuides().catch((err) => log(`guides: ${err.stack || err.message}`));
 }
 
 /** Stop every extra library's engine and updater, leaving its files alone. */
@@ -654,6 +668,28 @@ async function closeExtras() {
     if (x.engine) { x.engine.removeAllListeners('crash'); await x.engine.stop().catch(() => {}); }
   }
   extras.clear();
+}
+
+// ---------------------------------------------------------------- survival guides
+
+async function initGuides() {
+  if (guides) { guides.removeAllListeners(); await guides.close().catch(() => {}); guides = null; }
+  if (!settings.dataDir) return;
+  const g = new GuidesLibrary({
+    dir: path.join(settings.dataDir, 'guides'),
+    getSettings: () => settings,
+    engineBin: () => locateEngine({ configuredPath: settings.enginePath, engineDir: engineDir() }),
+    convert: convertPdf, log,
+  });
+  let last = 0;
+  g.on('change', () => {
+    if (activeLib === 'guides' && !g.engine.running) { activeLib = 'wikipedia'; if (engine?.running) send('edition-switched', { homeUrl: engine.homeUrl() }); }
+    pushState();
+  });
+  g.on('progress', () => { const now = Date.now(); if (now - last > 400) { last = now; pushState(); } });
+  await g.init();
+  guides = g;
+  pushState();
 }
 
 // ---------------------------------------------------------------- more libraries
@@ -686,7 +722,7 @@ async function ensureExtra(id) {
   x.manager = new EditionManager({
     dataDir: extraDir(id),
     // Same servers and update rhythm as Wikipedia. Never staged: these are small next to Wikipedia.
-    getSettings: () => ({ ...settings, project: LIBRARIES[id].project, flavour: 'maxi', stagingDir: null }),
+    getSettings: () => ({ ...settings, project: LIBRARIES[id].project, folder: LIBRARIES[id].folder, flavour: 'maxi', stagingDir: null }),
     probe: async (file) => probeZim(await ensureEngineBinary(), file, { log }),
     activate: (zimPath) => startExtraEngine(id, zimPath),
     log: (m) => log(`${id}: ${m}`),
@@ -704,7 +740,7 @@ async function ensureExtra(id) {
 async function extraInfo(id) {
   const lib = LIBRARIES[id];
   if (!lib) throw new Error('Unknown library.');
-  const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, project: lib.project, language: settings.language, flavour: 'maxi' });
+  const latest = await catalog.findLatestEdition({ baseUrl: settings.baseUrl, project: lib.project, folder: lib.folder, language: settings.language, flavour: 'maxi' });
   const bytes = await catalog.fetchRemoteSize(latest.url);
   const info = { date: latest.date, file: latest.file, bytes: bytes || null };
   extraLatest[id] = info;
@@ -900,6 +936,7 @@ const isEngineUrl = (url) => {
   try {
     const { origin } = new URL(url);
     if (schoolServer && origin === schoolServer.origin) return true;
+    if (guides?.engine.port && origin === guides.engine.origin) return true;
     return [engine, ...[...extras.values()].map((x) => x.engine)].some((e) => e?.running && e.origin === origin);
   } catch { return false; }
 };
@@ -1490,11 +1527,14 @@ async function moveLibrary(toDir, kind = 'move') {
   const carried = [...extras].filter(([, x]) => x.manager.snapshot().active).map(([id, x]) => ({ id, x, name: LIBRARIES[id].name, bytes: x.manager.snapshot().active.bytes }));
   if (school?.status().job) throw new Error('The school files are being downloaded or read. Let that finish or cancel it under School, then try again.');
   if (maps?.status().job) throw new Error('The map or its places are being downloaded. Let that finish or stop it under Map, then try again.');
+  if (guides?.status().busy) throw new Error('A collection of Survival Guides is being fetched or converted. Let that finish or cancel it under More libraries, then try again.');
+  const oldGuides = path.join(oldDir, 'guides');
+  const hasGuides = fs.existsSync(oldGuides);
   const oldSchool = path.join(oldDir, 'school');
   const hasSchool = fs.existsSync(oldSchool);
   const oldMaps = path.join(oldDir, 'maps');
   const hasMaps = fs.existsSync(oldMaps);
-  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0) + schoolBytes() + mapsBytes();
+  const allBytes = editions.snapshot().active.bytes + carried.reduce((n, c) => n + c.bytes, 0) + schoolBytes() + mapsBytes() + (guides?.status().bytes || 0);
   const room = await freeAt(toDir);
   const already = fs.existsSync(path.join(toDir, 'zim')) ? (await fsp.readdir(path.join(toDir, 'zim')).catch(() => [])).some((n) => n.endsWith('.copying')) : false;
   if (room != null && !already && room < allBytes + 2 * 2 ** 30) {
@@ -1536,6 +1576,13 @@ async function moveLibrary(toDir, kind = 'move') {
         throw new Error(`Map files: ${err.message}`);
       }
     }
+    if (hasGuides) {
+      setMaintenance({ kind, step: 'Copying the Survival Guides', done: null, total: null, error: null });
+      try { await fsp.cp(oldGuides, path.join(toDir, 'guides'), { recursive: true, force: true }); } catch (err) {
+        await fsp.rm(path.join(toDir, 'guides'), { recursive: true, force: true }).catch(() => {});
+        throw new Error(`Survival Guides: ${err.message}`);
+      }
+    }
     setMaintenance({ kind, step: 'Copying Wikipedia', done: 0, total: editions.snapshot().active.bytes, error: null });
     const res = await copyLibrary({
       manager: editions, toDir,
@@ -1561,6 +1608,7 @@ async function moveLibrary(toDir, kind = 'move') {
     if (hasSchool) await fsp.rm(oldSchool, { recursive: true, force: true }).catch((err) => log(`old school folder: ${err.message}`));
     // The routing engine was told to stop a moment ago and may still hold its files; a few tries give it time to let go.
     if (hasMaps) await fsp.rm(oldMaps, { recursive: true, force: true, maxRetries: 8, retryDelay: 400 }).catch((err) => log(`old maps folder: ${err.message}`));
+    if (hasGuides) await fsp.rm(oldGuides, { recursive: true, force: true, maxRetries: 4, retryDelay: 300 }).catch((err) => log(`old guides folder: ${err.message}`));
     for (const id of Object.keys(LIBRARIES)) await removeLibraryFiles(path.join(oldDir, 'more', id), { log });
     await fsp.rmdir(path.join(oldDir, 'more')).catch(() => {});
     await removeLibraryFiles(oldDir, { log });
@@ -1918,6 +1966,18 @@ function registerIpc() {
   handle('edition:pause', () => editions.pause());
   handle('edition:cancel', () => editions.cancel());
 
+  const inGuides = (fn) => (arg) => { if (!guides) throw new Error('Set up the library first.'); return fn(arg || {}); };
+  handle('guides:info', inGuides(({ id }) => guides.info(String(id))));
+  handle('guides:add', inGuides(async ({ id }) => {
+    if (!editions?.snapshot().active) throw new Error('Set up Wikipedia first; the guides are kept alongside it and read with the same engine.');
+    const info = await guides.info(String(id));
+    const free = await freeBytes(settings.dataDir);
+    // The file itself, the PDFs taken out of it, and the pictures made from their pages.
+    if (info.bytes && free != null && free < info.bytes * 3.5) throw new Error(`This collection needs about ${Math.ceil((info.bytes * 3.5) / 2 ** 20)} MB while it is converted, and the library drive has ${Math.floor(free / 2 ** 20)} MB free.`);
+    return guides.add(String(id));
+  }));
+  handle('guides:cancel', inGuides(({ id }) => guides.cancel(String(id))));
+  handle('guides:remove', inGuides(({ id }) => guides.remove(String(id))));
   handle('library:extra-info', ({ id }) => extraInfo(String(id)));
   handle('library:extra-download', ({ id }) => downloadExtra(String(id)));
   handle('library:extra-cancel', async ({ id }) => { await extras.get(String(id))?.manager.cancel(); return true; });
@@ -1925,7 +1985,7 @@ function registerIpc() {
   handle('library:select', ({ id }) => {
     const want = String(id);
     if (golfInPlay() && want !== activeLib) throw new Error('A round of wiki golf is in progress. Finish or end it before changing library.');
-    if (want !== 'wikipedia' && !extras.get(want)?.engine?.running) throw new Error('That library is not downloaded yet.');
+    if (want === 'guides' ? !guides?.engine.running : (want !== 'wikipedia' && !extras.get(want)?.engine?.running)) throw new Error('That library is not downloaded yet.');
     if (want !== activeLib) { activeLib = want; conversation.length = 0; }
     pushState();
     return { homeUrl: cur().homeUrl() };
@@ -2103,12 +2163,13 @@ function registerIpc() {
   handle('school:remove-book', inSchool(async ({ id }) => { await school.removeBook(String(id)); return true; }));
   handle('golf:start', ({ playerIds, holes, length, handicaps }) => {
     if (!cur()?.running) throw new Error('There is no library to play in yet.');
+    if (curLibId() === 'guides') throw new Error('Wiki golf is played from link to link, and the Survival Guides have few links between them. Choose Wikipedia in the library list first.');
     const roster = clubStore().list();
     const players = (Array.isArray(playerIds) ? playerIds : []).map((id) => roster.find((p) => p.id === id)).filter(Boolean)
       .map((p) => ({ id: p.id, name: p.name, character: p.character, colour: p.colour, handicap: p.handicap }));
     if (!players.length) throw new Error('Choose at least one player.');
     const libId = curLibId();
-    golf = { engine: cur(), libId, recorded: false, game: new GolfGame({ players, holes, length, useHandicaps: Boolean(handicaps), library: libId === 'wikipedia' ? 'Wikipedia' : LIBRARIES[libId].name }) };
+    golf = { engine: cur(), libId, recorded: false, game: new GolfGame({ players, holes, length, useHandicaps: Boolean(handicaps), library: libName(libId) }) };
     log(`golf: round started in ${golf.game.library}: ${players.length} player(s), ${golf.game.holeCount} hole(s), ${golf.game.length}`);
     layGolfHole();
     return true;
@@ -2224,7 +2285,7 @@ function registerIpc() {
       const out = await answerQuestion({
         engine: cur(), llm: model, question, pinnedUrl: pinnedUrl || null,
         history: conversation.slice(),
-        settings: settings.ai, source: curLibId() === 'wikipedia' ? 'Wikipedia' : LIBRARIES[curLibId()].name, editionDate: (curLibId() === 'wikipedia' ? editions : extras.get(curLibId())?.manager)?.snapshot().active?.date,
+        settings: settings.ai, source: libName(curLibId()), editionDate: curLibId() === 'guides' ? guides.engine.info.issued : (curLibId() === 'wikipedia' ? editions : extras.get(curLibId())?.manager)?.snapshot().active?.date,
         signal: ac.signal,
         onStatus: (text) => emit('status', { text }),
         onUnderstood: (text) => emit('understood', { text }),
@@ -2387,6 +2448,7 @@ if (!app.requestSingleInstanceLock()) {
     initBook();
     initTracks();
     registerIpc();
+    convertHandlers();
     setTimeout(() => contactsDue().catch(() => {}), 45000);
     setInterval(() => contactsDue().catch(() => {}), 3600 * 1000).unref();
     setTimeout(() => lookupAddresses().catch(() => {}), 60000); // addresses still unplaced from a time with no connection
@@ -2439,6 +2501,7 @@ if (!app.requestSingleInstanceLock()) {
     if (engine) engine.stopping = true;
     try { engine?.proc?.kill(); } catch { /* already gone */ }
     for (const x of extras.values()) { if (x.engine) { x.engine.stopping = true; try { x.engine.proc?.kill(); } catch { /* already gone */ } } }
+    guides?.close().catch(() => {}); convertClose();
     try { fs.rmSync(enginePidFile(), { force: true }); } catch { /* fine */ }
   });
 }

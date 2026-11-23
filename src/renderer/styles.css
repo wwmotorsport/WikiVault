@@ -377,6 +377,15 @@ fieldset.flavours legend { padding: 0; }
 .more-lib .lib-status { color: var(--muted, #5b6b7c); }
 .more-lib .actions { margin: 10px 0 0; }
 .more-lib progress { width: 100%; height: 8px; margin-top: 8px; }
+.guides-cols { list-style: none; margin: 10px 0 0; padding: 0; border-top: 1px solid #e2e8ee; }
+.guides-cols li { display: flex; align-items: center; gap: 14px; padding: 9px 0; border-bottom: 1px solid #e2e8ee; }
+.guides-col-text { flex: 1; min-width: 0; display: grid; gap: 1px; font-size: 14px; }
+.guides-col-text span { color: var(--muted, #5b6b7c); font-size: 13.5px; }
+.guides-col-text .guides-col-status { color: var(--ink); }
+.guides-col-text .guides-col-status.bad { color: #a12a20; }
+.guides-col-text progress { margin-top: 5px; }
+.guides-col-acts { flex: none; }
+.guides-lib .small-print { margin-top: 10px; }
 
 /* ---- wiki golf: an 8-bit clubhouse ---- */
 :root { --g8-ink: #101820; --g8-paper: #fcfcfc; --g8-sky: #6ec3ff; --g8-grass: #2f9e4f; --g8-fair: #5fd068; --g8-sand: #f2d16b; --g8-flag: #e4433b; --g8-gold: #f2d14b; }

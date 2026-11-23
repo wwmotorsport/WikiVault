@@ -40,7 +40,8 @@ The [user guide](docs/USER-GUIDE.md#installing-step-by-step) has the same steps 
 | Need | How |
 |---|---|
 | A local copy of Wikipedia | Downloads a Kiwix edition of English Wikipedia from download.kiwix.org: everything with images (110+ GB), every article without images (about a quarter of that), or introductions only. Setup shows the real sizes and whether each fits. Resumes after any interruption. |
-| More than Wikipedia | English Wikibooks (textbooks and manuals) and Wikiversity (courses and lessons) can be added from Options and Setup and are searched, read, asked about and updated the same way. |
+| More than Wikipedia | English Wikibooks (textbooks and manuals), Wikiversity (courses and lessons), Appropedia (practical know-how) and MDWiki (a medical encyclopedia) can be added from Options and Setup and are searched, read, asked about and updated the same way. |
+| Survival Guides | Collections of practical PDF guides (water, first aid and medicine, food, knots, after a disaster) are fetched from Kiwix and converted on your computer into articles: the text as text, every picture and diagram as an image in its place, the original PDF one click away. They are searched and asked about like Wikipedia. |
 | Regular backups | Checks daily for a newer edition (Kiwix publishes roughly monthly). Downloads it, verifies it, switches to it, and only then deletes the old one. |
 | Offline search | Title suggestions as you type and full-text search over every article, served by the Kiwix reader engine on 127.0.0.1. |
 | Local AI | Finds the passages that match your question, hands only those to a local model, and shows the answer with numbered links to the source articles. |
@@ -168,6 +169,9 @@ build/installer.nsh  installer and uninstaller additions (close running copy, cl
   geocode-online.js  looking addresses up online (United States Census Bureau), street addresses only, when the user has agreed
   serial-ports.js  what Windows knows about its serial ports, for saying why a GPS receiver was not found
   tracks.js      breadcrumbs: the trips recorded from the GPS receiver, kept as files, named by town, found by date and place
+  guides-library.js  Survival Guides: fetches a collection of PDF guides, has each converted, keeps the result
+  guide-build.js, guide-html.js  a guide's pages made into articles (running heads out, headings, sections), and those articles as HTML
+  guides-engine.js  serves the guides to the reader and answers search, suggestions and Ask, in place of kiwix-serve
   central-places.js, place-sort.js, hospitals.js  the ready-made places set, how places are sorted into kinds, and the official hospital list
   relations.js   pins, relationship groups and ties, and the everyday words for a tie
   map-ask.js     requests typed into Ask that are for the map: recognised, and their places found
@@ -179,6 +183,9 @@ src/renderer/nmea.js, guide.js  GPS: reading a receiver's sentences, and followi
 src/renderer/gps.js, book.js, hub.js  the GPS box and panel, the Saved tab, and the Options and Setup page
 src/renderer/gps-read.js, gps-why.js, gps-facts.js  GPS: reading a port past mistakes on the line, why a receiver was not found, and what the panel shows
 src/renderer/gps-smooth.js, crumbs.js  GPS: gliding the mark between readings, and the trips (recording, the layer on the map, the Trips tab)
+src/renderer/guide-convert.html, guide-convert.js, guide-layout.js  the converter window of the Survival Guides: reads a PDF page's layout, draws it and cuts out its pictures
+src/main/convert-window.js, src/convert-preload.js  that window (never shown, no files, no network) and its bridge
+src/renderer/guides.js  the Survival Guides box on the Options and Setup page
 assets/routing/  BRouter (brouter.jar, MIT) and its profiles; BUILD.txt says how the jar was made
 scripts/fetch-java.js  fetches the Windows Java runtime for the installer and checks it against a pinned checksum
   school.js      School: the year plan, guided lessons, and finding answer-key and test pages from page text
