@@ -2887,6 +2887,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.39.0': [
+    'Options and Setup shows the size of everything at once, as estimates, and no longer jumps about while you tick things. Measure the true sizes when you want them, or download straight away.',
+    'When the open library has nothing on a question, Ask now asks the library that does and says so.',
+    'Installing the answer model recovers by itself when Microsoft\'s newest installer is missing.',
+  ],
   '0.38.0': [
     'Ask now says when other libraries on this computer have matches for your question, with a button to ask there, so that one library is never taken for all of them.',
     'An external drive chosen for the library is timed and reported on, with advice on what to buy if it is too slow.',
@@ -3069,7 +3074,7 @@ const TOUR_PAGES = [
       [['#hub-steps .hub-prog'], 'A row that is downloading', 'Shows a bar, what is being fetched, the speed, and about how long is left. There is no need to go to the page it belongs to.'],
       [['hub-sums'], 'In all', 'The two columns added up: everything still to download, and everything downloaded so far.'],
       [['hub-disk'], 'Room on the disk', 'The whole drive as a bar: what else is on it, what Wikivault has downloaded, what the ticked rows will add, and what stays free. A library with a partition of its own is shown apart from the drive it was cut from.'],
-      [['hub-sizes'], 'Work out the sizes', 'Asks again for any size that is missing. Nothing is downloaded by this.'],
+      [['hub-sizes'], 'Measure the true sizes', 'The sizes shown at first are estimates kept with the app. This asks the servers what each download is today. Nothing is downloaded by it, and it is not needed before downloading.'],
       [['hub-go'], 'Download everything ticked', 'Fetches every row that is ticked and not done, one after another, and carries on if the app is closed and opened. If it will not fit, you are told first.'],
     ] },
   { id: 'ask', name: 'Ask', title: 'Ask', view: null, open: () => { if ($('ask').hidden && !$('toggle-ask').disabled) $('toggle-ask').click(); }, when: () => !$('toggle-ask').disabled,
@@ -3988,6 +3993,7 @@ function onAsk(ev) {
   } else if (ev.type === 'done') {
     finish();
     const other = Array.isArray(ev.elsewhere) ? ev.elsewhere : [];
+    if (ev.moved) entry.box.insertBefore(el('p', 'qa-note qa-moved', `Nothing in ${ev.moved.from} matched that question, so it was asked in ${ev.moved.to}, which is now the open library.`), entry.answer);
     if (ev.empty) {
       entry.box.append(el('p', 'qa-note', `Nothing in ${ev.here || 'this library'} matched that question.${other.length ? '' : ' Name the subject directly, or use the search box to find the article.'}`));
     } else if (ev.passagesOnly) {

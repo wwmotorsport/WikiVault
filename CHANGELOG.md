@@ -2,6 +2,15 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.39.0 (2026-11-23)
+
+Setup in one pass, an install of the answer model that recovers by itself, and Ask that follows a question to the library that has it.
+
+- **Setup shows sizes at once, and measures only when asked.** The downloads list used to start asking the servers for sizes whenever something was ticked. While that ran the list was redrawn again and again, and each time the page jumped back to the box that had been ticked, so the rest of the page could not be reached. Now every row shows an estimate straight away (marked *about*), taken from a real installation and the servers' own listings in November 2026, and the totals and the disk bar follow each tick as it is made. Nothing is measured, and nothing moves, until you choose: *Measure the true sizes before downloading* replaces the estimates with what the servers say today, and *Download directly with offline estimates* starts everything ticked without measuring. The estimates are good for the usual choice (the contiguous United States at the two finest levels of detail) and rougher for other areas; a coarser map has none and says *not measured*.
+- **Fixed: the page jumped while the list was redrawn.** The place of the keyboard is put back without moving the page, and the page's own position is kept.
+- **Fixed: "winget could not install Foundry Local ... Not found (404)".** For a while after Microsoft publishes a new version of Foundry Local, winget can point at an installer that is not there. The app now refreshes winget's list and tries again, and if the newest version is still missing it installs the one before it (up to four are tried). If none can be had, the message says so in plain words and that the rest of the app works meanwhile.
+- **Ask follows the question.** When the open library has nothing on a question, Ask no longer stops there: it asks the library on this computer with the most matches, answers from it, says that it did (*Nothing in Wikipedia matched that question, so it was asked in Survival Guides, which is now the open library*), and makes that the open library so that the links and any follow-up belong to it. The buttons for the other libraries with matches stay under every answer.
+
 ## 0.38.0 (2026-11-23)
 
 Ask says what the other libraries hold, an external drive is checked before it is used, and a missing library drive is said to be missing.

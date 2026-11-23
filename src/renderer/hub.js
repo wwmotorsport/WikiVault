@@ -50,7 +50,7 @@ async function hubMapJob(start) {
 }
 
 /** Every row of the page, worked out from the app's state. */
-function hubItems() {
+function hubItemsRaw() {
   const w = hubWant(); const e = state.edition; const active = e && e.active; const m = state.maps; const out = [];
   const busyW = Boolean(e && BUSY.includes(e.phase));
   const p = e && e.progress;
@@ -165,6 +165,41 @@ function hubItems() {
 }
 const hubLeft = (it) => it.state === 'todo' || it.state === 'update' || it.state === 'failed';
 
+// Sizes known before anything is asked of a server: taken in November 2026 from a real installation and from the
+// servers' own listings. They let the whole page be filled in, and the room added up, without waiting; "Measure the
+// true sizes" replaces them with what the servers say today. Good for the usual choice (the contiguous United
+// States, every street), rougher for other areas, and absent for coarser maps, which are measured.
+const HUB_EST = {
+  wikipedia: { maxi: 118.7e9 },
+  map: { 14: 23.0e9, 15: 23.9e9 }, // the contiguous United States at these levels of detail; other areas as a share of it
+  share: { us48: 1, canada: 0.05, mexico: 0.03, alaska: 0.02, hawaii: 0.004, pr: 0.004 },
+  routing: { us48: 1.3e9, canada: 0.45e9, mexico: 0.26e9, alaska: 0.15e9, hawaii: 0.01e9, pr: 0.01e9 },
+  addresses: { us48: [7e9, 0.65e9], canada: [0.3e9, 0.03e9], mexico: [0.05e9, 0.005e9], alaska: [0.05e9, 0.005e9], hawaii: [0.05e9, 0.005e9], pr: [0.05e9, 0.005e9] }, // [fetched, kept]
+  places: { us48: 0.2e9, canada: 0.04e9, mexico: 0.02e9, alaska: 0.005e9, hawaii: 0.005e9, pr: 0.005e9 },
+};
+/** The estimate for one row of the list: { bytes, keeps, room }, or null when there is none to give. */
+function hubEstimate(id, w) {
+  const regions = (w.regions || []).filter((r) => HUB_EST.share[r] != null);
+  const sum = (table) => regions.reduce((n, r) => n + (table[r] || 0), 0);
+  if (id === 'wikipedia') { const b = HUB_EST.wikipedia[state.settings.flavour]; return b ? { bytes: b } : null; }
+  if (id.startsWith('lib:')) { const lib = (state.libraries || []).find((x) => x.id === id.slice(4)); return lib && lib.approxBytes ? { bytes: lib.approxBytes } : null; }
+  if (!regions.length || regions.length !== (w.regions || []).length) return null;
+  if (id === 'map') { const base = HUB_EST.map[w.level]; return base ? { bytes: Math.round(base * sum(HUB_EST.share)) } : null; }
+  if (id === 'routing') return { bytes: sum(HUB_EST.routing) };
+  if (id === 'places') return { bytes: sum(HUB_EST.places) };
+  if (id === 'addresses') { const fetched = regions.reduce((n, r) => n + HUB_EST.addresses[r][0], 0); const kept = regions.reduce((n, r) => n + HUB_EST.addresses[r][1], 0); return { bytes: fetched, keeps: kept, room: kept + Math.min(fetched, 11e9) }; }
+  return null;
+}
+/** The rows of the list, with an estimate put wherever the true size is not known yet (marked `est`). */
+function hubItems() {
+  const w = hubWant();
+  return hubItemsRaw().map((it) => {
+    if (it.bytes != null || it.state === 'done' || it.state === 'working' || it.state === 'info') return it;
+    const e = hubEstimate(it.id, w);
+    return e ? { ...it, bytes: e.bytes, keeps: e.keeps != null ? e.keeps : e.bytes, room: e.room != null ? e.room : e.bytes, est: true, sizeNote: '' } : it;
+  });
+}
+
 /** How much of a row is on the disk already, in bytes; null for rows that keep nothing in the library. */
 function hubHave(id) {
   const e = state.edition; const m = state.maps; const s = state.school;
@@ -263,6 +298,9 @@ function renderHub(force) {
 
   const w = hubWant();
   const sums = { need: 0, have: 0, unknown: 0, keeps: 0, room: 0 };
+  let hubScroller = $('hub-steps').parentElement;
+  while (hubScroller && hubScroller !== document.body && !(hubScroller.scrollHeight > hubScroller.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(hubScroller).overflowY))) hubScroller = hubScroller.parentElement;
+  const hubScrollWas = hubScroller ? hubScroller.scrollTop : 0;
   $('hub-steps').replaceChildren(...items.map((it) => {
     const li = el('li', `hub-step hub-${it.state}${it.done ? ' hub-have' : ''}`);
     li.dataset.id = it.id;
@@ -275,7 +313,7 @@ function renderHub(force) {
     const pr = it.state === 'working' ? hubProgress(it) : null;
     if (it.state !== 'working') delete hub.rates[it.id];
     const todo = it.state === 'working' ? (pr && pr.left != null ? pr.left : it.bytes) : hubLeft(it) ? it.bytes : null;
-    const need = el('span', 'hub-size hub-need', it.state === 'working' ? (todo != null ? bytes(todo) : '') : hubLeft(it) ? (it.bytes != null ? bytes(it.bytes) : it.sizeNote || 'not measured') : it.state === 'off' && it.bytes ? `${bytes(it.bytes)} if ticked` : '');
+    const need = el('span', 'hub-size hub-need', it.state === 'working' ? (todo != null ? bytes(todo) : '') : hubLeft(it) ? (it.bytes != null ? `${it.est ? 'about ' : ''}${bytes(it.bytes)}` : it.sizeNote || 'not measured') : it.state === 'off' && it.bytes ? `${bytes(it.bytes)} if ticked` : '');
     if (it.state === 'off' && it.bytes) need.classList.add('hub-size-off');
     const have = hubHave(it.id);
     head.append(need, el('span', 'hub-size hub-have-size', have ? bytes(have) : ''));
@@ -336,7 +374,9 @@ function renderHub(force) {
     }
     return li;
   }));
-  if (focused && focused.id && $(focused.id)) $(focused.id).focus();
+  // The list was made afresh: the keyboard's place is put back without moving the page, and the page is put back where it was.
+  if (focused && focused.id && $(focused.id)) $(focused.id).focus({ preventScroll: true });
+  if (hubScroller && hubScroller.scrollTop !== hubScrollWas) hubScroller.scrollTop = hubScrollWas;
 
   // The sums of the two columns, and the room they take.
   const need = sums.need; const unknown = sums.unknown; const room = sums.room;
@@ -352,19 +392,17 @@ function renderHub(force) {
   if (hub.running) total.append(el('p', 'small-print', hub.stopAsked ? 'Stopping once the current download has finished.' : 'Downloading what is ticked, one thing after another. You can leave this page and use the app; it carries on, and starts again by itself if the app is closed and opened.'));
   if (hub.measuring) total.append(el('p', 'small-print', 'Working out the sizes. This reads only summaries and takes a minute or two.'));
   else if (hub.autoNote) total.append(el('p', 'small-print', hub.autoNote));
-  const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'places'].includes(it.id) && hubLeft(it) && it.bytes == null) || Object.keys(w.libs).some((id) => w.libs[id] && hub.sizes.libs[id] == null);
-  $('hub-sizes').hidden = !anyMap && hub.sizes.wikipedia != null;
+  const anyMap = items.some((it) => ['map', 'routing', 'addresses', 'places'].includes(it.id) && hubLeft(it) && it.bytes == null);
   const key = JSON.stringify([w.regions, w.level, Object.keys(w.libs).filter((id) => w.libs[id]).sort(), ['map', 'routing', 'addresses', 'places'].filter((id) => w[id])]);
-  // The sizes are worked out by the page itself only for someone who came for the downloads: the same page now holds the
-  // library's settings, and a visit to move the library should not start the map's servers being asked anything.
-  if (anyMap && hub.autoOk && $('opt-downloads').open && !hub.running && !hub.measuring && hub.autoKey !== key && state.maps && !state.maps.job) {
-    clearTimeout(hub.autoTimer);
-    hub.autoTimer = setTimeout(() => { if (hub.running || hub.measuring || !hub.autoOk || (view !== 'hub' && !$('hub-pop').open)) return; hub.autoKey = key; hubMeasure(true); }, 900);
-  }
+  // Nothing is measured by the page itself: the estimates fill the page at once, and measuring is asked for.
+  const estimated = items.filter((it) => it.est && hubLeft(it)).length;
+  if (estimated && !unknown) $('hub-sum-note').textContent = `${estimated === left.length ? 'estimated' : `${estimated} of these estimated`}, not yet measured`;
+  $('hub-sizes').hidden = !anyMap && !estimated && hub.sizes.wikipedia != null;
+  $('hub-sizes').textContent = hub.measuring ? 'Measuring the true sizes' : 'Measure the true sizes before downloading';
   $('hub-sizes').disabled = hub.running || hub.measuring;
   const startable = left.filter((it) => it.id !== 'wikipedia' || active);
   $('hub-go').disabled = hub.running || hub.measuring || !startable.length || (!active && !state.settings.dataDir);
-  $('hub-go').textContent = hub.running ? 'Downloading' : `Download everything ticked${startable.length ? ` (${startable.length})` : ''}`;
+  $('hub-go').textContent = hub.running ? 'Downloading' : estimated ? `Download directly with offline estimates${startable.length ? ` (${startable.length})` : ''}` : `Download everything ticked${startable.length ? ` (${startable.length})` : ''}`;
   $('hub-stop').hidden = !hub.running;
   $('hub-stop').disabled = hub.stopAsked;
 }
@@ -378,7 +416,7 @@ async function hubMeasure(auto = false) {
   await attempt('Wikipedia', async () => { const f = (await api.setupFlavours()).find((x) => x.flavour === state.settings.flavour); hub.sizes.wikipedia = f ? f.bytes : null; });
   for (const id of Object.keys(w.libs)) if (w.libs[id] && hub.sizes.libs[id] == null) await attempt(id, async () => { hub.sizes.libs[id] = (await api.extraInfo(id)).bytes; });
   // Only what is ticked, still to fetch, and of unknown size is measured.
-  const open = (id) => { const it = hubItems().find((x) => x.id === id); return Boolean(it && hubLeft(it) && it.bytes == null); };
+  const open = (id) => { const it = hubItems().find((x) => x.id === id); return Boolean(it && hubLeft(it) && (it.bytes == null || it.est)); };
   if (m && w.regions.length) {
     if (open('map')) await attempt('Map', () => hubMapJob(() => api.mapsMeasure(w.regions)));
     if (open('routing')) await attempt('Directions', () => hubMapJob(() => api.mapsRoutingMeasure(w.regions)));
@@ -389,7 +427,7 @@ async function hubMeasure(auto = false) {
   }
   hub.measuring = false;
   // Asked for by the page itself, a failure (no connection, most likely) is a note, not an error.
-  if (fails.length && auto) hub.autoNote = 'Some sizes could not be worked out just now, which needs a connection. Press "Work out the sizes" to try again.';
+  if (fails.length && auto) hub.autoNote = 'Some sizes could not be worked out just now, which needs a connection. Press "Measure the true sizes before downloading" to try again.';
   else if (fails.length) { $('hub-error').textContent = `Some sizes could not be worked out. ${fails.join(' ')}`; $('hub-error').hidden = false; }
   renderHub(true);
 }

@@ -37,6 +37,14 @@ function matchModel(ids, wanted) {
 }
 
 /** Run the Foundry CLI and collect its output. Resolves even on non-zero exit. */
+const lastLines = (out) => String(out || '').trim().split(/\r?\n/).slice(-2).join(' ');
+/** The versions winget lists for a package ("winget show --versions"), newest first as it prints them. */
+function wingetVersions(out) {
+  const lines = String(out || '').split(/\r?\n/).map((s) => s.trim());
+  const rule = lines.findIndex((s) => /^-{3,}$/.test(s));
+  return lines.slice(rule + 1).filter((s) => /^\d+(?:\.\d+){1,3}$/.test(s));
+}
+
 function runCli(args, { onOutput = () => {}, timeoutMs = 60000, signal, command = process.env.WIKIVAULT_FOUNDRY_CLI || 'foundry' } = {}) {
   return new Promise((resolve) => {
     for (const a of args) {
@@ -578,17 +586,39 @@ class LlmService {
     return { id: ready.modelId, device: ready.device, ...m, loadS: null, contextChars, at: new Date().toISOString() };
   }
 
-  /** Install Foundry Local with winget (Windows). Streams installer output. */
-  async installFoundry(onOutput = () => {}) {
-    if (process.platform !== 'win32') throw new Error('Automatic install is only available on Windows.');
-    const r = await runCli(
-      ['install', '--id', 'Microsoft.FoundryLocal', '-e', '--accept-source-agreements', '--accept-package-agreements'],
-      { command: 'winget', timeoutMs: 30 * 60e3, onOutput },
-    );
+  /**
+   * Install Foundry Local with winget (Windows). Streams installer output.
+   * For a while after Microsoft publishes a new version, winget can point at an installer that is not there yet
+   * ("Not found (404)") or whose checksum does not match. Then the list of packages is refreshed and it is tried
+   * again, and after that the versions before it are tried, newest first.
+   */
+  async installFoundry(onOutput = () => {}, { run = runCli, platform = process.platform } = {}) {
+    if (platform !== 'win32') throw new Error('Automatic install is only available on Windows.');
+    const base = ['install', '--id', 'Microsoft.FoundryLocal', '-e', '--accept-source-agreements', '--accept-package-agreements'];
+    const go = (args, timeoutMs = 30 * 60e3) => run(args, { command: 'winget', timeoutMs, onOutput });
+    const ok = (r) => r.code === 0 || /already installed|No available upgrade/i.test(r.out);
+    const missing = (r) => /0x80190194|\(404\)|Not found|hash does not match|Download request status is not success/i.test(r.out);
+    let r = await go(base);
+    if (!ok(r) && missing(r)) {
+      this.log(`foundry install: the newest version could not be fetched (${lastLines(r.out)}); refreshing the package list and trying again`);
+      onOutput('The newest version could not be fetched. Refreshing the list of packages and trying again.\n');
+      await go(['source', 'update'], 5 * 60e3).catch(() => null);
+      r = await go(base);
+      if (!ok(r) && missing(r)) {
+        const shown = await run(['show', '--id', 'Microsoft.FoundryLocal', '-e', '--versions', '--accept-source-agreements'], { command: 'winget', timeoutMs: 2 * 60e3 }).catch(() => null);
+        for (const v of wingetVersions(shown ? shown.out : '').slice(1, 5)) {
+          this.log(`foundry install: trying the earlier version ${v}`);
+          onOutput(`Trying the earlier version ${v}.\n`);
+          r = await go([...base, '--version', v]);
+          if (ok(r) || !missing(r)) break;
+        }
+      }
+    }
     this.cliGroup = null;
     await refreshWindowsPath();
-    if (r.code !== 0 && !/already installed|No available upgrade/i.test(r.out)) {
-      throw new Error(`winget could not install Foundry Local. ${r.out.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+    if (!ok(r)) {
+      if (missing(r)) throw new Error('Microsoft\'s download of Foundry Local is missing just now: winget answered "Not found" for the newest version and for the ones before it. That is a fault at their end, usually put right within a day. Try again later with the button here. Everything else works meanwhile, and Ask shows the matching passages without a written answer.');
+      throw new Error(`winget could not install Foundry Local. ${lastLines(r.out)}`);
     }
     return true;
   }
@@ -740,4 +770,4 @@ class LlmService {
   }
 }
 
-module.exports = { LlmService, runCli, matchModel, deviceFromModelId, refreshWindowsPath, fastest, speedTestMessages, LOCAL_URL };
+module.exports = { LlmService, runCli, wingetVersions, matchModel, deviceFromModelId, refreshWindowsPath, fastest, speedTestMessages, LOCAL_URL };

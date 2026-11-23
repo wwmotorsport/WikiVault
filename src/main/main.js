@@ -538,7 +538,7 @@ async function getState() {
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
       const snap = x?.manager.snapshot();
-      return { id, name: lib.name, about: lib.about, pdfSite: Boolean(lib.pdfSite), ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
+      return { id, name: lib.name, about: lib.about, pdfSite: Boolean(lib.pdfSite), approxBytes: lib.approxBytes || null, ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
     }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
     guides: guides ? guides.status() : null,
@@ -2402,7 +2402,7 @@ function registerIpc() {
       }
       const askedIn = curLibId();
       const also = askElsewhere(question, askedIn); // looked for while the answer is written
-      const out = await answerQuestion({
+      let out = await answerQuestion({
         engine: cur(), llm: model, question, pinnedUrl: pinnedUrl || null,
         history: conversation.slice(),
         settings: settings.ai, source: libName(curLibId()), editionDate: curLibId() === 'guides' ? guides.engine.info.issued : (curLibId() === 'wikipedia' ? editions : extras.get(curLibId())?.manager)?.snapshot().active?.date,
@@ -2412,11 +2412,28 @@ function registerIpc() {
         onToken: (text) => emit('token', { text }),
         onSources: (passages) => emit('sources', { passages }),
       });
+      // Nothing in the open library: the question is not left there. The library with the most on it is asked,
+      // and when it has an answer it becomes the open library, so that the answer's links and any follow-up belong to it.
+      let answeredIn = askedIn; let moved = null;
+      if (out.empty && !pinnedUrl && !golfInPlay()) {
+        const best = (await also)[0];
+        const other = best && (best.id === 'wikipedia' ? engine : best.id === 'guides' ? guides?.engine : extras.get(best.id)?.engine);
+        if (other?.running) {
+          emit('status', { text: `Nothing in ${libName(askedIn)}. Looking in ${best.name}` });
+          const second = await answerQuestion({
+            engine: other, llm: model, question, pinnedUrl: null, history: [], settings: settings.ai, source: best.name,
+            editionDate: best.id === 'guides' ? guides.engine.info.issued : (best.id === 'wikipedia' ? editions : extras.get(best.id)?.manager)?.snapshot().active?.date,
+            signal: ac.signal,
+            onStatus: (text) => emit('status', { text }), onUnderstood: (text) => emit('understood', { text }), onToken: (text) => emit('token', { text }), onSources: (passages) => emit('sources', { passages }),
+          });
+          if (!second.empty) { out = second; answeredIn = best.id; moved = { from: libName(askedIn), to: best.name }; activeLib = best.id; conversation.length = 0; pushState(); log(`ask: nothing in ${askedIn}; answered from ${best.id}`); }
+        }
+      }
       if (!out.empty) {
         conversation.push({ question, standalone: out.standalone, answer: out.text, sources: turnSources(out.text, out.passages) });
         conversation = conversation.slice(-MAX_TURNS);
       }
-      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), here: libName(askedIn), elsewhere: await also, unread: Object.entries(LIBRARIES).filter(([lid, lib]) => lib.pdfSite && extras.get(lid)?.engine?.running).map(([, lib]) => lib.name), modelNote, aiState: llm.status().state, device: llm.status().device });
+      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), here: libName(answeredIn), moved, elsewhere: (await also).filter((o) => o.id !== answeredIn), unread: Object.entries(LIBRARIES).filter(([lid, lib]) => lib.pdfSite && extras.get(lid)?.engine?.running).map(([, lib]) => lib.name), modelNote, aiState: llm.status().state, device: llm.status().device });
     })().catch((err) => {
       if (err.name === 'AbortError') emit('stopped');
       else { log(`ask failed: ${err.message}`); emit('error', { message: err.message, partial: err.partial || '' }); }

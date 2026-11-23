@@ -390,3 +390,23 @@ test('model id matching and device detection', () => {
   assert.equal(deviceFromModelId('Phi-3.5-mini-instruct-openvino-gpu:1'), 'GPU');
   assert.equal(deviceFromModelId('phi-4-mini-instruct-qnn-npu:1'), 'NPU');
 });
+
+test('Foundry Local: when the newest installer is missing from Microsoft, the list is refreshed and earlier versions are tried', async () => {
+  const { LlmService, wingetVersions } = require('../src/core/llm');
+  const listing = 'Found Foundry Local [Microsoft.FoundryLocal]\r\nVersion\r\n-------\r\n0.10.2.0\r\n0.10.1.0\r\n0.8.119.0\r\n';
+  assert.deepStrictEqual(wingetVersions(listing), ['0.10.2.0', '0.10.1.0', '0.8.119.0']);
+  assert.deepStrictEqual(wingetVersions('nothing useful'), []);
+  const gone = { code: 1, out: 'Downloading https://example.invalid/foundry.msix\nDownload request status is not success.\n0x80190194 : Not found (404).' };
+  const calls = []; const lines = [];
+  const svc = new LlmService({ getSettings: () => ({}), log: (m) => lines.push(m) });
+  const run = async (args) => { calls.push(args.join(' ')); if (args[0] === 'source') return { code: 0, out: 'Done' }; if (args[0] === 'show') return { code: 0, out: listing }; return args.includes('0.10.1.0') ? { code: 0, out: 'Successfully installed' } : gone; };
+  assert.strictEqual(await svc.installFoundry(() => {}, { run, platform: 'win32' }), true);
+  assert.deepStrictEqual(calls.map((c) => c.replace(/ --accept\S+/g, '').replace(' --id Microsoft.FoundryLocal -e', '')), ['install', 'source update', 'install', 'show --versions', 'install --version 0.10.1.0']);
+  assert.ok(lines.some((l) => /trying the earlier version 0\.10\.1\.0/.test(l)));
+  // Missing whatever is tried: said as what it is, not as a line of winget's.
+  await assert.rejects(svc.installFoundry(() => {}, { run: async (args) => (args[0] === 'show' ? { code: 0, out: listing } : args[0] === 'source' ? { code: 0, out: '' } : gone), platform: 'win32' }), /download of Foundry Local is missing just now.*fault at their end/);
+  // Any other failure keeps winget's own words, and nothing else is tried.
+  calls.length = 0;
+  await assert.rejects(svc.installFoundry(() => {}, { run: async (args) => { calls.push(args[0]); return { code: 5, out: 'Installer failed with exit code: 5' }; }, platform: 'win32' }), /winget could not install Foundry Local\. Installer failed with exit code: 5/);
+  assert.deepStrictEqual(calls, ['install']);
+});
