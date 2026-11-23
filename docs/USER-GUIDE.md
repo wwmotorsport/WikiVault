@@ -16,7 +16,7 @@ The direct link is **[Wikivault-Setup-0.30.1.exe](https://github.com/wwmotorspor
 
 The installer is not in the list of files on the repository's front page, because GitHub does not allow files that large there. To find it by hand:
 
-1. Sign in to GitHub. While the repository is private, only invited accounts can see it or download from it.
+1. Open the repository's page. No GitHub account is needed.
 2. On the repository's front page, find **Releases**. On a computer it is in the right-hand column; on a phone it is further down the page, below the description.
 3. Click the newest release (the one at the top).
 4. Under **Assets**, click the file whose name ends in **`.exe`**, for example `Wikivault-Setup-0.15.0.exe`.
@@ -218,9 +218,11 @@ These libraries live in `<library>\more\` and go wherever Wikipedia goes: moving
 
 ## Map
 
-The folded-map button in the top bar opens an offline map. The tools are on the left and the map is on the right. It has the map, the places on it, and directions. Address search and sending maps to a phone are not in yet.
+The folded-map button in the top bar opens an offline map. The tools are on the left and the map is on the right. It has the map, the places on it, street addresses, directions, and live navigation with a USB GPS receiver. Sending maps to a phone is not in yet.
 
-**Setting it up.** Press *Set up the map*.
+**Setting it up, the short way.** On the *Options and Setup* page, or here under *What to download*, tick the regions you want, look over the list (the map, directions, places and street addresses, each with its size) and press the one download button. Everything for those regions is fetched in turn, and the same list shows what is done. The steps below are the same things one at a time; in the Map section they are under *Advanced map download settings*.
+
+**Setting it up, step by step.** Press *Set up the map*.
 
 1. Under *Cover*, tick the regions you want. The contiguous United States is ticked to start with.
 2. Press *Measure the sizes*. The map is cut from a world map of about 140 GB that is rebuilt every day from OpenStreetMap. Measuring reads that file's index, which is tens of megabytes, and lists what each level of detail would take for the regions you ticked. Nothing large is downloaded.
@@ -239,7 +241,7 @@ On the map, highways are orange, main roads amber, streets white, and tracks and
 
 Buildings, like everything on the map, are what OpenStreetMap's volunteers have drawn. A house built in the last few years is often not there yet. That does not affect directions, which follow roads.
 
-**Places.** In the same panel, *Fetch the places* asks OpenStreetMap for the places in the ticked regions: hospitals, clinics and pharmacies; fire, police and ambulance stations; water and wastewater works, water towers, drinking water, springs and wells; power plants and substations; fuel; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; and cities, towns and villages. Places can be fetched with or without the map.
+**Places.** The places normally arrive ready-made: a few dozen small files, tens of megabytes, built once a week from the sources below and already sorted (see *Where the places come from*, under *Asking for the nearest places of a kind*). When that set cannot be had, the app builds the places on this computer instead, by itself, and you can choose that under *Other ways*; the rest of this part describes that longer way. *Fetch the places* gathers the places in the ticked regions: hospitals, clinics and pharmacies; fire, police and ambulance stations; water and wastewater works, water towers, drinking water, springs and wells; power plants and substations; fuel; supermarkets, wholesale clubs and food banks; department, hardware, farm supply, outdoor and gun shops; airfields, rest areas, campsites and ranger stations; military sites, town halls and courthouses; and cities, towns and villages. Places can be fetched with or without the map.
 
 The places are read out of **regional OpenStreetMap extracts**: files published every day by Geofabrik, one to a state or province, that hold everything OpenStreetMap has there. For each file the app downloads it, reads the places out of it on this computer, and deletes it.
 
@@ -248,7 +250,7 @@ The places are read out of **regional OpenStreetMap extracts**: files published 
 - **Nearest first.** The files nearest you come first: around your GPS position if a receiver is connected, otherwise around the place you pinned as *Home*. What has been read can be searched straight away, and the map page says how many places are in so far. (When a complete set is already in use and you are updating it, the old set stays until the new one is whole.)
 - **Stopping and carrying on.** What has been read is kept, and so is the part of a file that had arrived. If the run fails, or you stop it or close the app, fetch the places again and it carries on from there. The Options and Setup page asks again by itself a few times.
 - **Checked.** Each file is compared with the checksum the server publishes beside it, where there is one, and a file that does not match is not read: it is fetched again at once. The server replaces its files once a day, so the app asks where each file is just before fetching it.
-- **Updating.** Once the places are complete, *Update the places* downloads every file again; it does not carry on from anything. If they were fetched in the last two weeks the app says so and waits for a second press. Once a month is plenty.
+- **Updating.** Once the places are complete, *Update the places* fetches the current ready-made set again, which takes a minute or two (or, built on this computer, downloads every extract again; it does not carry on from anything). If the places were fetched in the last two weeks the app says so and waits for a second press. Once a month is plenty.
 
 **Another way, with very little to download.** Under the button, *Another way* asks for the same places in small pieces from free, shared servers (the Overpass service). Almost nothing is downloaded beyond what is kept, but those servers are slow and often busy, and their rules allow a program one question at a time: the whole country can take many hours. Use it when the connection or the room on the disk does not allow the large download. It, too, fetches the nearest pieces first, keeps what arrives, and carries on where it stopped.
 
