@@ -10,6 +10,8 @@ const gps = {
   status: 'off',        // off | searching | waiting (connected, no fix yet) | fix | lost
   detail: '', fix: null, last: 0,
   follow: localStorage.getItem('wikivault-gps-follow') !== '0',
+  turn: localStorage.getItem('wikivault-gps-turn') === 'heading' ? 'heading' : 'north', // which way up the map is kept while it follows
+  glide: new WikivaultGpsSmooth.Glide(), shown: null, raf: 0, handsUntil: 0, easeUntil: 0,
   speak: localStorage.getItem('wikivault-gps-speak') === '1',
   guide: null, route: null, heard: {}, spoken: [], rerouteAt: 0, arrived: false, info: null,
 };
@@ -63,7 +65,8 @@ async function gpsListen(port, reader, dec) {
   if (gps.port !== port) return; // disconnected, or already looked for again
   gps.port = null; gps.reader = null;
   if (!gps.stopping) {
-    gps.status = 'lost'; gps.detail = gpsKnown() ? 'The receiver was unplugged or stopped answering. Plug it in again and it is picked up by itself.' : 'The receiver stopped answering. Plug it in again and press the button.'; gps.fix = null; gps.progress = null; gps.autoAfter = Date.now() + 3000; gpsDraw(); paintGps(); gpsBanner(null);
+    gps.status = 'lost'; gps.detail = gpsKnown() ? 'The receiver was unplugged or stopped answering. Plug it in again and it is picked up by itself.' : 'The receiver stopped answering. Plug it in again and press the button.'; gps.fix = null; gps.shown = null; gps.glide.reset(); gps.progress = null; gps.autoAfter = Date.now() + 3000; gpsDraw(); paintGps(); gpsBanner(null);
+    if (typeof crumbsFlush === 'function') crumbsFlush();
     api.gpsLog([`receiver lost (${end.why === 'gone' ? 'the port is gone' : end.why === 'errors' ? 'nothing but mistakes on the line' : 'its stream closed'}), ${end.errors} mistakes on the line read past while it was connected`]).catch(() => {});
   }
 }
@@ -156,7 +159,9 @@ async function gpsOff(quiet) {
   try { if (gps.reader) await gps.reader.cancel(); } catch { /* already closed */ }
   // The port is closed by the reading that was going on: wait for that, so that it can be opened again at once.
   if (gps.listening) { await Promise.race([gps.listening, gpsWait(1500)]); gps.listening = null; }
-  gps.port = null; gps.reader = null; gps.fix = null; gps.guide = null; gps.route = null;
+  gps.port = null; gps.reader = null; gps.fix = null; gps.guide = null; gps.route = null; gps.shown = null; gps.glide.reset();
+  if (typeof mapView !== 'undefined' && mapView && (mapView.getBearing() || mapView.getPadding().top)) mapView.easeTo({ bearing: 0, padding: GPS_FLAT, duration: 400 });
+  if (typeof crumbsFlush === 'function') crumbsFlush();
   gps.progress = null;
   // Disconnected by the user: left alone until it is asked for, plugged in again, or the app is next started.
   if (!quiet) { gps.status = 'off'; gps.detail = ''; gps.paused = true; localStorage.removeItem('wikivault-gps-on'); }
@@ -167,11 +172,56 @@ function gpsOnFix(fix) {
   const first = !(gps.fix && gps.fix.has) && fix.has;
   gps.fix = fix; gps.last = Date.now();
   gps.status = fix.has ? 'fix' : 'waiting';
-  gpsDraw();
-  if (fix.has && mapView && (first || (gps.follow && view === 'map' && !mapView.isMoving()))) {
-    mapView.easeTo({ center: [fix.lon, fix.lat], ...(first && mapView.getZoom() < 12 ? { zoom: Math.min(15, mapView.getMaxZoom()) } : {}), duration: first ? 800 : 500 });
-  }
+  if (fix.has) {
+    // The mark does not hop to each reading: it glides there, and the map with it (see gpsFrame).
+    gps.glide.to({ lat: fix.lat, lon: fix.lon, course: fix.course, speed: fix.speed }, performance.now());
+    if (first && mapView) {
+      gps.easeUntil = performance.now() + 900;
+      mapView.easeTo({ center: [fix.lon, fix.lat], ...(mapView.getZoom() < 12 ? { zoom: Math.min(15, mapView.getMaxZoom()) } : {}), duration: 800 });
+    }
+    if (!gps.raf) gps.raf = requestAnimationFrame(gpsFrame);
+  } else { gps.shown = null; gps.glide.reset(); gpsDraw(); }
   if (fix.has) gpsGuide(fix);
+  if (fix.has && typeof crumbsOnFix === 'function') crumbsOnFix(fix);
+  paintGps();
+}
+
+/** How far down the map the mark sits when the map is turned to the way of travel: more of the road ahead is seen. */
+const gpsAhead = () => ({ top: Math.round((mapView ? mapView.getContainer().clientHeight : 0) * 0.3), bottom: 0, left: 0, right: 0 });
+const GPS_FLAT = { top: 0, bottom: 0, left: 0, right: 0 };
+
+/**
+ * One frame of the glide: the mark is drawn where it has got to and, when the map is following, the map is moved
+ * (and turned, when it is kept the way of travel) to match. Runs only while the mark is on its way somewhere.
+ */
+function gpsFrame() {
+  gps.raf = 0;
+  if (gps.status !== 'fix' || !gps.fix || !gps.fix.has) return;
+  const now = performance.now();
+  const p = gps.glide.at(now);
+  if (!p) return;
+  gps.shown = p;
+  gpsDraw();
+  // The map is left alone while the user has hold of it, and for a few seconds after.
+  if (gps.follow && view === 'map' && mapView && now > gps.handsUntil && now > gps.easeUntil) {
+    const cam = { center: [p.lon, p.lat] };
+    if (gps.turn === 'heading' && p.bearing != null) { cam.bearing = p.bearing; cam.padding = gpsAhead(); }
+    mapView.jumpTo(cam, { glide: true });
+  }
+  if (p.moving) gps.raf = requestAnimationFrame(gpsFrame);
+}
+
+/** Keep the map north up, or turned to the way of travel. */
+function gpsTurnSet(mode) {
+  gps.turn = mode === 'heading' ? 'heading' : 'north';
+  localStorage.setItem('wikivault-gps-turn', gps.turn);
+  if (mapView) {
+    const p = gps.shown;
+    gps.easeUntil = performance.now() + 650;
+    if (gps.turn === 'north') mapView.easeTo({ bearing: 0, padding: GPS_FLAT, duration: 600 });
+    else if (p && gps.follow) mapView.easeTo({ center: [p.lon, p.lat], ...(p.bearing != null ? { bearing: p.bearing } : {}), padding: gpsAhead(), duration: 600 });
+    if (!gps.raf && gps.status === 'fix') gps.raf = requestAnimationFrame(gpsFrame);
+  }
   paintGps();
 }
 
@@ -241,12 +291,15 @@ function gpsOverlay(map) {
   map.addSource('gps', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'gps-halo', type: 'circle', source: 'gps', paint: { 'circle-radius': 16, 'circle-color': '#1a73e8', 'circle-opacity': 0.18 } });
   map.addLayer({ id: 'gps-dot', type: 'circle', source: 'gps', paint: { 'circle-radius': 7, 'circle-color': '#1a73e8', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 } });
+  // While the user has hold of the map (dragging it, zooming it) the following waits, and for a few seconds after.
+  const hands = (e) => { if (!e || e.originalEvent) gps.handsUntil = performance.now() + 4000; };
+  for (const ev of ['mousedown', 'touchstart', 'wheel', 'drag', 'zoom']) map.on(ev, hands);
   gpsDraw();
 }
 function gpsDraw() {
   if (typeof mapView === 'undefined' || !mapView || !mapView.getSource('gps')) return;
-  const f = gps.fix;
-  mapView.getSource('gps').setData({ type: 'FeatureCollection', features: f && f.has ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [f.lon, f.lat] } }] : [] });
+  const f = gps.fix; const at = f && f.has ? gps.shown || f : null;
+  mapView.getSource('gps').setData({ type: 'FeatureCollection', features: at ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [at.lon, at.lat] } }] : [] });
 }
 
 /** Where a receiver can be bought, when the app has been given one to point to: the words and the link. */
@@ -280,7 +333,7 @@ function paintGps() {
 $('gps-find').addEventListener('click', () => gpsFind());
 $('gps-off').addEventListener('click', () => gpsOff(false));
 $('gps-from').addEventListener('click', () => { const p = gpsPoint(); if (p) { mapGo.tab = 'go'; mapSetPoint('from', p); } });
-$('gps-follow').addEventListener('change', () => { gps.follow = $('gps-follow').checked; localStorage.setItem('wikivault-gps-follow', gps.follow ? '1' : '0'); });
+$('gps-follow').addEventListener('change', () => { gps.follow = $('gps-follow').checked; localStorage.setItem('wikivault-gps-follow', gps.follow ? '1' : '0'); if (!gps.follow && mapView && (mapView.getBearing() || mapView.getPadding().top)) mapView.easeTo({ bearing: 0, padding: GPS_FLAT, duration: 400 }); else if (gps.follow && !gps.raf && gps.status === 'fix') gps.raf = requestAnimationFrame(gpsFrame); paintGps(); });
 $('gps-speak').addEventListener('change', () => { gps.speak = $('gps-speak').checked; localStorage.setItem('wikivault-gps-speak', gps.speak ? '1' : '0'); if (gps.speak) gpsSay('Turns will be spoken.'); });
 
 // Once a receiver has been set up it is connected by itself: when the app starts, when it is plugged in, and
@@ -344,6 +397,10 @@ function paintGpsPanel(text) {
   $('map-gps-end').hidden = !(on && gps.guide && mapGo.route);
   $('map-gps-follow-row').hidden = !on; $('map-gps-speak-row').hidden = !on;
   $('map-gps-follow').checked = gps.follow; $('map-gps-speak').checked = gps.speak;
+  $('map-gps-turn-row').hidden = !on;
+  $('map-gps-turn-north').setAttribute('aria-pressed', String(gps.turn === 'north')); $('map-gps-turn-heading').setAttribute('aria-pressed', String(gps.turn === 'heading'));
+  $('map-gps-turn-note').textContent = gps.turn === 'heading' && !gps.follow ? 'Tick "Keep the map on my position" for the map to turn.' : '';
+  if (typeof paintCrumbsPanel === 'function') paintCrumbsPanel();
 }
 const gpsPanelSet = (open) => { try { localStorage.setItem('wikivault-map-gps', open ? 'open' : 'closed'); } catch { /* not kept, that is all */ } paintGps(); };
 $('map-gps-pill').addEventListener('click', () => gpsPanelSet(true));
@@ -354,6 +411,8 @@ $('map-gps-from').addEventListener('click', () => $('gps-from').click());
 $('map-gps-end').addEventListener('click', gpsEndTrip);
 $('map-guide-end').addEventListener('click', gpsEndTrip);
 $('map-gps-centre').addEventListener('click', () => { const p = gpsPoint(); if (p && mapView) mapView.easeTo({ center: [p.lon, p.lat], zoom: Math.max(mapView.getZoom(), Math.min(15, mapView.getMaxZoom())), duration: 600 }); });
+$('map-gps-turn-north').addEventListener('click', () => gpsTurnSet('north'));
+$('map-gps-turn-heading').addEventListener('click', () => gpsTurnSet('heading'));
 $('map-gps-follow').addEventListener('change', () => { $('gps-follow').checked = $('map-gps-follow').checked; $('gps-follow').dispatchEvent(new Event('change')); });
 $('map-gps-speak').addEventListener('change', () => { $('gps-speak').checked = $('map-gps-speak').checked; $('gps-speak').dispatchEvent(new Event('change')); });
 

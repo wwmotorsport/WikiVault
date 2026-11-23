@@ -2007,6 +2007,7 @@ function mapAddOverlays(map) {
   map.addLayer({ id: 'hits-dot', type: 'circle', source: 'hits', paint: { 'circle-radius': ['case', ['==', ['get', 'sel'], 1], 9, 6], 'circle-color': ['case', ['==', ['get', 'sel'], 1], '#d93025', dark ? '#ffd84a' : '#14304d'], 'circle-stroke-color': dark ? '#0b0d10' : '#ffffff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'hits-name', type: 'symbol', source: 'hits', minzoom: 10, layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Medium'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true }, paint: { 'text-color': dark ? '#ffe9a6' : '#14304d', 'text-halo-color': dark ? '#0b0d10' : '#ffffff', 'text-halo-width': 1.5 } });
   map.addLayer({ id: 'ends-dot', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['case', ['==', ['get', 'end'], 'from'], '#1e9e6f', dark ? '#f0f2f4' : '#14263b'], 'circle-stroke-color': ['case', ['boolean', ['get', 'approx'], false], MAP_APPROX_RING, dark ? '#0b0d10' : '#ffffff'], 'circle-stroke-width': ['case', ['boolean', ['get', 'approx'], false], 4, 3] } });
+  if (typeof crumbsOverlay === 'function') crumbsOverlay(map);
   gpsOverlay(map);
   bookOverlay(map);
   mapDrawHits();
@@ -2514,6 +2515,9 @@ function paintMapGo() {
   if (!m.routing && mapGo.tab === 'go') mapGo.tab = 'find';
   $('map-tab-book').setAttribute('aria-selected', String(mapGo.tab === 'book'));
   $('map-pane-book').hidden = mapGo.tab !== 'book';
+  $('map-tab-trips').setAttribute('aria-selected', String(mapGo.tab === 'trips'));
+  $('map-pane-trips').hidden = mapGo.tab !== 'trips';
+  if (mapGo.tab === 'trips' && typeof paintTrips === 'function') paintTrips();
   if (mapGo.tab === 'book') paintBook();
   $('map-tab-find').setAttribute('aria-selected', String(mapGo.tab === 'find'));
   $('map-tab-go').setAttribute('aria-selected', String(mapGo.tab === 'go'));
@@ -2657,7 +2661,9 @@ async function mapEnsure(m) {
     map.on('mouseleave', 'hits-dot', () => { map.getCanvas().style.cursor = ''; });
     $('map-canvas').dataset.ready = '1';
   });
-  map.on('moveend', () => { mapFind({ moved: true }).catch(() => {}); });
+  // The glide of the GPS mark moves the map many times a second: the places in view are looked for at a walk, not at every step.
+  let glideFind = 0;
+  map.on('moveend', (e) => { if (e && e.glide) { const n = Date.now(); if (n - glideFind < 2500) return; glideFind = n; } mapFind({ moved: true }).catch(() => {}); });
   mapView = map;
   mapKey = key;
 }
@@ -2875,6 +2881,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.35.0': [
+    'On a drive, the mark for where you are now glides instead of jumping, and the GPS panel lets you keep the map north up or have it turn with the way you are travelling.',
+    'Trips: tick "Keep a record of where I go" and each drive is kept on this computer. See them on the map as lines or dots, and find a trip by date or by town on the new Trips tab.',
+    'End trip, on the turn banner and in the GPS panel, stops following a route without disconnecting the GPS.',
+  ],
   '0.34.1': [
     'Fixed: a GPS receiver was sometimes not found, or found only after several tries. Small mistakes on its line were taken for silence; they are now read past.',
   ],
@@ -4049,7 +4060,7 @@ function render() {
   renderSchool();
   renderMap();
   const extras = typeof hubMaybePop === 'function'; // the scripts for these load after this one, and the first state can arrive in between
-  if (extras) { renderHub(); paintGps(); paintBook(); }
+  if (extras) { renderHub(); paintGps(); paintBook(); if (typeof crumbsState === 'function') crumbsState(); }
   maybeTour();
   if (extras) hubMaybePop();
   const e = state.edition;

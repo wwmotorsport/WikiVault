@@ -276,11 +276,21 @@ Places that come from Overture say so when opened. They are sorted into the map'
 
 **GPS.** Plug a USB GPS receiver into the computer, open *Directions*, and press *Find my GPS receiver*, in the box under *Get directions* (the same button is in the GPS panel in the bottom right corner of the map). This is done once: a receiver that has worked is remembered, and from then on it connects by itself when Wikivault starts and whenever it is plugged in. The GPS panel, folded, is a button that says whether the receiver is connected (green with your speed when it has a position, amber while it waits for one, red when it was lost); open, it shows speed, heading, position, satellites and, on a trip, the next turn, the distance left and the time of arrival. The app tries each serial port at the usual speeds until one sends positions, so there is nothing to set. No firmware is needed, but Windows has to have set the receiver up as a serial (COM) port: most do that by themselves, and some need the driver from the receiver's maker. If no receiver is found, the box says why: the receiver has no port of its own yet (not plugged in, or no driver, in which case the device Windows could not set up is named), or its port is there and silent. Outdoors or by a window the first position takes a minute or two. Then:
 
-- a blue dot shows where you are, and *Keep the map on my position* follows it;
+- a blue dot shows where you are and glides between the receiver's readings, and *Keep the map on my position* follows it;
+- under that, *North up* keeps north at the top of the map and *Way of travel up* turns the map as you turn, with the mark set lower so that more of the road ahead shows. The map turns only while it is following you and you are moving. Drag or zoom the map by hand and the following pauses for a few seconds;
 - *Start from my position* makes the position the start of a route;
 - with a route on the map, a banner at the top says the next turn and how far it is, and how far there is still to go;
 - if you leave the route, a new one is worked out from where you are;
+- *End trip*, on the banner and in the GPS panel, stops following the route without disconnecting the receiver: the route and its turns go, and the map keeps showing where you are;
 - *Speak the turns* reads each turn aloud as it comes up, using the voices Windows has.
+
+**Trips: a record of where you have been (breadcrumbs).** This is off until you switch it on: tick *Keep a record of where I go*, in the GPS panel or on the *Trips* tab beside *Saved*. While it is ticked and a receiver is connected, the app keeps your position every couple of seconds as you move, and nothing while you stand still. A stop of five minutes ends one trip, and the next movement begins another; so does unplugging the receiver. The record stays on this computer, in the app's own data folder. It is never sent anywhere and positions are not written to the log.
+
+- **On the map.** *Show where I have been* (the same switch is in the key, as *Where I have been*) draws every trip kept, as *Lines* or as *Dots*. The trip you are driving grows behind the mark.
+- **The list.** Each trip has its day and times, where it began and ended, its length and how long it took, and the towns it passed. Towns are named from the places on the map, so download the places first if you want trips found by town.
+- **Finding a trip.** Type a town it began at, ended at or passed, and choose *From* and *To* dates, either or both.
+- **One trip.** Press a trip and it is drawn alone, heavier, and the map goes to it. Press it again to let it go.
+- **Deleting.** *Delete* beside a trip, or *Delete all trips* under the list. Each asks once more before anything goes. Unticking the record stops new trips and leaves the ones already kept.
 
 The receiver is only read, never written to. A receiver that shows up in Windows as a COM port and sends standard NMEA sentences works; most USB "puck" receivers do. Some need the maker's driver before Windows shows the port. *No receiver yet?* under the button and on the Options and Setup page opens the shop page of one such receiver, the GlobalSat BU-353N5, in your web browser. Any receiver of the kind described above should do.
 

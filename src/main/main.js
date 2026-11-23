@@ -40,6 +40,7 @@ const { answerQuestion, turnSources } = require('../core/rag');
 const { fetchText, open: openRequest, readBody } = require('../core/httpx');
 const geocode = require('../core/geocode-online');
 const serialPorts = require('../core/serial-ports');
+const { TrackStore } = require('../core/tracks');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -76,6 +77,8 @@ const DEFAULTS = {
   // everyHours: how often the contacts accounts are read again. lookup: whether addresses the downloaded data cannot
   // place may be looked up online (null until the user has been asked, then true or false).
   contacts: { everyHours: 24, lookup: null },
+  // crumbs: whether the places the GPS receiver has been are recorded as trips (off until the user switches it on).
+  gps: { crumbs: false },
   ai: {
     enabled: true,
     provider: 'foundry',
@@ -102,7 +105,7 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings() {
   try {
     const saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) }, tour: { ...DEFAULTS.tour, ...(saved.tour || {}) }, hub: { ...DEFAULTS.hub, ...(saved.hub || {}) }, contacts: { ...DEFAULTS.contacts, ...(saved.contacts || {}) } };
+    settings = { ...DEFAULTS, ...saved, ai: { ...DEFAULTS.ai, ...(saved.ai || {}) }, tour: { ...DEFAULTS.tour, ...(saved.tour || {}) }, hub: { ...DEFAULTS.hub, ...(saved.hub || {}) }, contacts: { ...DEFAULTS.contacts, ...(saved.contacts || {}) }, gps: { ...DEFAULTS.gps, ...(saved.gps || {}) } };
   } catch { /* first run */ }
   if (process.env.WIKIVAULT_BASE_URL) settings.baseUrl = process.env.WIKIVAULT_BASE_URL;
 }
@@ -511,6 +514,7 @@ async function getState() {
     }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
     book: bookState(),
+    tracks: tracksState(),
     gpsFake: Boolean(process.env.WIKIVAULT_GPS_FAKE),
     partition: settings.partition,
     libraryOnPartition: libraryOnPartition(),
@@ -1719,6 +1723,20 @@ const contactsBase = () => process.env.WIKIVAULT_CONTACTS_BASE || null;
 const googleEndpoints = () => (contactsBase() ? { ...contactsSync.GOOGLE, auth: `${contactsBase()}/auth`, token: `${contactsBase()}/token`, people: `${contactsBase()}/people` } : contactsSync.GOOGLE);
 const openSignIn = (url) => (contactsBase() ? fetch(url).then(() => true) : shell.openExternal(url));
 
+// Breadcrumbs: where the GPS receiver has been, kept as trips in the app's own data folder when the user has
+// switched that on. Nothing about a position goes into the log or anywhere else.
+let tracks = null;
+function initTracks() {
+  const describe = (lat, lon) => { try { return maps ? maps.nearestTown(lat, lon) : ''; } catch { return ''; } };
+  tracks = new TrackStore(path.join(app.getPath('userData'), 'tracks'), { describe, log }).load();
+  // A trip ends when the receiver has stood still, or been silent, for five minutes.
+  setInterval(() => { try { const t = tracks.idle(); if (t) { log(`breadcrumbs: a trip of ${(t.meters / 1609.344).toFixed(1)} miles was finished and kept`); pushState(); } } catch (err) { log(`breadcrumbs: ${err.message}`); } }, 30000).unref();
+}
+function tracksState() {
+  if (!tracks) return null;
+  return { on: Boolean(settings.gps && settings.gps.crumbs), ...tracks.summary() };
+}
+
 function initBook() {
   const locate = (address) => {
     if (!maps) return null;
@@ -1942,6 +1960,15 @@ function registerIpc() {
   handle('gps:want', ({ id }) => { gpsWanted = id ? String(id) : null; return true; });
   // What Windows knows about its ports, for saying why a receiver was not found; and the search's own account, for the log.
   handle('gps:hardware', () => serialPorts.query());
+  // Breadcrumbs. Positions are taken only while the user has recording switched on.
+  handle('tracks:set', ({ on }) => { settings.gps = { ...(settings.gps || {}), crumbs: Boolean(on) }; saveSettings(); if (!on) tracks.close(); log(`breadcrumbs: recording switched ${on ? 'on' : 'off'}`); pushState(); return tracksState(); });
+  handle('tracks:add', ({ points }) => { if (!tracks || !(settings.gps && settings.gps.crumbs)) return null; const r = tracks.add(points); if (r && r.started) pushState(); return r; });
+  handle('tracks:list', (filter) => tracks.list(filter || {}));
+  handle('tracks:lines', ({ ids } = {}) => tracks.lines(Array.isArray(ids) ? ids : null));
+  handle('tracks:dots', ({ ids } = {}) => tracks.dots(250000, Array.isArray(ids) ? ids : null));
+  handle('tracks:points', ({ id }) => tracks.points(id));
+  handle('tracks:remove', ({ id }) => { const r = tracks.remove(String(id)); pushState(); return r; });
+  handle('tracks:clear', () => { const n = tracks.summary().count; tracks.clear(); log(`breadcrumbs: all ${n} trips were deleted`); pushState(); return true; });
   // Connecting to a known receiver by itself: the window's request for the ports is made as if a click were behind it.
   handle('gps:gesture', () => (win && !win.isDestroyed() ? win.webContents.executeJavaScript('typeof gpsRequestPorts === "function" ? gpsRequestPorts() : 0', true) : 0));
   handle('gps:log', ({ lines }) => { for (const l of (Array.isArray(lines) ? lines : []).slice(0, 60)) log(`gps: ${String(l).slice(0, 300)}`); return true; });
@@ -2358,6 +2385,7 @@ if (!app.requestSingleInstanceLock()) {
     log(`Wikivault ${app.getVersion()} starting on ${process.platform} ${process.arch}, Electron ${process.versions.electron}`);
     lockAppSession();
     initBook();
+    initTracks();
     registerIpc();
     setTimeout(() => contactsDue().catch(() => {}), 45000);
     setInterval(() => contactsDue().catch(() => {}), 3600 * 1000).unref();
@@ -2397,6 +2425,7 @@ if (!app.requestSingleInstanceLock()) {
       speedAbort?.abort();
       school?.cancel();
       maps?.cancel();
+      try { tracks?.close(); } catch { /* finished from its file next time */ }
       stopRouteEngine();
       stopIndexer();
       const release = llm.releaseMemory({ stopService: true, also: ourModelIds() }).catch(() => {});

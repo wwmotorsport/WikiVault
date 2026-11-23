@@ -219,6 +219,7 @@
             <button type="button" role="tab" id="map-tab-find" aria-selected="true">Places</button>
             <button type="button" role="tab" id="map-tab-go" aria-selected="false">Directions</button>
             <button type="button" role="tab" id="map-tab-book" aria-selected="false">Saved</button>
+            <button type="button" role="tab" id="map-tab-trips" aria-selected="false" title="Where the GPS receiver has been: the trips kept, found by place and by date">Trips</button>
           </div>
           <div id="map-pane-find">
             <form id="map-search" class="map-search" hidden>
@@ -285,6 +286,30 @@
               <ul class="map-blocks" id="map-blocks"></ul>
             </fieldset>
           </div>
+          <div id="map-pane-trips" hidden>
+            <p class="small-print" id="trips-status"></p>
+            <label class="map-check"><input type="checkbox" id="trips-on"><span>Keep a record of where I go (breadcrumbs)</span></label>
+            <p class="small-print">Kept on this computer only, and only while this is ticked and the GPS receiver is connected. A stop of five minutes ends one trip and the next movement begins another.</p>
+            <fieldset class="map-field">
+              <legend>On the map</legend>
+              <label class="map-check"><input type="checkbox" id="trips-show"><span>Show where I have been</span></label>
+              <div class="seg" id="trips-mode" role="group" aria-label="How the trips are drawn">
+                <button type="button" id="trips-mode-lines" aria-pressed="true">Lines</button>
+                <button type="button" id="trips-mode-dots" aria-pressed="false">Dots</button>
+              </div>
+            </fieldset>
+            <div class="trips-find" id="trips-find" hidden>
+              <label for="trips-text">Find a trip</label>
+              <input type="search" id="trips-text" placeholder="A town it began at, ended at or passed" autocomplete="off" spellcheck="false">
+              <div class="trips-dates">
+                <label>From <input type="date" id="trips-after"></label>
+                <label>To <input type="date" id="trips-before"></label>
+              </div>
+            </div>
+            <p class="small-print" id="trips-count" aria-live="polite"></p>
+            <ul class="trips-list" id="trips-list"></ul>
+            <div class="actions"><button type="button" class="btn small" id="trips-clear" hidden>Delete all trips</button></div>
+          </div>
           <div id="map-pane-book" hidden>
             <p class="small-print" id="book-status"></p>
             <div class="book-lookup" id="book-lookup" hidden>
@@ -342,6 +367,7 @@
             <div id="map-key-body">
               <ul id="map-key-fixed"></ul>
               <div id="map-look-groups"></div>
+              <label class="map-key-row map-key-switch" title="The trips kept from the GPS receiver. They are listed, and drawn as lines or dots, under Trips."><input type="checkbox" id="map-key-crumbs"><span class="map-look-marks"><span class="map-look-mark"><span class="crumbs-mark" aria-hidden="true"></span></span></span><span class="map-look-name">Where I have been<span class="map-key-hint">trips kept from the GPS receiver</span></span></label>
               <label class="map-key-row map-key-switch map-key-dark"><input type="checkbox" id="map-dark"><span class="map-look-marks"></span><span class="map-look-name">Dark map<span class="map-key-hint">For a dark room or a night drive</span></span></label>
               <ul id="map-key-list"></ul>
             </div>
@@ -360,7 +386,19 @@
                 <button type="button" class="btn small" id="map-gps-off" hidden>Disconnect</button>
               </div>
               <label class="map-check" id="map-gps-follow-row" hidden><input type="checkbox" id="map-gps-follow"><span>Keep the map on my position</span></label>
+              <div class="map-gps-turn" id="map-gps-turn-row" hidden>
+                <span id="map-gps-turn-label">Map</span>
+                <div class="seg" role="group" aria-labelledby="map-gps-turn-label">
+                  <button type="button" id="map-gps-turn-north" aria-pressed="true" title="North stays at the top of the map">North up</button>
+                  <button type="button" id="map-gps-turn-heading" aria-pressed="false" title="The map turns so that the way you are travelling is at the top">Way of travel up</button>
+                </div>
+                <p class="map-gps-note" id="map-gps-turn-note"></p>
+              </div>
               <label class="map-check" id="map-gps-speak-row" hidden><input type="checkbox" id="map-gps-speak"><span>Speak the turns</span></label>
+              <div id="map-gps-crumbs-row" hidden>
+                <label class="map-check"><input type="checkbox" id="map-gps-crumbs"><span>Keep a record of where I go</span></label>
+                <p class="map-gps-note"><span id="map-gps-crumbs-note"></span> <button type="button" class="link-btn" id="map-gps-trips">See the trips</button></p>
+              </div>
             </div>
           </aside>
           <div class="map-key-tip" id="map-key-tip" role="note" hidden>
@@ -866,9 +904,11 @@
   <script src="gps-why.js"></script>
   <script src="gps-facts.js"></script>
   <script src="gps-read.js"></script>
+  <script src="gps-smooth.js"></script>
   <script src="guide.js"></script>
   <script src="app.js"></script>
   <script src="gps.js"></script>
+  <script src="crumbs.js"></script>
   <script src="book.js"></script>
   <script src="trip.js"></script>
   <script src="askmap.js"></script>

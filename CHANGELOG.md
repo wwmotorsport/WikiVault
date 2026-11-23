@@ -2,9 +2,17 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
-## Not yet released
+## 0.35.0 (2026-11-23)
 
+Smoother live navigation, a map that can turn with you, and a record of where you have been.
+
+- **The mark glides.** A receiver reports a position about once a second, and the mark used to jump from one to the next. It now moves steadily between them, and the map moves with it. A jump of more than a quarter of a mile (a reading after a tunnel, say) is still shown at once.
+- **North up, or the way of travel up.** A choice in the GPS panel, under *Keep the map on my position*. With *Way of travel up* the map turns as you do, and the mark sits lower on the map so that more of the road ahead shows. The map turns only while it is following your position and you are moving; standing still, it stays as it was. Dragging or zooming the map by hand pauses the following for a few seconds. The choice is remembered.
+- **Breadcrumbs: a record of where you have been.** Off until you switch it on, with *Keep a record of where I go* in the GPS panel or on the new *Trips* tab. While it is on and a receiver is connected, positions are kept as you move (not while standing still). A stop of five minutes, or a reconnected receiver, ends one trip and begins the next. The record is kept on this computer only, in the app's own data folder; it is never sent anywhere, and positions are not written to the log.
+- **Where I have been, on the map.** A layer of its own, with a switch in the key and on the *Trips* tab, drawn as connected lines or as separate dots, whichever you choose. The trip being driven grows behind the mark.
+- **Trips.** A fourth tab beside *Places*, *Directions* and *Saved*. Each trip is listed with its day and times, where it began and ended, its length and how long it took. A trip can be found by a town it began at, ended at or passed, and by a range of dates. Press a trip to see it alone on the map; delete one trip, or all of them, each after being asked once more. Towns are named from the places on the map, so they need the places download.
 - **End trip.** A button on the turn banner at the top of the map, and in the GPS panel while a route is being followed, ends the trip without disconnecting the GPS: the route and its turns go, the map keeps showing where you are, and the places you chose stay in the From and To boxes so that *Get directions* takes the trip up again. (*Clear*, in the Directions panel, still empties the boxes as well.)
+- **Fixed: the GPS panel could run under the next turn.** With a trip under way the panel is now kept clear of the banner at the top of the map, and scrolls if it has to.
 
 ## 0.34.1 (2026-11-22)
 

@@ -863,6 +863,42 @@ dialog #trip-list li { margin-bottom: 0; }
 .map-gps-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .map-gps .map-check { margin-top: 7px; font-size: 12.5px; }
 .map-gps.dark .btn.small { background: #2a3440; color: #e6eaee; border-color: #55626f; }
+.map-gps-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; margin-top: 8px; font-size: 12.5px; }
+.map-gps-turn > span { opacity: .8; }
+.map-gps-note { flex-basis: 100%; margin: 4px 0 0; font-size: 12px; opacity: .8; }
+.map-gps-note:empty { display: none; }
+/* While the next turn is shown at the top of the map, the panels at the bottom stop short of it. */
+.map-guide:not([hidden]) ~ .map-gps, .map-guide:not([hidden]) ~ .map-key { max-height: calc(100% - 205px); }
+.map-gps .link-btn { font-size: 12px; }
+.map-gps.dark .link-btn { color: #9cc7ff; }
+/* Two or three choices of which one holds: a row of buttons, the chosen one filled. */
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { padding: 5px 11px; border: 0; border-left: 1px solid var(--rule); background: #fff; color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #fff; font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--mark); outline-offset: -2px; }
+.map-gps.dark .seg { border-color: #55626f; }
+.map-gps.dark .seg button { background: #2a3440; color: #e6eaee; border-left-color: #55626f; }
+.map-gps.dark .seg button[aria-pressed="true"] { background: #e6eaee; color: #14263b; }
+/* The Trips tab. */
+.map-tabs { grid-template-columns: repeat(4, 1fr); }
+.map-tabs button { padding-left: 4px; padding-right: 4px; }
+#trips-mode { margin: 8px 0 2px 26px; }
+.trips-find { margin: 12px 0 4px; }
+.trips-find > label { display: block; font-weight: 600; margin-bottom: 4px; }
+.trips-find input[type="search"] { width: 100%; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 6px; font: inherit; }
+.trips-dates { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 7px; font-size: 13px; color: var(--muted); }
+.trips-dates input { margin-left: 4px; padding: 4px 6px; border: 1px solid var(--rule); border-radius: 6px; font: inherit; font-size: 13px; }
+.trips-list { list-style: none; margin: 0; padding: 0; }
+.trips-list li { display: flex; align-items: flex-start; gap: 6px; border-top: 1px solid var(--rule); }
+.trips-list .trip-row { flex: 1; min-width: 0; display: grid; gap: 1px; padding: 9px 8px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.trips-list .trip-row:hover { background: #eef1f3; }
+.trips-list .trip-row:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
+.trips-list li.on .trip-row { background: #e4ebf2; box-shadow: inset 3px 0 0 var(--ink); }
+.trip-via { display: block; font-size: 12.5px; color: var(--muted); }
+.trip-del { flex: none; margin: 9px 6px 0 0; font-size: 12.5px; }
+.crumbs-mark { display: inline-block; width: 18px; height: 0; border-top: 3px solid #b0126a; border-radius: 2px; vertical-align: middle; }
+.map-key.dark .crumbs-mark { border-top-color: #ff8ac6; }
 #map-key-body { margin-top: 6px; }
 .map-key-row { display: grid; grid-template-columns: 15px 58px minmax(0, 1fr); gap: 7px; align-items: center; margin: 0; padding: 2px 0; }
 .map-key-switch { cursor: pointer; }

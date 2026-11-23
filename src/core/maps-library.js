@@ -978,6 +978,22 @@ class MapsLibrary extends EventEmitter {
    * Where a named town is: { a, o, n }. From the places when they are here (they know the larger town of a name),
    * else from the address data's own towns. Used for an address whose row names the town differently or not at all.
    */
+  /**
+   * The name of the town nearest a point, from the places on the map, or '' when none is within `maxKm` or the
+   * places are not downloaded. Used to say where a recorded trip began, ended and passed.
+   */
+  nearestTown(lat, lon, maxKm = 40) {
+    if (!this.placesInfo || !this.placesInfo.counts || !this.placesInfo.counts.town) return '';
+    let best = ''; let bestKm = maxKm;
+    const dLat = maxKm / 111; const dLon = maxKm / (111 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+    for (const t of this.recordsOf('town')) {
+      if (Math.abs(t.a - lat) > dLat || Math.abs(t.o - lon) > dLon || !t.n) continue;
+      const km = places.km(lat, lon, t.a, t.o);
+      if (km < bestKm) { bestKm = km; best = t.n; }
+    }
+    return best;
+  }
+
   townAt(city, state, near) {
     const want = addresses.normCity(city);
     if (!want) return null;

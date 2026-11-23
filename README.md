@@ -46,7 +46,8 @@ The [user guide](docs/USER-GUIDE.md#installing-step-by-step) has the same steps 
 | Local AI | Finds the passages that match your question, hands only those to a local model, and shows the answer with numbered links to the source articles. |
 | A year of school (in development) | Not in this version. A Grade 5 year of lessons, week by week, is being built on the `school` branch and is switched off in the released app until it is ready. See [docs/SCHOOL.md](docs/SCHOOL.md). |
 | A map that works offline | A road map of the regions you choose, cut from OpenStreetMap after the app has measured how big each level of detail would be, with hospitals, water, fuel, food, hardware and other places searchable by name, kind and distance, and turn-by-turn directions by car, bicycle or on foot that can be re-made around roads and areas you mark as blocked. See the [user guide](docs/USER-GUIDE.md#map). |
-| Live navigation | A USB GPS receiver is set up once and connects by itself after that. The map shows where you are, a banner gives the next turn, and a panel in the corner of the map shows speed, heading, satellites, the distance left and the time of arrival. If a receiver is not found, the app says why. |
+| Live navigation | A USB GPS receiver is set up once and connects by itself after that. The map shows where you are, a banner gives the next turn, and a panel in the corner of the map shows speed, heading, satellites, the distance left and the time of arrival. The mark glides between readings, and the map can stay north up or turn with the way of travel. If a receiver is not found, the app says why. |
+| Trips | If you switch it on, the app keeps a record of where the GPS receiver has been, on this computer only. It is drawn on the map as lines or dots, and each trip can be found by date and by town, shown alone, or deleted. |
 | An address book | The people and places that matter, typed in or copied from Google or iCloud contacts, each placed on the map. Addresses the downloaded data cannot place can be looked up online with the United States Census Bureau's address service, once you say yes; only the street address is sent. |
 | One page for setting up | *Options and Setup* lists everything there is to download and configure in folding groups, each flagged complete or still to do, with the room each takes and one button to fetch it all. |
 | Something to do | Wiki golf, in an 8-bit style: get from one article to another using only the links inside the articles, in as few clicks as possible. One to six players take turns on the same computer; players, characters, records and handicaps are kept in a clubhouse. |
@@ -166,6 +167,7 @@ build/installer.nsh  installer and uninstaller additions (close running copy, cl
   address-book.js  the address book: entries, where they are, and what came from which account
   geocode-online.js  looking addresses up online (United States Census Bureau), street addresses only, when the user has agreed
   serial-ports.js  what Windows knows about its serial ports, for saying why a GPS receiver was not found
+  tracks.js      breadcrumbs: the trips recorded from the GPS receiver, kept as files, named by town, found by date and place
   central-places.js, place-sort.js, hospitals.js  the ready-made places set, how places are sorted into kinds, and the official hospital list
   relations.js   pins, relationship groups and ties, and the everyday words for a tie
   map-ask.js     requests typed into Ask that are for the map: recognised, and their places found
@@ -176,6 +178,7 @@ src/renderer/map-style.js  the look of the map: day and night colours, road weig
 src/renderer/nmea.js, guide.js  GPS: reading a receiver's sentences, and following a route
 src/renderer/gps.js, book.js, hub.js  the GPS box and panel, the Saved tab, and the Options and Setup page
 src/renderer/gps-read.js, gps-why.js, gps-facts.js  GPS: reading a port past mistakes on the line, why a receiver was not found, and what the panel shows
+src/renderer/gps-smooth.js, crumbs.js  GPS: gliding the mark between readings, and the trips (recording, the layer on the map, the Trips tab)
 assets/routing/  BRouter (brouter.jar, MIT) and its profiles; BUILD.txt says how the jar was made
 scripts/fetch-java.js  fetches the Windows Java runtime for the installer and checks it against a pinned checksum
   school.js      School: the year plan, guided lessons, and finding answer-key and test pages from page text
