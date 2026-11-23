@@ -203,6 +203,16 @@ The other size is downloaded and checked while you keep using the copy you have,
 
 A size that cannot be fetched this way is greyed out and says what is short. Going to a smaller size removes content; getting it back means downloading the larger size again. While a switch is under way, **Keep the size I have** stops it and deletes what had been fetched.
 
+## Newer versions of Wikivault
+
+A little after it starts, and once a day while it runs, the app asks GitHub which version of Wikivault is the latest. It sends nothing about your computer, and with no connection it simply does not find out. When a newer version is out, a bar under the top of the window says so:
+
+- *Download the installer* opens the installer's address in your web browser, which downloads it. Run it: it installs over the copy you have and keeps the library, the maps and your settings.
+- *What changed* opens the release's page.
+- *Later* hides the bar until a still newer version appears.
+
+**Options and Setup > About** shows the same, with *Look now* and a switch to stop the app looking.
+
 ## Survival Guides
 
 **Options and Setup > More libraries > Survival Guides** is a library of practical guides: finding and treating water, first aid and medicine, preparing and preserving food, knots, and getting by after a disaster. It is made on your computer from collections of PDF documents that the Kiwix project gathers and publishes.
@@ -232,7 +242,7 @@ Each is converted like the collections, scanned pages are read for their words, 
 
 **Room on the disk.** The downloaded bundle is deleted after it is converted. What is kept (the PDFs, the pictures and the text) comes to two to two and a half times the size of the download.
 
-**One library at a time, and what Ask says about the others.** Search and Ask work on the library that is open. If it has nothing on a question, Ask carries the question to the library with the most matches, answers from it, and says that it did; that library becomes the open one. So that an answer from one library is not taken for all the computer has, every answer ends with a quick look in the others: *Ask in Survival Guides (5 matches)* and the like, one button for each library that has something on the question. Press one and that library opens and is asked the same question. Two libraries (*US Army publications* and *Survivor Library*) are made of PDF documents that search and Ask cannot read inside; when one of them is on the computer, the answer says it was not looked in.
+**Search reads one library; Ask reads them all.** The search box works on the library that is open. Ask puts each question to every library on the computer that it can read, the open one first, and answers from the best passages of all of them; each source says which library it came from. When an answer used more than one library it says which, with *Only ...* buttons that ask the same question of one library alone, for when they do not agree. A question *about the open article* reads only the open library. Opening a source opens its library. Two libraries (*US Army publications* and *Survivor Library*) are made of PDF documents that search and Ask cannot read inside; when one of them is on the computer, the answer says it was not looked in.
 
 **A caution.** These are reference guides, some of them old, and none replaces a trained person. Medical guidance in particular changes over time. The library says so on its first page and on every article of the medical collections.
 

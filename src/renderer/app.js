@@ -2887,6 +2887,10 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.40.0': [
+    'Ask now reads every library on this computer at once and says which library each source is from. If they do not agree, ask one alone with the buttons under the answer.',
+    'When a newer version of Wikivault is out, a bar at the top says so, with a link to download it. Look now, or switch it off, under Options and Setup, About.',
+  ],
   '0.39.0': [
     'Options and Setup shows the size of everything at once, as estimates, and no longer jumps about while you tick things. Measure the true sizes when you want them, or download straight away.',
     'When the open library has nothing on a question, Ask now asks the library that does and says so.',
@@ -3945,7 +3949,7 @@ function setAsking(id) {
   $('ask-send').classList.toggle('primary', !id);
 }
 
-async function ask(question, retry = false, articles = false) {
+async function ask(question, retry = false, articles = false, only = null) {
   if (activeAsk || !question) return;
   $('ask-empty')?.remove();
   $('ask-new').hidden = false;
@@ -3961,7 +3965,7 @@ async function ask(question, retry = false, articles = false) {
   try {
     const pinned = !$('ask-pin-row').hidden && $('ask-pin').checked ? currentUrl : null;
     // Where the computer is and what the map is showing, for requests about the map ("directions to work").
-    const id = await api.ask(question, pinned, retry, { articles, here: typeof gpsPoint === 'function' ? gpsPoint() : null, around: mapView ? [mapView.getCenter().lng, mapView.getCenter().lat] : null });
+    const id = await api.ask(question, pinned, retry, { articles, only, here: typeof gpsPoint === 'function' ? gpsPoint() : null, around: mapView ? [mapView.getCenter().lng, mapView.getCenter().lat] : null });
     entries.set(id, entry);
     setAsking(id);
     // A request for the map is answered at once, and its answer can arrive before the number of the question does.
@@ -4053,6 +4057,20 @@ function onAsk(ev) {
       also.append(row);
       entry.box.append(also);
     }
+    // Read from several libraries: which ones the answer used, and a way to hear from one of them alone.
+    if (Array.isArray(ev.libs) && ev.libs.length >= 2) {
+      const many = el('div', 'qa-also');
+      many.append(el('p', 'qa-note', `This answer draws on ${ev.libs.length} libraries: ${ev.libs.map((l) => l.name).join(', ')}. If they do not agree, hear from one alone:`));
+      const row = el('div', 'qa-also-row');
+      for (const l of ev.libs) { const b = el('button', 'btn small', `Only ${l.name}`); b.dataset.only = l.id; b.addEventListener('click', () => ask(entry.question || '', false, false, l.id)); row.append(b); }
+      many.append(row); entry.box.append(many);
+    } else if (ev.only) {
+      const one = el('div', 'qa-also');
+      one.append(el('p', 'qa-note', `Answered from ${ev.only} alone.`));
+      const b = el('button', 'btn small', 'Ask all the libraries'); b.dataset.only = '';
+      b.addEventListener('click', () => ask(entry.question || '', false, false, null));
+      const row = el('div', 'qa-also-row'); row.append(b); one.append(row); entry.box.append(one);
+    }
     if (Array.isArray(ev.unread) && ev.unread.length) entry.box.append(el('p', 'qa-note', `Not looked in: ${ev.unread.join(', ')}. ${ev.unread.length === 1 ? 'Its' : 'Their'} documents are PDF files, which search and Ask cannot read inside. Open ${ev.unread.length === 1 ? 'it' : 'one'} from the library list and find a document by its title.`));
   } else if (ev.type === 'error') {
     finish();
@@ -4108,7 +4126,7 @@ function render() {
   renderSchool();
   renderMap();
   const extras = typeof hubMaybePop === 'function'; // the scripts for these load after this one, and the first state can arrive in between
-  if (extras) { renderHub(); paintGps(); paintBook(); if (typeof crumbsState === 'function') crumbsState(); if (typeof paintMissing === 'function') paintMissing(); }
+  if (extras) { renderHub(); paintGps(); paintBook(); if (typeof crumbsState === 'function') crumbsState(); if (typeof paintMissing === 'function') paintMissing(); if (typeof paintAppUpdate === 'function') paintAppUpdate(); }
   maybeTour();
   if (extras) hubMaybePop();
   const e = state.edition;

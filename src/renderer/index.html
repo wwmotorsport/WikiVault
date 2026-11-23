@@ -58,6 +58,12 @@
     <button class="btn small quiet" id="external-dismiss">Stay here</button>
   </div>
   <div class="notice warn" id="engine-error" hidden></div>
+  <div class="notice" id="app-update" hidden>
+    <span id="app-update-text"></span>
+    <button class="btn small primary" id="app-update-get" type="button">Download the installer</button>
+    <button class="btn small" id="app-update-what" type="button">What changed</button>
+    <button class="btn small quiet" id="app-update-later" type="button">Later</button>
+  </div>
 
   <div class="schoolbar" id="schoolbar" hidden>
     <span class="schoolbar-tag">School</span>
@@ -617,6 +623,14 @@
             <button class="btn" id="about-tour" type="button">Show the tour</button>
           </div>
           <label class="check"><input type="checkbox" id="about-tour-auto"><span>Show the tour each time Wikivault starts</span></label>
+          <h3>Newer versions of Wikivault</h3>
+          <p id="about-update-status"></p>
+          <div class="actions">
+            <button class="btn" id="about-update-check" type="button">Look now</button>
+            <button class="btn primary" id="about-update-get" type="button" hidden>Download the installer</button>
+            <button class="btn" id="about-update-what" type="button" hidden>What changed</button>
+          </div>
+          <label class="check"><input type="checkbox" id="about-update-auto"><span>Look for a newer version when Wikivault starts, and once a day (needs a connection; nothing about this computer is sent)</span></label>
           <p class="error-text" id="about-error" hidden></p>
         </div>
       </section>
@@ -928,6 +942,7 @@
   <script src="crumbs.js"></script>
   <script src="guides.js"></script>
   <script src="drive.js"></script>
+  <script src="app-update.js"></script>
   <script src="book.js"></script>
   <script src="trip.js"></script>
   <script src="askmap.js"></script>

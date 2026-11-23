@@ -2,6 +2,17 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.40.0 (2026-11-23)
+
+Ask reads every library at once, and the app says when a newer version of itself is out.
+
+- **Ask reads all the libraries together.** Until now Ask read the library that was open. It now puts each question to every library on the computer that it can read (Wikipedia, the Survival Guides, and any others added), the open one first, and chooses the best passages from all of them. Each source under the answer says which library it is from. A library that is slow to answer is left out of that question and the others go on.
+- **When libraries may not agree.** If the answer used more than one library, it says which, with a button for each (*Only Survival Guides*) that asks the same question of that library alone. An answer from one library alone says so and offers *Ask all the libraries*.
+- **The same article in two libraries is read once.** A medical encyclopedia and Wikipedia share many articles; their passages are not given to the model twice.
+- **Kept to one library on purpose:** a question *about the open article*, and Ask during a round of wiki golf, still read only the open library. Libraries made of PDF documents that cannot be read inside (*US Army publications*, *Survivor Library*) are still named as not looked in.
+- **Opening a source opens its library.** When a page of another library is opened in the reader, from an answer's sources or a link, that library becomes the open one, so that search and the home button follow it.
+- **A newer version of Wikivault is announced.** A little after it starts, and once a day, the app asks GitHub (where the releases are published) which version is the latest. When there is a newer one, a bar under the top of the window says so, with *Download the installer* (the file is fetched by your web browser; running it installs over this copy and keeps the library and settings), *What changed*, and *Later*, which hides the bar for that version. *Options and Setup > About* has the same, a *Look now* button, and a switch to turn the looking off. Nothing about the computer is sent, and with no connection nothing is said.
+
 ## 0.39.0 (2026-11-23)
 
 Setup in one pass, an install of the answer model that recovers by itself, and Ask that follows a question to the library that has it.

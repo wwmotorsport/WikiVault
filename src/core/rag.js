@@ -245,7 +245,7 @@ function buildMessages(question, passages, { editionDate, history = [], standalo
  * Full pipeline. If no model is available the passages are still returned so
  * the app can show them on their own. `history` is the conversation so far.
  */
-async function answerQuestion({ engine, llm, question, history = [], settings = {}, editionDate, source, pinnedUrl, signal, onStatus = () => {}, onToken = () => {}, onSources = () => {}, onUnderstood = () => {} }) {
+async function answerQuestion({ engine, llm, question, history = [], settings = {}, editionDate, source, pinnedUrl, signal, label = null, onStatus = () => {}, onToken = () => {}, onSources = () => {}, onUnderstood = () => {} }) {
   const useLlm = Boolean(llm);
   const turns = history.slice(-HISTORY_TURNS);
 
@@ -265,8 +265,15 @@ async function answerQuestion({ engine, llm, question, history = [], settings = 
     extraQueries, pinnedUrl, signal, onStatus,
     contextArticles: turns.length ? (turns[turns.length - 1].sources || []) : [],
     contextChars: settings.contextChars || 6000,
-    maxArticles: settings.maxArticles || 5,
+    maxArticles: (settings.maxArticles || 5) + (engine.many ? 2 : 0), // more than one library is read: a little more is fetched
   });
+  // Each passage is marked with the library it came from (when several were read), for the model and for the reader.
+  if (engine.many) {
+    // Two libraries can hold the same article (a medical encyclopedia and Wikipedia, say): its passages are read once.
+    const seen = new Set();
+    found.passages = found.passages.filter((p) => { const k = String(p.text || '').toLowerCase().replace(/\W+/g, ' ').trim().slice(0, 160); if (seen.has(k)) return false; seen.add(k); return true; }).map((p, i) => ({ ...p, n: i + 1 }));
+  }
+  if (label) for (const p of found.passages) label(p);
   onSources(found.passages);
   const base = { passages: found.passages, queries: found.queries, standalone };
   if (!found.passages.length) return { ...base, text: '', empty: true };

@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('api', {
   guidesRemove: (id) => call('guides:remove', { id }),
   guidesImprove: (id) => call('guides:improve', { id }),
   driveTest: (dir) => call('drive:test', { dir }),
+  appCheckUpdate: () => call('app:check-update'),
+  appSetUpdates: (on) => call('app:set-updates', { on }),
   missingRetry: () => call('library:missing-retry'),
   missingForget: () => call('library:missing-forget'),
   guidesOwnAdd: (kind) => call('guides:own-add', { kind }),

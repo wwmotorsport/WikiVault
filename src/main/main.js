@@ -46,6 +46,8 @@ const { convertPdf, convertHandlers, convertClose } = require('./convert-window'
 const { Reader: TextReader } = require('../core/ocr');
 const { pdfFromJpegs, byName } = require('../core/jpeg-pdf');
 const driveCheck = require('../core/drive-check');
+const appUpdates = require('../core/app-update');
+const { AllLibraries } = require('../core/all-libraries');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -65,6 +67,7 @@ const LOGIN_ITEM_NAME = 'Wikivault';
 // ---------------------------------------------------------------- settings
 
 const DEFAULTS = {
+  appUpdates: true,  // look, when there is a connection, for a newer version of the app itself
   dataDir: null,
   stagingDir: null, // set when updates are downloaded on another drive before moving into the library
   partition: null,  // { driveLetter, sourceLetter, sizeBytes } when the app created a dedicated partition
@@ -543,6 +546,7 @@ async function getState() {
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
     guides: guides ? guides.status() : null,
     libraryMissing,
+    appUpdate: { on: settings.appUpdates !== false, ...appUpdate },
     book: bookState(),
     tracks: tracksState(),
     gpsFake: Boolean(process.env.WIKIVAULT_GPS_FAKE),
@@ -731,6 +735,23 @@ async function askElsewhere(question, here) {
   return found.sort((a, b) => b.total - a.total).slice(0, 6);
 }
 const ASK_SMALL = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'when', 'where', 'who', 'which', 'does', 'did', 'can', 'could', 'should', 'would', 'with', 'from', 'that', 'this', 'are', 'was', 'were', 'you', 'your', 'best', 'way', 'about', 'into', 'have', 'has', 'not', 'any', 'there', 'make', 'use']);
+
+// A newer version of the app itself. Looked for a little after the app starts and once a day after that, when
+// that is switched on; with no connection it simply finds nothing out, and says nothing.
+let appUpdate = { newer: null, checked: null, error: null };
+async function checkAppUpdate(asked = false) {
+  if (!asked && settings.appUpdates === false) return appUpdate;
+  try {
+    const r = await appUpdates.check(app.getVersion());
+    if (r.newer && (!appUpdate.newer || appUpdate.newer.latest !== r.latest)) log(`a newer version of Wikivault is published: ${r.latest} (this is ${app.getVersion()})`);
+    appUpdate = { newer: r.newer ? r : null, latest: r.latest, checked: new Date().toISOString(), error: null };
+  } catch (err) {
+    appUpdate = { ...appUpdate, error: asked ? `Could not find out: ${err.message}` : null };
+    if (asked) log(`looking for a newer version: ${err.message}`);
+  }
+  pushState();
+  return appUpdate;
+}
 
 // The library's folder could not be reached when the app started (see the start-up code): looked for every few
 // seconds, and opened as soon as it is back.
@@ -1087,6 +1108,12 @@ app.on('web-contents-created', (_e, contents) => {
   });
 
   if (contents.getType() === 'webview') {
+    contents.on('did-navigate', (_e, url) => {
+      let origin = null;
+      try { origin = new URL(url).origin; } catch { return; }
+      const id = engine?.running && engine.origin === origin ? 'wikipedia' : guides?.engine.port && guides.engine.origin === origin ? 'guides' : ([...extras].find(([, x]) => x.engine?.running && x.engine.origin === origin) || [])[0];
+      if (id && id !== curLibId() && !golfInPlay()) { activeLib = id; pushState(); }
+    });
     const outside = (url) => {
       if (!/^https?:/i.test(url)) return;
       followSisterLink(url)
@@ -1991,6 +2018,8 @@ function registerIpc() {
     log(`drive test: ${drive ? `${drive.bus || 'unknown bus'}, ${drive.fs || 'unknown format'}` : 'kind not known'}; ${speed ? `${speed.writeMBs} MB/s, ${speed.syncMs} ms` : 'not timed'}; ${said.level}`);
     return { drive, speed, ...said };
   });
+  handle('app:check-update', () => checkAppUpdate(true));
+  handle('app:set-updates', ({ on }) => { settings.appUpdates = Boolean(on); saveSettings(); pushState(); if (settings.appUpdates) checkAppUpdate().catch(() => {}); return true; });
   handle('library:missing-retry', async () => ({ back: await libraryBack() }));
   handle('library:missing-forget', () => {
     if (!libraryMissing) return false;
@@ -2335,7 +2364,7 @@ function registerIpc() {
   handle('search:suggest', ({ term }) => (cur()?.running ? cur().suggest(term, 8) : []));
   handle('search:query', ({ q, start = 0 }) => (cur()?.running ? smartSearch(cur(), q, { start, pageLength: 20 }) : { total: 0, items: [], nextStart: 0, usedQuery: q, dropped: [] }));
 
-  handle('ask:start', ({ question, pinnedUrl, retry, here, around, articles }) => {
+  handle('ask:start', ({ question, pinnedUrl, retry, here, around, articles, only }) => {
     const mapsReady = Boolean(maps || (book && book.entries.length));
     if (!cur()?.running && !mapsReady) throw new Error('There is no edition on this laptop yet.');
     // Asking the same question again once answers are set up: forget the passages-only attempt,
@@ -2401,11 +2430,22 @@ function registerIpc() {
         pushState();
       }
       const askedIn = curLibId();
-      const also = askElsewhere(question, askedIn); // looked for while the answer is written
+      // Ask reads every library on the computer that it can read, the open one first, and takes its passages from
+      // all of them together. It keeps to one library when it is asked to ("only"), when the question is about the
+      // open article, and during a round of wiki golf.
+      const engineOfLib = (id) => (id === 'wikipedia' ? engine : id === 'guides' ? guides?.engine : extras.get(id)?.engine);
+      const readable = ['wikipedia', ...extras.keys(), 'guides'].filter((id) => engineOfLib(id)?.running && !LIBRARIES[id]?.pdfSite);
+      const chosen = typeof only === 'string' && readable.includes(only) ? only : null;
+      const scope = chosen ? [chosen] : (pinnedUrl || golfInPlay()) ? [askedIn] : [askedIn, ...readable.filter((id) => id !== askedIn)];
+      const one = scope.length === 1;
+      const askEngine = one ? engineOfLib(scope[0]) : new AllLibraries(scope.map((id) => ({ id, name: libName(id), engine: engineOfLib(id) })));
+      const also = one ? askElsewhere(question, scope[0]) : Promise.resolve([]); // looked for while the answer is written
       let out = await answerQuestion({
-        engine: cur(), llm: model, question, pinnedUrl: pinnedUrl || null,
+        engine: askEngine, llm: model, question, pinnedUrl: pinnedUrl || null,
         history: conversation.slice(),
-        settings: settings.ai, source: libName(curLibId()), editionDate: curLibId() === 'guides' ? guides.engine.info.issued : (curLibId() === 'wikipedia' ? editions : extras.get(curLibId())?.manager)?.snapshot().active?.date,
+        settings: settings.ai, source: one ? libName(scope[0]) : 'reference libraries kept on this computer',
+        editionDate: !one ? null : scope[0] === 'guides' ? guides.engine.info.issued : (scope[0] === 'wikipedia' ? editions : extras.get(scope[0])?.manager)?.snapshot().active?.date,
+        label: one ? null : (p) => { const l = askEngine.libOf(p.url); if (l) { p.lib = l.id; p.title = `${p.title} (${l.name})`; } },
         signal: ac.signal,
         onStatus: (text) => emit('status', { text }),
         onUnderstood: (text) => emit('understood', { text }),
@@ -2414,8 +2454,8 @@ function registerIpc() {
       });
       // Nothing in the open library: the question is not left there. The library with the most on it is asked,
       // and when it has an answer it becomes the open library, so that the answer's links and any follow-up belong to it.
-      let answeredIn = askedIn; let moved = null;
-      if (out.empty && !pinnedUrl && !golfInPlay()) {
+      let answeredIn = one ? scope[0] : askedIn; let moved = null;
+      if (out.empty && one && !chosen && !pinnedUrl && !golfInPlay()) {
         const best = (await also)[0];
         const other = best && (best.id === 'wikipedia' ? engine : best.id === 'guides' ? guides?.engine : extras.get(best.id)?.engine);
         if (other?.running) {
@@ -2433,7 +2473,7 @@ function registerIpc() {
         conversation.push({ question, standalone: out.standalone, answer: out.text, sources: turnSources(out.text, out.passages) });
         conversation = conversation.slice(-MAX_TURNS);
       }
-      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), here: libName(answeredIn), moved, elsewhere: (await also).filter((o) => o.id !== answeredIn), unread: Object.entries(LIBRARIES).filter(([lid, lib]) => lib.pdfSite && extras.get(lid)?.engine?.running).map(([, lib]) => lib.name), modelNote, aiState: llm.status().state, device: llm.status().device });
+      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), here: one ? libName(answeredIn) : 'the libraries on this computer', moved, elsewhere: (await also).filter((o) => o.id !== answeredIn), only: chosen ? libName(chosen) : null, searched: scope.length, libs: one ? [] : [...new Set((out.passages || []).filter((p) => !out.text || new RegExp(`\\[${p.n}\\]`).test(out.text)).map((p) => p.lib).filter(Boolean))].map((id) => ({ id, name: libName(id) })), unread: Object.entries(LIBRARIES).filter(([lid, lib]) => lib.pdfSite && extras.get(lid)?.engine?.running).map(([, lib]) => lib.name), modelNote, aiState: llm.status().state, device: llm.status().device });
     })().catch((err) => {
       if (err.name === 'AbortError') emit('stopped');
       else { log(`ask failed: ${err.message}`); emit('error', { message: err.message, partial: err.partial || '' }); }
@@ -2587,6 +2627,8 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     convertHandlers();
     setTimeout(() => contactsDue().catch(() => {}), 45000);
+    setTimeout(() => checkAppUpdate().catch(() => {}), Number(process.env.WIKIVAULT_UPDATE_DELAY_MS) || 25000);
+    setInterval(() => checkAppUpdate().catch(() => {}), 24 * 3600 * 1000).unref();
     setInterval(() => contactsDue().catch(() => {}), 3600 * 1000).unref();
     setTimeout(() => lookupAddresses().catch(() => {}), 60000); // addresses still unplaced from a time with no connection
     await reapOrphanEngine();
