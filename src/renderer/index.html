@@ -335,7 +335,7 @@
           </div>
         </aside>
         <div class="map-stage">
-          <div class="map-guide" id="map-guide" hidden><b id="map-guide-next"></b><span id="map-guide-rest"></span></div>
+          <div class="map-guide" id="map-guide" hidden><b id="map-guide-next"></b><span id="map-guide-rest"></span><button type="button" class="map-guide-end" id="map-guide-end" title="Stop following this route. The GPS stays connected, and the places you chose stay in the From and To boxes.">End trip</button></div>
           <div id="map-canvas"></div>
           <aside class="map-key" id="map-key" aria-label="Key: what the map's lines and colours stand for, and switches for each kind" hidden>
             <div class="map-key-head"><b id="map-key-title">Key and layers</b><button type="button" class="map-key-toggle" id="map-key-toggle" aria-expanded="true" aria-controls="map-key-body"><svg class="map-key-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3 2.500 7 10 11l7.500-4L10 3ZM2.500 10.500 10 14.500l7.500-4M2.500 14 10 18l7.500-4"/></svg><span id="map-key-toggle-text">Hide</span></button></div>
@@ -356,6 +356,7 @@
                 <button type="button" class="btn small" id="map-gps-find">Find my GPS receiver</button>
                 <button type="button" class="btn small" id="map-gps-from" hidden>Start from my position</button>
                 <button type="button" class="btn small" id="map-gps-centre" hidden>Show where I am</button>
+                <button type="button" class="btn small" id="map-gps-end" hidden title="Stop following this route. The GPS stays connected.">End trip</button>
                 <button type="button" class="btn small" id="map-gps-off" hidden>Disconnect</button>
               </div>
               <label class="map-check" id="map-gps-follow-row" hidden><input type="checkbox" id="map-gps-follow"><span>Keep the map on my position</span></label>

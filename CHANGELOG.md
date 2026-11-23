@@ -2,6 +2,10 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## Not yet released
+
+- **End trip.** A button on the turn banner at the top of the map, and in the GPS panel while a route is being followed, ends the trip without disconnecting the GPS: the route and its turns go, the map keeps showing where you are, and the places you chose stay in the From and To boxes so that *Get directions* takes the trip up again. (*Clear*, in the Directions panel, still empties the boxes as well.)
+
 ## 0.34.1 (2026-11-22)
 
 Finding the GPS receiver no longer depends on luck.

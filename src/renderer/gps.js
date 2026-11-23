@@ -220,6 +220,16 @@ function gpsGuide(fix) {
   else if (u.next.meters <= 400 && !gps.heard[far]) { gps.heard[far] = true; gpsSay(`In ${WikivaultGuide.said(u.next.meters)}, ${u.next.text.charAt(0).toLowerCase()}${u.next.text.slice(1)}.`); }
 }
 
+/**
+ * End the trip: the route and its guidance go, the GPS stays connected and the map keeps showing where you are.
+ * The places chosen stay in the From and To boxes, so "Get directions" takes the trip up again.
+ */
+function gpsEndTrip() {
+  if (!mapGo.route) return;
+  mapGo.route = null; mapGo.alt = 0;
+  paintMapGo(); mapDrawRoute();
+}
+
 function gpsBanner(next, rest) {
   const box = $('map-guide');
   box.hidden = !next;
@@ -331,6 +341,7 @@ function paintGpsPanel(text) {
   $('map-gps-find').textContent = gpsKnown() ? 'Look for my GPS receiver now' : 'Find my GPS receiver';
   $('map-gps-off').hidden = !on;
   $('map-gps-from').hidden = gps.status !== 'fix'; $('map-gps-centre').hidden = gps.status !== 'fix';
+  $('map-gps-end').hidden = !(on && gps.guide && mapGo.route);
   $('map-gps-follow-row').hidden = !on; $('map-gps-speak-row').hidden = !on;
   $('map-gps-follow').checked = gps.follow; $('map-gps-speak').checked = gps.speak;
 }
@@ -340,6 +351,8 @@ $('map-gps-hide').addEventListener('click', () => gpsPanelSet(false));
 $('map-gps-find').addEventListener('click', () => gpsFind());
 $('map-gps-off').addEventListener('click', () => gpsOff(false));
 $('map-gps-from').addEventListener('click', () => $('gps-from').click());
+$('map-gps-end').addEventListener('click', gpsEndTrip);
+$('map-guide-end').addEventListener('click', gpsEndTrip);
 $('map-gps-centre').addEventListener('click', () => { const p = gpsPoint(); if (p && mapView) mapView.easeTo({ center: [p.lon, p.lat], zoom: Math.max(mapView.getZoom(), Math.min(15, mapView.getMaxZoom())), duration: 600 }); });
 $('map-gps-follow').addEventListener('change', () => { $('gps-follow').checked = $('map-gps-follow').checked; $('gps-follow').dispatchEvent(new Event('change')); });
 $('map-gps-speak').addEventListener('change', () => { $('gps-speak').checked = $('map-gps-speak').checked; $('gps-speak').dispatchEvent(new Event('change')); });
