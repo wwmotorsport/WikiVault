@@ -5,27 +5,35 @@
 
 const path = require('node:path');
 
+// Under Node the library loads the engine built for both of Tesseract's recognisers (tesseract-core, -simd or
+// -relaxedsimd, whichever the processor allows), whatever is asked of it; those three are the ones packed.
 // Packed apps keep these files beside the archive (see "asarUnpack" in package.json): a worker thread and the
 // engine's own loader read them as ordinary files.
 const real = (p) => p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 class Reader {
-  constructor({ log = () => {} } = {}) { this.log = log; this.worker = null; this.starting = null; this.idle = null; this.pages = 0; }
+  constructor({ log = () => {}, create = null } = {}) { this.create = create; this.log = log; this.worker = null; this.starting = null; this.idle = null; this.pages = 0; this.broken = null; this.said = false; }
 
   async start() {
     if (this.worker) return this.worker;
+    // A reader that could not be started is not tried again for every page: each try would leave a worker behind.
+    if (this.broken) throw new Error(this.broken);
     if (!this.starting) {
       this.starting = (async () => {
-        const { createWorker } = require('tesseract.js');
+        const createWorker = this.create || require('tesseract.js').createWorker;
         const worker = await createWorker('eng', 1, {
           workerPath: real(require.resolve('tesseract.js/src/worker-script/node/index.js')),
           langPath: real(path.join(path.dirname(require.resolve('@tesseract.js-data/eng/package.json')), '4.0.0')),
           cacheMethod: 'none', gzip: true,
-          errorHandler: (err) => this.log(`text recognition: ${err && err.message ? err.message : err}`),
+          errorHandler: (err) => { if (!this.broken && !this.said) { this.said = true; this.log(`text recognition: ${String((err && err.message) || err).split('\n')[0].slice(0, 300)}`); } },
         });
         this.worker = worker;
         return worker;
-      })().finally(() => { this.starting = null; });
+      })().catch((err) => {
+        this.broken = `the text reader could not be started (${String((err && err.message) || err).split('\n')[0].slice(0, 200)})`;
+        this.log(`text recognition: ${this.broken}; scanned pages are kept as pictures without their words`);
+        throw new Error(this.broken);
+      }).finally(() => { this.starting = null; });
     }
     return this.starting;
   }

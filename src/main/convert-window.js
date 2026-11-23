@@ -54,7 +54,7 @@ function convertHandlers() {
     convertJob = null;
     if (r.stopped || j.signal?.aborted) { const e = new Error('Cancelled'); e.name = 'AbortError'; j.reject(e); }
     else if (r.error) j.reject(new Error(r.error));
-    else j.resolve({ pages: r.pages, outline: Array.isArray(r.outline) ? r.outline : [] });
+    else j.resolve({ pages: r.pages, outline: Array.isArray(r.outline) ? r.outline : [], title: typeof r.title === 'string' ? r.title : '' });
     // The window is kept for the next document of the collection, and closed when none comes.
     clearTimeout(convertIdle); convertIdle = setTimeout(() => { if (!convertJob) convertClose(); }, 20000);
     return true;

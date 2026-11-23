@@ -172,6 +172,7 @@ build/installer.nsh  installer and uninstaller additions (close running copy, cl
   guides-library.js  Survival Guides: fetches a collection of PDF guides, has each converted, keeps the result
   guide-build.js, guide-html.js  a guide's pages made into articles (running heads out, headings, sections), and those articles as HTML
   guides-engine.js  serves the guides to the reader and answers search, suggestions and Ask, in place of kiwix-serve
+  zim-list.js, drive-check.js  what is inside a .zim file (to find the PDFs in a copy of a web site), and what kind of drive a folder is on and how fast it is
   ocr.js, jpeg-pdf.js  reading the words of a scanned page (Tesseract, packed with the app), and making a PDF from a folder of page pictures
   central-places.js, place-sort.js, hospitals.js  the ready-made places set, how places are sorted into kinds, and the official hospital list
   relations.js   pins, relationship groups and ties, and the everyday words for a tie

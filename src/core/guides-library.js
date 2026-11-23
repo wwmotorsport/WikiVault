@@ -14,6 +14,8 @@ const catalog = require('./catalog');
 const { Engine } = require('./engine');
 const { GuidesEngine } = require('./guides-engine');
 const { build, readCatalog } = require('./guide-build');
+const { listZim } = require('./zim-list');
+const { parse: parseHtml } = require('node-html-parser');
 
 const MADE = 2; // the version of the conversion (2: scanned pages are read for their words); a collection made by an older one can be brought up to date
 const OWN = 'mine'; // the collection of the user's own books
@@ -24,6 +26,8 @@ const COLLECTIONS = [
   { id: 'medicine', prefix: 'zimgit-medicine_en_', name: 'First aid and medicine', about: 'First aid, field medicine and care when no doctor can be reached.', approxBytes: 65e6, caution: true },
   { id: 'food', prefix: 'zimgit-food-preparation_en_', name: 'Food', about: 'Preparing, cooking and preserving food, with and without power.', approxBytes: 93e6 },
   { id: 'knots', prefix: 'zimgit-knots_en_', name: 'Knots', about: 'Knots, hitches and lashings, and what each is for.', approxBytes: 23e6 },
+  // A copy of a web site whose substance is PDF documents: the documents are found in the file itself and converted.
+  { id: 'milmed', kind: 'web', folder: 'zimit', prefix: 'irp.fas.org_en_military-medicine_', name: 'Military medicine manuals', about: 'United States military manuals on first aid, field medicine, hygiene and survival medicine.', approxBytes: 65e6, caution: true },
   { id: 'disaster', prefix: 'zimgit-post-disaster_en_', name: 'After a disaster', about: 'Shelter, sanitation, power, repairs and getting by after a disaster. The largest collection.', approxBytes: 615e6, caution: true },
 ];
 
@@ -55,6 +59,52 @@ async function readZimWithEngine(zimPath, { binPath, log }) {
   };
 }
 
+/** A name for a document from its file name: "corpsman-pt1.pdf" becomes "Corpsman pt1". */
+function nameFromFile(p) {
+  const base = decodeURIComponent(String(p).split('/').pop() || '').replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : 'Document';
+}
+
+/**
+ * Open a copy of a web site and hand back the PDF documents in it. Each takes its title from the words of the
+ * link that leads to it on the site's own pages, when there is one; otherwise from its file name (and later from
+ * the title written inside the PDF).
+ */
+async function readWebZimWithEngine(zimPath, { binPath, log }) {
+  const all = await listZim(zimPath, (m) => m === 'application/pdf' || /^text\/html/.test(m));
+  const pdfs = all.filter((e) => e.mime === 'application/pdf' && /\.pdf$/i.test(e.path));
+  const engine = new Engine({ binPath, log });
+  await engine.start(zimPath, { threads: 2, readyTimeoutMs: 90000 });
+  const titles = new Map();
+  const want = new Set(pdfs.map((e) => e.path));
+  // The site's pages, shortest paths first (the index pages), until every document has a title or enough were read.
+  const pages = all.filter((e) => /^text\/html/.test(e.mime) && !/\.pdf$/i.test(e.path)).sort((a, b) => a.path.length - b.path.length).slice(0, 400);
+  for (const page of pages) {
+    if (titles.size >= want.size) break;
+    try {
+      const { text } = await fetchText(engine.urlForPath(page.path), { timeoutMs: 20000, maxBytes: 8 * 1024 * 1024 });
+      for (const a of parseHtml(text).querySelectorAll('a')) {
+        const href = a.getAttribute('href'); if (!href || !/\.pdf(?:[?#]|$)/i.test(href)) continue;
+        let target = '';
+        try { const u = new URL(href, `http://x/${page.path}`); target = decodeURIComponent(u.pathname.slice(1)); } catch { continue; }
+        const hit = want.has(target) ? target : [...want].find((p) => p.endsWith(`/${target.split('/').pop()}`));
+        const words = a.text.replace(/\s+/g, ' ').trim();
+        if (hit && words.length >= 4 && !/^(pdf|download|here|link|view)$/i.test(words) && (!titles.has(hit) || words.length > titles.get(hit).length)) titles.set(hit, words.slice(0, 160));
+      }
+    } catch { /* a page that will not open has no titles to give */ }
+  }
+  return {
+    catalog: pdfs.map((e) => {
+      // A link that says only "Part 2" names nothing by itself: the file's own name is used, until the PDF gives a better one.
+      const words = titles.get(e.path) || '';
+      const vague = !words || words.length < 10 || /^(?:part|volume|vol\.?|chapter|section|appendix)\s*[\divxlc]+$/i.test(words);
+      return { title: vague ? (words ? `${nameFromFile(e.path)} (${words})` : nameFromFile(e.path)) : words, weak: vague, about: '', author: '', files: [e.path] };
+    }),
+    save: (file, dest, signal) => downloadFile({ url: engine.urlForPath(file), dest, signal, stallMs: 30000, maxStalledAttempts: 2 }),
+    close: () => engine.stop(),
+  };
+}
+
 class GuidesLibrary extends EventEmitter {
   /**
    * @param {object} o
@@ -63,8 +113,9 @@ class GuidesLibrary extends EventEmitter {
    * @param {() => Promise<string|null>} o.engineBin  where the reader engine (kiwix-serve) is, or null
    * @param {(pdf:string, o:{onPage:Function, signal:AbortSignal}) => Promise<{pages:number, outline:Array}>} o.convert
    */
-  constructor({ dir, getSettings = () => ({}), engineBin = async () => null, convert, recognise = null, readZim = readZimWithEngine, download = downloadFile, log = () => {} }) {
+  constructor({ dir, getSettings = () => ({}), engineBin = async () => null, convert, recognise = null, readZim = readZimWithEngine, readWeb = readWebZimWithEngine, download = downloadFile, log = () => {} }) {
     super();
+    this.readWeb = readWeb;
     this.recognise = recognise; // (picture bytes) => paragraphs of text, for scanned pages; null when there is no reader
     this.dir = dir; this.getSettings = getSettings; this.engineBin = engineBin; this.convert = convert; this.readZim = readZim; this.download = download; this.log = log;
     this.engine = new GuidesEngine({ dir, log });
@@ -106,7 +157,7 @@ class GuidesLibrary extends EventEmitter {
     const c = COLLECTIONS.find((x) => x.id === id);
     if (!c) throw new Error('Unknown collection.');
     const base = String(this.getSettings().baseUrl || 'https://download.kiwix.org').replace(/\/+$/, '');
-    const dirUrl = `${base}/zim/other/`;
+    const dirUrl = `${base}/zim/${c.folder || 'other'}/`;
     const { text } = await fetchText(dirUrl, { signal, timeoutMs: 45000 });
     const found = catalog.parseEditions(text, c.prefix);
     if (!found.length) throw new Error(`The collection "${c.name}" was not found on the Kiwix server.`);
@@ -288,9 +339,9 @@ class GuidesLibrary extends EventEmitter {
       this.log(`guides: ${c.id}: ${latest.file} fetched${want ? ' and checked' : ' (no checksum was published)'}`);
 
       set('reading');
-      source = await this.readZim(zim, { binPath: bin, log: this.log });
+      source = await (c.kind === 'web' ? this.readWeb : this.readZim)(zim, { binPath: bin, log: this.log });
       const docs = [];
-      for (const row of source.catalog) row.files.forEach((file, k) => docs.push({ file, title: row.files.length > 1 ? `${row.title || file}, part ${k + 1}` : (row.title || file.replace(/\.pdf$/i, '')), about: row.about, author: row.author }));
+      for (const row of source.catalog) row.files.forEach((file, k) => docs.push({ file, weak: Boolean(row.weak), title: row.files.length > 1 ? `${row.title || file}, part ${k + 1}` : (row.title || file.replace(/\.pdf$/i, '')), about: row.about, author: row.author }));
       if (!docs.length) throw new Error('The collection has no documents that can be read.');
       // A collection begun before (the app was closed, or it was cancelled) is carried on from where it stopped,
       // when it is the same file; otherwise it is begun afresh.
@@ -364,7 +415,7 @@ class GuidesLibrary extends EventEmitter {
         // A scanned page with no words behind it: its picture is read for them.
         if (p.ocr && this.recognise) {
           try { const read = await this.recognise(p.ocr); if (read.length) { paras = read.map((text) => ({ text })); readPages += 1; } }
-          catch (err) { notes.push(`page ${p.n} could not be read for its words (${err.message})`); }
+          catch (err) { notes.push(`page ${p.n} could not be read for its words (${String((err && err.message) || err).slice(0, 200)})`); }
         }
         if (p.whole && !paras.some((b) => b.text)) blank += 1;
         pages.push({ n: p.n, w: p.w, h: p.h, whole: Boolean(p.whole), paras, figs: p.figs || [], img: p.img || null });
@@ -377,7 +428,10 @@ class GuidesLibrary extends EventEmitter {
     if (!made.sections.length) throw new Error('nothing readable was found in it');
     for (const [i, s] of made.sections.entries()) await fsp.writeFile(path.join(gDir, `s${i + 1}.json`), JSON.stringify({ title: s.title, from: s.from, to: s.to, blocks: s.blocks }));
     await fsp.writeFile(path.join(gDir, 'text.json'), JSON.stringify(made.sections.map((s) => s.text)));
-    const meta = { id: gid, title: d.title, about: d.about || '', author: d.author || '', pages: pages.length, words: made.words, read: readPages, blank, sections: made.sections.map((s) => ({ title: s.title, from: s.from, to: s.to, words: s.words })) };
+    // A document known only by its file name takes the title written inside it, when it has a real one.
+    const inside = String((result && result.title) || '').replace(/\s+/g, ' ').trim();
+    const title = d.weak && inside.length >= 6 && inside.length <= 160 && !/\.(pdf|docx?|indd|qxd|p65)$|^untitled|^microsoft word/i.test(inside) && /[A-Za-z]{3}/.test(inside) ? inside : d.title;
+    const meta = { id: gid, title, about: d.about || '', author: d.author || '', pages: pages.length, words: made.words, read: readPages, blank, sections: made.sections.map((s) => ({ title: s.title, from: s.from, to: s.to, words: s.words })) };
     await fsp.writeFile(path.join(gDir, 'guide.json'), JSON.stringify(meta));
     if (notes.length) this.log(`guides: "${d.title}": ${notes.length} pages with trouble (${notes[0]})`);
     if (readPages) this.log(`guides: "${d.title}": the words of ${readPages} scanned pages were read`);
@@ -385,4 +439,4 @@ class GuidesLibrary extends EventEmitter {
   }
 }
 
-module.exports = { GuidesLibrary, COLLECTIONS, MADE, OWN, readZimWithEngine };
+module.exports = { GuidesLibrary, COLLECTIONS, MADE, OWN, readZimWithEngine, readWebZimWithEngine, nameFromFile };

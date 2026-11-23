@@ -186,6 +186,10 @@ A partition made by version 0.4 is recognised automatically.
 
 ### Moving the library
 
+**A library on an external drive.** The library can live on a drive plugged into the computer. When you choose a folder (at setup, or in *Move library*) the app checks what kind of drive it is on. For an external drive it takes about ten seconds to time it, then says whether it is a good home for the library, workable but slower, or too slow, and what to look for in a better one: a portable SSD (not a "flash drive", and not a spinning hard disk), USB 3.2 Gen 2 or faster on a USB-C or blue USB port, 500 GB to 1 TB, formatted exFAT or NTFS. A drive formatted FAT32 cannot be used. Keep the drive plugged in while the app is used, and use the same port so that Windows gives it the same letter.
+
+**If the library drive is not connected.** When the app starts and cannot reach the library's folder, it says *The library drive is not connected* and names the folder. Plug the drive in: the app looks for it every few seconds and opens the library by itself. Nothing is created in the folder's place, and nothing on the drive is changed. *Set up in a different place* starts again with an empty library, and asks twice.
+
 **Library > Move library** copies the edition, and Wikibooks and Wikiversity if you have them, to any folder you choose, checks the copy against its checksum, switches to it, and only then removes the old copy. If the copy does not verify, nothing changes.
 
 ## Changing how much of Wikipedia is kept
@@ -228,6 +232,8 @@ Each is converted like the collections, scanned pages are read for their words, 
 
 **Room on the disk.** The downloaded bundle is deleted after it is converted. What is kept (the PDFs, the pictures and the text) comes to two to two and a half times the size of the download.
 
+**One library at a time, and what Ask says about the others.** Search and Ask work on the library that is open. So that an answer from one library is not taken for all the computer has, every answer ends with a quick look in the others: *Ask in Survival Guides (5 matches)* and the like, one button for each library that has something on the question. Press one and that library opens and is asked the same question. Two libraries (*US Army publications* and *Survivor Library*) are made of PDF documents that search and Ask cannot read inside; when one of them is on the computer, the answer says it was not looked in.
+
 **A caution.** These are reference guides, some of them old, and none replaces a trained person. Medical guidance in particular changes over time. The library says so on its first page and on every article of the medical collections.
 
 ## More libraries: Wikibooks, Wikiversity, Appropedia and a medical encyclopedia
@@ -238,10 +244,11 @@ Each is converted like the collections, scanned pages are read for their words, 
 - **Wikiversity**: courses, lessons and learning material arranged by subject and level.
 - **Appropedia**: practical know-how for living with little: water, sanitation, growing food, building, energy and making do.
 - **Medical encyclopedia (MDWiki)**: the medical articles of Wikipedia, checked and kept by WikiProject Medicine. Reference only.
-- **Military medicine manuals** and **Ready.gov**: field and survival medicine, and the United States government's emergency guidance.
+- **Ready.gov**: the United States government's emergency guidance. (*Military medicine manuals* is a collection of the Survival Guides, where its PDF manuals are converted into articles.)
 - **Questions and answers**: the outdoors, cooking, amateur radio, vehicle repair, gardening and home repair, each a library of its own.
 - **iFixit repair guides**, **Energypedia** (power without the grid) and **Gardenology** (plants and how to grow them).
-- **US Army publications**: a copy of the Army's publications site. It is large, and its manuals open as PDFs in the reader; they are not converted into articles.
+- **US Army publications**: a copy of the Army's publications site. It is large, and its manuals open as PDFs in the reader; they are not converted into articles, and search and Ask cannot read inside them.
+- **Survivor Library**: about 205 GB of old books on farming, building, trades and medicine, as scanned PDFs, browsed by subject. Not converted either.
 
 Every one of these, and the Survival Guides, also has a tick in the downloads list at the top of *Options and Setup*, so the one button there fetches whatever is ticked.
 

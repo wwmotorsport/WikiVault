@@ -493,7 +493,7 @@ function renderSetup() {
 
 $('setup-change-dir').addEventListener('click', () => guard(async () => {
   const picked = await api.chooseDir();
-  if (picked) { setupDir = picked.dir; setupFree = picked.freeBytes; renderSetup(); }
+  if (picked) { setupDir = picked.dir; setupFree = picked.freeBytes; renderSetup(); if (typeof driveCheck === 'function') driveCheck(picked, $('setup-drive')); }
 }, $('setup-error')));
 $('setup-start').addEventListener('click', () => {
   $('setup-error').hidden = true;
@@ -783,7 +783,7 @@ function openMoveDialog() {
 }
 $('move-choose').addEventListener('click', async () => {
   const picked = await api.chooseDir().catch(() => null);
-  if (picked) { move.dest = picked.dir; showMoveDest(); }
+  if (picked) { move.dest = picked.dir; showMoveDest(); if (typeof driveCheck === 'function') driveCheck(picked, $('move-drive')); }
 });
 $('move-cancel').addEventListener('click', () => $('move-dialog').close());
 $('move-go').addEventListener('click', async () => {
@@ -2887,6 +2887,12 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.38.0': [
+    'Ask now says when other libraries on this computer have matches for your question, with a button to ask there, so that one library is never taken for all of them.',
+    'An external drive chosen for the library is timed and reported on, with advice on what to buy if it is too slow.',
+    'If the library drive is not plugged in when the app starts, the app says so and opens the library when the drive is back.',
+    'Military medicine manuals are now a Survival Guides collection, converted into articles. Survivor Library can be added as a library.',
+  ],
   '0.37.0': [
     'Scanned pages in the Survival Guides are now read for their words, so they can be searched and used by Ask. A collection added before has a "Read its scans" button.',
     'Your own books: under Survival Guides, add PDF files or a folder of page photographs, and they are converted and searched like the rest.',
@@ -3981,8 +3987,9 @@ function onAsk(ev) {
     renderAnswer(entry.answer, entry.text, entry.passages);
   } else if (ev.type === 'done') {
     finish();
+    const other = Array.isArray(ev.elsewhere) ? ev.elsewhere : [];
     if (ev.empty) {
-      entry.box.append(el('p', 'qa-note', 'Nothing in this edition matched that question. Name the subject directly, or use the search box to find the article.'));
+      entry.box.append(el('p', 'qa-note', `Nothing in ${ev.here || 'this library'} matched that question.${other.length ? '' : ' Name the subject directly, or use the search box to find the article.'}`));
     } else if (ev.passagesOnly) {
       const notSetUp = ['not-installed', 'needs-model'].includes(ev.aiState);
       const note = el('p', 'qa-note');
@@ -4020,9 +4027,27 @@ function onAsk(ev) {
       const cited = new Set((text.match(/\[(\d+(?:\s*,\s*\d+)*)\]/g) || []).flatMap((m) => m.slice(1, -1).split(',').map(Number)));
       const used = entry.passages.filter((p) => cited.has(p.n));
       entry.box.append(sourceList(used.length ? used : entry.passages, false));
-      const edition = state.edition?.active?.date ? ` from the ${editionName(state.edition.active.date)} edition` : '';
+      // The answer is said to come from the library it came from, not always from Wikipedia's edition.
+      const edition = ev.here && ev.here !== 'Wikipedia' ? ` from ${ev.here}` : (state.edition?.active?.date ? ` from the ${editionName(state.edition.active.date)} edition` : '');
       entry.box.append(el('p', 'qa-foot', `Written on this laptop${ev.device ? ` (${ev.device})` : ''}${edition}. Small local models make mistakes, so check the cited passages. Not professional advice.`));
     }
+    // The answer came from one library. What the others hold on the same question is said, so that an answer (or
+    // none) is not taken for everything this computer has.
+    if (other.length) {
+      const also = el('div', 'qa-also');
+      also.append(el('p', 'qa-note', ev.empty ? 'Other libraries on this computer do have matches. Ask the same question there:' : `That answer is from ${ev.here || 'the open library'} only. Other libraries on this computer also have matches:`));
+      const row = el('div', 'qa-also-row');
+      for (const o of other) {
+        const b = el('button', 'btn small', `Ask in ${o.name} (${o.total.toLocaleString('en-US')} ${o.total === 1 ? 'match' : 'matches'})`);
+        if (o.first) b.title = `Best match: ${o.first}`;
+        b.dataset.lib = o.id;
+        b.addEventListener('click', () => guard(async () => { const again = entry.question || ''; const r = await api.selectLibrary(o.id); await newConversation({ focus: false }); $('results').replaceChildren(); openUrl(r.homeUrl); await ask(again, false); }, null));
+        row.append(b);
+      }
+      also.append(row);
+      entry.box.append(also);
+    }
+    if (Array.isArray(ev.unread) && ev.unread.length) entry.box.append(el('p', 'qa-note', `Not looked in: ${ev.unread.join(', ')}. ${ev.unread.length === 1 ? 'Its' : 'Their'} documents are PDF files, which search and Ask cannot read inside. Open ${ev.unread.length === 1 ? 'it' : 'one'} from the library list and find a document by its title.`));
   } else if (ev.type === 'error') {
     finish();
     entry.box.append(el('p', 'qa-note', ev.message));
@@ -4077,7 +4102,7 @@ function render() {
   renderSchool();
   renderMap();
   const extras = typeof hubMaybePop === 'function'; // the scripts for these load after this one, and the first state can arrive in between
-  if (extras) { renderHub(); paintGps(); paintBook(); if (typeof crumbsState === 'function') crumbsState(); }
+  if (extras) { renderHub(); paintGps(); paintBook(); if (typeof crumbsState === 'function') crumbsState(); if (typeof paintMissing === 'function') paintMissing(); }
   maybeTour();
   if (extras) hubMaybePop();
   const e = state.edition;

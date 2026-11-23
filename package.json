@@ -1,7 +1,7 @@
 {
   "name": "wikivault",
   "productName": "Wikivault",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Offline English Wikipedia on your own machine: monthly verified editions, offline search, and answers from a local model.",
   "author": "wwmotorsport",
   "license": "MIT",
@@ -42,9 +42,7 @@
       "LICENSE",
       "THIRD-PARTY-NOTICES.txt",
       "!node_modules/tesseract.js-core/*.wasm.js",
-      "!node_modules/tesseract.js-core/tesseract-core.*",
-      "!node_modules/tesseract.js-core/tesseract-core-simd.*",
-      "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*",
+      "!node_modules/tesseract.js-core/*-lstm.*",
       "!node_modules/@tesseract.js-data/eng/4.0.0_best_int/**",
       "!node_modules/tesseract.js/dist/**"
     ],

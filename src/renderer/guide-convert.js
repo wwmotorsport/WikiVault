@@ -96,7 +96,9 @@ async function convertOne(job) {
       const reply = await window.convert.page(out);
       if (reply && reply.stop) return { id: job.id, stopped: true };
     }
-    return { id: job.id, pages: doc.numPages, outline };
+    let title = '';
+    try { const md = await doc.getMetadata(); title = String((md && md.info && md.info.Title) || '').slice(0, 200); } catch { title = ''; }
+    return { id: job.id, pages: doc.numPages, outline, title };
   } finally { try { await doc.destroy(); } catch { /* already gone */ } }
 }
 

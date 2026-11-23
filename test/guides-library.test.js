@@ -56,7 +56,7 @@ test('a collection is fetched, checked, converted and served: pages, pictures, s
   try {
     await lib.init();
     assert.strictEqual(lib.status().ready, false);
-    assert.deepStrictEqual(lib.status().collections.map((c) => c.id), ['water', 'medicine', 'food', 'knots', 'disaster']);
+    assert.deepStrictEqual(lib.status().collections.map((c) => c.id), ['water', 'medicine', 'food', 'knots', 'milmed', 'disaster']);
     assert.deepStrictEqual(await lib.info('water'), { file: 'zimgit-water_en_2024-08.zim', date: '2024-08', bytes: 34, url: `${server.base}/zim/other/zimgit-water_en_2024-08.zim` });
     assert.strictEqual(lib.add('water'), true);
     assert.strictEqual(lib.add('water'), false); // already under way
@@ -228,4 +228,62 @@ test('the words the reader is unsure of are left out: a drawing read as letters 
   ] }];
   assert.deepStrictEqual(fromBlocks(blocks), ['SQUARE KNOT: The basic tie for joining two ropes.']);
   assert.deepStrictEqual(tidy('One line\nand the next.\n\n. , . _ -\n\nA second para-\ngraph.'), ['One line and the next.', 'A second paragraph.']);
+});
+
+test('a copy of a web site gives up its PDF documents, each titled by the link that leads to it', { skip: !require('./helpers').kiwixServePath() }, async () => {
+  const { readWebZimWithEngine, nameFromFile } = require('../src/core/guides-library');
+  const { listZim } = require('../src/core/zim-list');
+  const { FIXTURES, kiwixServePath } = require('./helpers');
+  const zim = path.join(FIXTURES, 'site.test_en_manuals_2026-10.zim');
+  const inside = await listZim(zim, (m) => m === 'application/pdf');
+  assert.deepStrictEqual(inside.map((e) => [e.path, e.ns]), [['site.test/manuals/bandage.pdf', 'C'], ['site.test/manuals/field-hygiene_2.pdf', 'C']]);
+  await assert.rejects(listZim(__filename), /Not a \.zim file/);
+  assert.strictEqual(nameFromFile('site.test/manuals/field-hygiene_2.pdf'), 'Field hygiene 2');
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wv-guides-'));
+  const source = await readWebZimWithEngine(zim, { binPath: kiwixServePath(), log: () => {} });
+  try {
+    // One document is linked from the site's page under a real name; the other is known only by its file name
+    // ("weak"), and takes the title written inside the PDF when it is converted.
+    assert.deepStrictEqual(source.catalog.map((r) => [r.title, r.weak, r.files]), [['Bandaging and Splinting', false, ['site.test/manuals/bandage.pdf']], ['Field hygiene 2', true, ['site.test/manuals/field-hygiene_2.pdf']]]);
+    await source.save('site.test/manuals/bandage.pdf', path.join(dir, 'one.pdf'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'one.pdf')).subarray(0, 5).toString(), '%PDF-');
+  } finally { await source.close(); await fsp.rm(dir, { recursive: true, force: true }); }
+  // In the library: the collection is fetched from the folder it is kept in, and the weak title is replaced.
+  const lib = new GuidesLibrary({ dir: await fsp.mkdtemp(path.join(os.tmpdir(), 'wv-guides-')), engineBin: async () => 'kiwix-serve', log: () => {},
+    readWeb: async () => ({ catalog: [{ title: 'Field hygiene 2', weak: true, about: '', author: '', files: ['x/field-hygiene_2.pdf'] }], save: async (f, dest) => fsp.writeFile(dest, 'pdf'), close: async () => {} }),
+    convert: async (pdf, o) => ({ ...(await fakeConvert([])(pdf, o)), title: 'Field Hygiene and Sanitation' }),
+    download: async ({ dest }) => { await fsp.mkdir(path.dirname(dest), { recursive: true }); await fsp.writeFile(dest, 'zim'); return { size: 3 }; } });
+  try {
+    const asked = [];
+    lib.info = async (id) => { asked.push(id); lib.latest[id] = { file: 'irp.fas.org_en_military-medicine_2026-10.zim', date: '2026-10', bytes: 3, url: 'http://127.0.0.1:9/x.zim' }; return lib.latest[id]; };
+    await lib.init();
+    lib.add('milmed');
+    await lib.queue;
+    const c = lib.status().collections.find((x) => x.id === 'milmed');
+    assert.deepStrictEqual([c.error, c.have && c.have.guides, c.caution], [null, 1, true]);
+    assert.deepStrictEqual(lib.engine.cols[0].guides.map((g) => g.title), ['Field Hygiene and Sanitation']);
+  } finally { await lib.close(); await fsp.rm(lib.dir, { recursive: true, force: true }); }
+});
+
+test('a text reader that cannot start is tried once, not once a page; and the engine files Node loads are the ones packed', async () => {
+  const { Reader } = require('../src/core/ocr');
+  let tries = 0; const said = [];
+  const r = new Reader({ log: (m) => said.push(m), create: async () => { tries += 1; throw new Error("Cannot find module 'tesseract.js-core/tesseract-core-relaxedsimd'\nRequire stack:\n- a\n- b"); } });
+  for (let i = 0; i < 5; i += 1) await assert.rejects(r.read(Buffer.from([1])), /could not be started \(Cannot find module 'tesseract\.js-core\/tesseract-core-relaxedsimd'\)$/);
+  assert.strictEqual(tries, 1);
+  assert.strictEqual(said.length, 1);
+  assert.match(said[0], /scanned pages are kept as pictures without their words/);
+  await r.close();
+  // Under Node the library asks for one of these three, by what the processor can do (see its getCore.js). The
+  // installer's list of what to leave out must not touch them, nor the English data the reader is pointed at.
+  const build = require('../package.json').build;
+  const left = build.files.filter((f) => f.startsWith('!')).map((f) => new RegExp(`^${f.slice(1).replace(/[.+^$()|{}]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')}$`));
+  for (const need of ['tesseract-core', 'tesseract-core-simd', 'tesseract-core-relaxedsimd'].flatMap((n) => [`node_modules/tesseract.js-core/${n}.js`, `node_modules/tesseract.js-core/${n}.wasm`]).concat(['node_modules/@tesseract.js-data/eng/4.0.0/eng.traineddata.gz', 'node_modules/tesseract.js/src/worker-script/node/index.js'])) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', need)), `${need} is not installed`);
+    assert.ok(!left.some((re) => re.test(need)), `${need} is left out of the installer`);
+    assert.ok(build.asarUnpack.some((u) => need.startsWith(u.replace(/\*\*$/, ''))), `${need} is not kept beside the archive`);
+  }
+  const getCore = fs.readFileSync(path.join(__dirname, '..', 'node_modules/tesseract.js/src/worker-script/node/getCore.js'), 'utf8');
+  const asked = [...getCore.matchAll(/require\('tesseract\.js-core\/([a-z-]+)'\)/g)].map((m) => m[1]);
+  assert.deepStrictEqual(asked.filter((n) => !n.endsWith('-lstm')).sort(), ['tesseract-core', 'tesseract-core-relaxedsimd', 'tesseract-core-simd']);
 });

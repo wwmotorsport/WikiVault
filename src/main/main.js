@@ -45,6 +45,7 @@ const { GuidesLibrary } = require('../core/guides-library');
 const { convertPdf, convertHandlers, convertClose } = require('./convert-window');
 const { Reader: TextReader } = require('../core/ocr');
 const { pdfFromJpegs, byName } = require('../core/jpeg-pdf');
+const driveCheck = require('../core/drive-check');
 const catalog = require('../core/catalog');
 const { AddressBook } = require('../core/address-book');
 const relations = require('../core/relations');
@@ -184,7 +185,6 @@ const LIBRARIES = {
   appropedia: { name: 'Appropedia', project: 'appropedia', folder: 'other', late: true, approxBytes: 0.6 * 2 ** 30, about: 'Practical know-how for living with little: water, sanitation, growing food, building, energy and making do. Written by volunteers, like Wikipedia.' },
   mdwiki: { name: 'Medical encyclopedia (MDWiki)', project: 'mdwiki', folder: 'other', late: true, approxBytes: 2.2 * 2 ** 30, about: 'The medical articles of Wikipedia, checked and kept by WikiProject Medicine: illnesses, injuries, medicines and treatments. Reference only, not a substitute for a trained person.' },
   // Kiwix libraries of other kinds, each named by the start of its file name and the folder it is in on the server.
-  milmed: { name: 'Military medicine manuals', folder: 'zimit', prefix: 'irp.fas.org_en_military-medicine_', late: true, approxBytes: 0.06 * 2 ** 30, about: 'United States military manuals on first aid, field medicine and survival medicine. Reference only.' },
   readygov: { name: 'Ready.gov', folder: 'zimit', prefix: 'ready.gov_en_all_', late: true, approxBytes: 1.9 * 2 ** 30, about: 'The United States government\'s guidance on getting ready for, and through, storms, floods, fires, power cuts and other emergencies.' },
   outdoors: { name: 'Outdoors questions and answers', folder: 'stack_exchange', prefix: 'outdoors.stackexchange.com_en_all_', late: true, approxBytes: 0.14 * 2 ** 30, about: 'Camping, hiking, shelter, fire, water and getting by outdoors, as questions answered by people who do it.' },
   cooking: { name: 'Cooking questions and answers', folder: 'stack_exchange', prefix: 'cooking.stackexchange.com_en_all_', late: true, approxBytes: 0.23 * 2 ** 30, about: 'Cooking, keeping and preserving food, as questions and answers.' },
@@ -195,7 +195,8 @@ const LIBRARIES = {
   ifixit: { name: 'iFixit repair guides', folder: 'ifixit', prefix: 'ifixit_en_all_', late: true, approxBytes: 3.3 * 2 ** 30, about: 'Step-by-step repair guides with photographs, for telephones, computers, appliances, tools and vehicles.' },
   energypedia: { name: 'Energypedia', project: 'energypedia', folder: 'other', late: true, approxBytes: 0.75 * 2 ** 30, about: 'Power without the grid: solar, small hydro, wind, cooking stoves and batteries.' },
   gardenology: { name: 'Gardenology', folder: 'other', prefix: 'gardenology.org_en_all_', late: true, approxBytes: 0.11 * 2 ** 30, about: 'An encyclopedia of plants and how to grow them.' },
-  armypubs: { name: 'US Army publications', folder: 'zimit', prefix: 'armypubs_en_all_', late: true, approxBytes: 7.7 * 2 ** 30, about: 'A copy of the Army\'s publications site: field manuals and technical manuals, as PDF documents that open in the reader. Large, and its manuals are opened as they are, not converted into articles.' },
+  armypubs: { name: 'US Army publications', folder: 'zimit', prefix: 'armypubs_en_all_', late: true, pdfSite: true, approxBytes: 7.7 * 2 ** 30, about: 'A copy of the Army\'s publications site: field manuals and technical manuals, as PDF documents that open in the reader. Search and Ask cannot read inside its documents; find them by title.' },
+  survivor: { name: 'Survivor Library', folder: 'zimit', prefix: 'survivorlibrary.com_en_all_', late: true, pdfSite: true, approxBytes: 205 * 2 ** 30, about: 'A very large collection of old books on farming, building, trades, medicine and making things by hand, as scanned PDF documents that open in the reader. About 205 GB. Search and Ask cannot read inside its documents; find them by subject and title.' },
 };
 const extras = new Map();   // id -> { manager, engine }
 const extraLatest = {};     // id -> { date, file, bytes } as last read from Kiwix
@@ -537,10 +538,11 @@ async function getState() {
     libraries: Object.entries(LIBRARIES).map(([id, lib]) => {
       const x = extras.get(id);
       const snap = x?.manager.snapshot();
-      return { id, name: lib.name, about: lib.about, ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
+      return { id, name: lib.name, about: lib.about, pdfSite: Boolean(lib.pdfSite), ready: Boolean(x?.engine?.running), phase: snap?.phase || 'idle', active: snap?.active || null, pending: snap?.pending || null, progress: snap?.progress || null, error: snap?.error || null, updateAvailable: Boolean(snap?.updateAvailable), latest: extraLatest[id] || null };
     }),
     ai: { ...llm.status(), busy: aiBusy, tune: tuneProgress, resting: aiResting && llm.status().state !== 'ready' },
     guides: guides ? guides.status() : null,
+    libraryMissing,
     book: bookState(),
     tracks: tracksState(),
     gpsFake: Boolean(process.env.WIKIVAULT_GPS_FAKE),
@@ -641,6 +643,7 @@ async function startEngine(zimPath) {
 // ---------------------------------------------------------------- library
 
 async function initLibrary() {
+  if (libraryMissing) throw new Error('The library drive is not connected.'); // nothing is made in the place of a library that is only away
   if (editions) { editions.stopSchedule(); editions.removeAllListeners(); }
   await closeExtras();
   editions = new EditionManager({
@@ -708,6 +711,47 @@ async function folderToPdf(folder) {
   return dest;
 }
 
+/**
+ * Whether the other libraries on this computer have anything on a question that was asked in one of them, so that
+ * an answer (or the lack of one) is never taken for all there is. A quick search of each, by the question's words.
+ * @returns {Promise<Array<{id:string,name:string,total:number,first:string}>>} the libraries with matches, most first
+ */
+async function askElsewhere(question, here) {
+  const all = [['wikipedia', engine], ...[...extras].map(([id, x]) => [id, x.engine]), ['guides', guides?.engine]];
+  const others = all.filter(([id, e]) => id !== here && e?.running && !LIBRARIES[id]?.pdfSite);
+  const words = String(question || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !ASK_SMALL.has(w)).slice(0, 8).join(' ');
+  if (!others.length || !words) return [];
+  const found = [];
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 6000);
+  await Promise.all(others.map(async ([id, e]) => {
+    try { const r = await smartSearch(e, words, { pageLength: 3, signal: ac.signal }); if (r.total && r.items.length) found.push({ id, name: libName(id), total: r.total, first: r.items[0].title || '' }); } catch { /* a library that does not answer in time is left out */ }
+  }));
+  clearTimeout(timer);
+  return found.sort((a, b) => b.total - a.total).slice(0, 6);
+}
+const ASK_SMALL = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'when', 'where', 'who', 'which', 'does', 'did', 'can', 'could', 'should', 'would', 'with', 'from', 'that', 'this', 'are', 'was', 'were', 'you', 'your', 'best', 'way', 'about', 'into', 'have', 'has', 'not', 'any', 'there', 'make', 'use']);
+
+// The library's folder could not be reached when the app started (see the start-up code): looked for every few
+// seconds, and opened as soon as it is back.
+let libraryMissing = null;
+let missingTimer = null;
+async function libraryBack() {
+  if (!libraryMissing || !fs.existsSync(libraryMissing.dir)) return false;
+  clearInterval(missingTimer); missingTimer = null;
+  libraryMissing = null;
+  log('library: its folder is back');
+  await initLibrary().catch((err) => log(`library init failed: ${err.stack || err.message}`));
+  pushState();
+  if (engine?.running) send('edition-switched', { homeUrl: cur().homeUrl() });
+  return true;
+}
+function watchForLibrary() {
+  clearInterval(missingTimer);
+  missingTimer = setInterval(() => { libraryBack().catch(() => {}); }, 4000);
+  missingTimer.unref?.();
+}
+
 async function initGuides() {
   if (guides) { guides.removeAllListeners(); await guides.close().catch(() => {}); guides = null; }
   if (!settings.dataDir) return;
@@ -724,6 +768,8 @@ async function initGuides() {
   });
   g.on('progress', () => { const now = Date.now(); if (now - last > 400) { last = now; pushState(); } });
   await g.init();
+  // Military medicine was offered as a plain library for one version; it is a collection here now, and that copy goes.
+  await fsp.rm(path.join(settings.dataDir, 'more', 'milmed'), { recursive: true, force: true }).then(() => fsp.rmdir(path.join(settings.dataDir, 'more'))).catch(() => {});
   guides = g;
   pushState();
 }
@@ -1931,7 +1977,28 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { title: 'Where should Wikipedia be stored?', properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths[0]) return null;
     const dir = path.join(r.filePaths[0], 'Wikivault');
-    return { dir, freeBytes: await freeBytes(r.filePaths[0]) };
+    // A drive that is plugged in (or a network folder) is said to be one, so that it can be timed before it is used.
+    const drive = await driveCheck.describeDrive(r.filePaths[0]).catch(() => null);
+    return { dir, freeBytes: await freeBytes(r.filePaths[0]), drive: drive && (drive.external || drive.network || /^fat/i.test(drive.fs)) ? drive : null };
+  });
+  handle('drive:test', async ({ dir }) => {
+    const drive = await driveCheck.describeDrive(String(dir)).catch(() => null);
+    let speed = null;
+    if (!(drive && (/^fat/i.test(drive.fs) || drive.network))) {
+      try { speed = await driveCheck.speedTest(String(dir)); } catch (err) { log(`drive test: ${err.message}`); }
+    }
+    const said = driveCheck.verdict(drive || { external: true }, speed);
+    log(`drive test: ${drive ? `${drive.bus || 'unknown bus'}, ${drive.fs || 'unknown format'}` : 'kind not known'}; ${speed ? `${speed.writeMBs} MB/s, ${speed.syncMs} ms` : 'not timed'}; ${said.level}`);
+    return { drive, speed, ...said };
+  });
+  handle('library:missing-retry', async () => ({ back: await libraryBack() }));
+  handle('library:missing-forget', () => {
+    if (!libraryMissing) return false;
+    log('library: its folder is still missing and the user chose to set up again elsewhere');
+    clearInterval(missingTimer); missingTimer = null; libraryMissing = null;
+    settings.dataDir = null; settings.stagingDir = null;
+    saveSettings(); pushState();
+    return true;
   });
 
   handle('setup:begin', async ({ dataDir, stagingDir, autoUpdate, launchAtLogin, setupAnswers: wantAnswers, flavour }) => {
@@ -2333,6 +2400,8 @@ function registerIpc() {
         }
         pushState();
       }
+      const askedIn = curLibId();
+      const also = askElsewhere(question, askedIn); // looked for while the answer is written
       const out = await answerQuestion({
         engine: cur(), llm: model, question, pinnedUrl: pinnedUrl || null,
         history: conversation.slice(),
@@ -2347,7 +2416,7 @@ function registerIpc() {
         conversation.push({ question, standalone: out.standalone, answer: out.text, sources: turnSources(out.text, out.passages) });
         conversation = conversation.slice(-MAX_TURNS);
       }
-      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), modelNote, aiState: llm.status().state, device: llm.status().device });
+      emit('done', { text: out.text, empty: Boolean(out.empty), passagesOnly: Boolean(out.passagesOnly), here: libName(askedIn), elsewhere: await also, unread: Object.entries(LIBRARIES).filter(([lid, lib]) => lib.pdfSite && extras.get(lid)?.engine?.running).map(([, lib]) => lib.name), modelNote, aiState: llm.status().state, device: llm.status().device });
     })().catch((err) => {
       if (err.name === 'AbortError') emit('stopped');
       else { log(`ask failed: ${err.message}`); emit('error', { message: err.message, partial: err.partial || '' }); }
@@ -2511,7 +2580,10 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     startIdleWatch();
     if (settings.dataDir) {
-      await initLibrary().catch((err) => log(`library init failed: ${err.stack || err.message}`));
+      // The library's folder is gone: its drive is not plugged in (or was given another letter). Nothing is made
+      // in its place; the app waits for it and says so.
+      if (!fs.existsSync(settings.dataDir)) { libraryMissing = { dir: settings.dataDir }; log('library: its folder cannot be reached; waiting for the drive'); watchForLibrary(); }
+      else await initLibrary().catch((err) => log(`library init failed: ${err.stack || err.message}`));
     }
     applyLoginItem();
     syncRegistry();

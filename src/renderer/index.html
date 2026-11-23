@@ -92,6 +92,7 @@
                 <button class="btn small" id="setup-change-dir">Change folder</button>
               </div>
               <span class="field-help" id="setup-free"></span>
+              <div class="drive-note" id="setup-drive" hidden></div>
             </div>
 
             <fieldset class="field flavours" id="setup-flavours">
@@ -703,6 +704,21 @@
     </div>
   </dialog>
 
+  <dialog id="missing-dialog" aria-labelledby="missing-title">
+    <h2 id="missing-title">The library drive is not connected</h2>
+    <p>Wikivault keeps Wikipedia, the maps and everything else it has downloaded in this folder, and it cannot be reached:</p>
+    <p><code id="missing-dir"></code></p>
+    <p>If it is on an external drive, plug the drive in. The app looks for it every few seconds and opens the library by itself when it is back. If the drive is plugged in but has been given a different letter, plug it into the port it was in before, or give it its old letter in Disk Management.</p>
+    <p class="field-help" id="missing-note" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn primary" id="missing-retry">Try again now</button>
+      <button class="btn" id="missing-elsewhere">Set up in a different place</button>
+    </div>
+    <div id="missing-sure" hidden>
+      <p>Setting up in a different place starts again with an empty library, and everything is downloaded afresh. Nothing on the missing drive is changed, but the app will no longer look for it. Do this only if that drive is gone for good.</p>
+      <div class="actions"><button class="btn" id="missing-no">Keep waiting for the drive</button><button class="btn danger" id="missing-yes">Yes, start again elsewhere</button></div>
+    </div>
+  </dialog>
   <dialog id="move-dialog" aria-labelledby="move-title">
     <h2 id="move-title">Move the library</h2>
     <p id="move-text"></p>
@@ -710,6 +726,7 @@
       <span class="field-label">Move it to</span>
       <div class="path-row"><code id="move-dest"></code><button class="btn small" id="move-choose">Choose folder</button></div>
       <span class="field-help" id="move-free"></span>
+      <div class="drive-note" id="move-drive" hidden></div>
     </div>
     <div class="actions">
       <button class="btn" id="move-cancel">Cancel</button>
@@ -910,6 +927,7 @@
   <script src="gps.js"></script>
   <script src="crumbs.js"></script>
   <script src="guides.js"></script>
+  <script src="drive.js"></script>
   <script src="book.js"></script>
   <script src="trip.js"></script>
   <script src="askmap.js"></script>
