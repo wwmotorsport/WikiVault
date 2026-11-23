@@ -7,9 +7,9 @@ FULL DISCLOSURE: I am not a programmer or a software engineer. This entire proje
 ## Download and install
 
 <!-- download:start -->
-### [Download the installer: Wikivault-Setup-0.30.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.30.1/Wikivault-Setup-0.30.1.exe)
+### [Download the installer: Wikivault-Setup-0.34.1.exe](https://github.com/wwmotorsport/WikiVault/releases/download/v0.34.1/Wikivault-Setup-0.34.1.exe)
 
-Version 0.30.1, 139 MB, for Windows 10 and 11 (64-bit). Clicking the link starts the download.
+Version 0.34.1, 139 MB, for Windows 10 and 11 (64-bit). Clicking the link starts the download.
 <!-- download:end -->
 
 **Looking for the installer in the list of files above? It is not there.** GitHub does not allow a file this large in that list, so it is kept on this repository's **Releases** page. The link above goes straight to it.
