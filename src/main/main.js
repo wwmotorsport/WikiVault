@@ -2264,7 +2264,21 @@ function registerIpc() {
       blocks: (Array.isArray(a.blocks) ? a.blocks : []).slice(0, 40).map((b) => (Array.isArray(b.polygon) ? { polygon: b.polygon.map(pt) } : { lon: Number(b.lon), lat: Number(b.lat), radius: Number(b.radius) })).filter((b) => b.polygon || (Number.isFinite(b.lon) && Number.isFinite(b.lat) && b.radius > 0)),
     };
     let answer;
-    try { answer = await getRouteEngine().ask((origin) => routing.routeUrl(origin, o)); } catch (err) { throw new Error(err.engine ? routing.explain(err.message) : err.message); }
+    const askEngine = (points) => getRouteEngine().ask((origin) => routing.routeUrl(origin, { ...o, points }));
+    try { answer = await askEngine(o.points); } catch (err) {
+      if (!err.engine) throw new Error(err.message);
+      // The engine's own words are kept in the log (without any position), so that a refusal can be understood afterwards.
+      log(`maps:route: the engine said: ${String(err.message).replace(/-?\d+\.\d{3,}/g, '#').slice(0, 220)}`);
+      // Stuck at one end (a car park, a private drive): the same trip is tried with that end moved a little.
+      const stuck = routing.stuckEnd(err.message);
+      const until = Date.now() + 15000; let tries = 0;
+      for (const alt of stuck ? routing.nudged(o.points, stuck) : []) {
+        if (tries >= 20 || Date.now() > until) break;
+        tries += 1;
+        try { answer = await askEngine(alt.points); log(`maps:route: a way was found with the ${alt.moved === 'from' ? 'start' : 'end'} moved ${alt.metres} m (try ${tries})`); break; } catch (again) { if (!again.engine) throw new Error(again.message); }
+      }
+      if (!answer) throw new Error(routing.explain(err.message));
+    }
     // The engine's data has no road names; they are read from the map at each turn.
     const wanted = [];
     routing.parseRoute(answer, (lon, lat) => { wanted.push([lon, lat]); return ''; });

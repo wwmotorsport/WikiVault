@@ -2471,9 +2471,21 @@ async function mapResolve(which) {
   return mapPointOf(r.hits[0], text);
 }
 
+/**
+ * The button that asks for a route. With a GPS receiver giving a position, and the trip starting from it, what it
+ * starts is guidance, and it says so.
+ */
+function mapRouteLabel() {
+  const from = $('map-from').value.trim().toLowerCase();
+  const live = typeof gps !== 'undefined' && gps.status === 'fix' && (!from || from === MY_POSITION.toLowerCase());
+  $('map-route').textContent = mapGo.busy ? 'Working it out' : live ? 'Start guidance' : 'Get directions';
+}
+
 async function mapRoute({ again = false } = {}) {
   let shown = false;
   if (mapGo.busy) return;
+  // No start given, and the receiver knows where we are: the trip starts there.
+  if (!again && !$('map-from').value.trim() && typeof gpsPoint === 'function' && gpsPoint()) $('map-from').value = MY_POSITION;
   mapGo.busy = true; paintMapGo();
   try {
     if (!again) { mapGo.from = await mapResolve('from'); mapGo.to = await mapResolve('to'); $('map-from').value = mapGo.from.label; $('map-to').value = mapGo.to.label; }
@@ -2538,7 +2550,7 @@ function paintMapGo() {
   $('map-mode-note').textContent = mode.what;
   $('map-nomotor-row').hidden = !mode.id.startsWith('car');
   $('map-route').disabled = mapGo.busy;
-  $('map-route').textContent = mapGo.busy ? 'Working it out' : 'Get directions';
+  mapRouteLabel();
   $('map-route-other').hidden = !mapGo.route;
   $('map-route-clear').hidden = !(mapGo.route || mapGo.from || mapGo.to);
   const note = $('map-pick-note');
@@ -2604,6 +2616,7 @@ $('open-hub').addEventListener('click', () => { hub.autoOk = true; showView('hub
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && view === 'map' && mapPopup && mapPopup.isOpen() && !document.querySelector('dialog[open]')) { mapPopup.remove(); e.preventDefault(); } });
 $('map-go').addEventListener('submit', (e) => { e.preventDefault(); mapGo.alt = 0; guard(() => mapRoute(), $('map-error')); });
 $('map-route-other').addEventListener('click', () => { mapGo.alt = (mapGo.alt + 1) % 4; guard(() => mapRoute({ again: true }), $('map-error')); });
+$('map-from').addEventListener('input', mapRouteLabel);
 $('map-route-clear').addEventListener('click', () => { mapGo.from = null; mapGo.to = null; mapGo.route = null; mapGo.alt = 0; $('map-from').value = ''; $('map-to').value = ''; paintMapGo(); mapDrawRoute(); });
 $('map-from-pick').addEventListener('click', () => mapPick('from'));
 $('map-to-pick').addEventListener('click', () => mapPick('to'));
@@ -2887,6 +2900,11 @@ const TOUR_STOPS = [
   [['nav-help'], 'How this page works', 'Opens this guide for whichever page you are on.'],
 ];
 const WHATS_NEW = {
+  '0.41.0': [
+    'While a route is followed the map zooms to keep the next turn in view. Zoom it yourself and it stays put; Resume auto-zoom takes it up again.',
+    'The voice tells you the next turn straight after the last when it is more than a mile off, and speaks of turns sooner the faster you are going.',
+    'With the map turned to the way of travel, your position is shown as an arrow. The directions button says Start guidance when the GPS is giving a position.',
+  ],
   '0.40.0': [
     'Ask now reads every library on this computer at once and says which library each source is from. If they do not agree, ask one alone with the buttons under the answer.',
     'When a newer version of Wikivault is out, a bar at the top says so, with a link to download it. Look now, or switch it off, under Options and Setup, About.',

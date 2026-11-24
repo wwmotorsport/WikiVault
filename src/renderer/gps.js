@@ -10,6 +10,8 @@ const gps = {
   status: 'off',        // off | searching | waiting (connected, no fix yet) | fix | lost
   detail: '', fix: null, last: 0,
   follow: localStorage.getItem('wikivault-gps-follow') !== '0',
+  autoZoom: localStorage.getItem('wikivault-gps-autozoom') !== '0', // zoom to keep the next turn in view while a route is followed
+  zoomHeld: false, zoomWant: null,                                   // held: the user zoomed by hand, and it waits to be asked back
   turn: localStorage.getItem('wikivault-gps-turn') === 'heading' ? 'heading' : 'north', // which way up the map is kept while it follows
   glide: new WikivaultGpsSmooth.Glide(), shown: null, raf: 0, handsUntil: 0, easeUntil: 0,
   speak: localStorage.getItem('wikivault-gps-speak') === '1',
@@ -202,13 +204,27 @@ function gpsFrame() {
   if (!p) return;
   gps.shown = p;
   gpsDraw();
+  let zooming = false;
   // The map is left alone while the user has hold of it, and for a few seconds after.
   if (gps.follow && view === 'map' && mapView && now > gps.handsUntil && now > gps.easeUntil) {
     const cam = { center: [p.lon, p.lat] };
     if (gps.turn === 'heading' && p.bearing != null) { cam.bearing = p.bearing; cam.padding = gpsAhead(); }
+    // While a route is followed the map is zoomed, a little each frame, to keep the next turn in view; not while the
+    // user has set the zoom by hand, until they ask for it back.
+    if (gps.autoZoom && !gps.zoomHeld && gps.zoomWant != null && gps.guide) {
+      const z = mapView.getZoom(); const d = gps.zoomWant - z;
+      // Eased by the time that has passed, so that it is as quick on any screen: most of the way in about a second.
+      const dt = Math.min(120, Math.max(0, now - (gps.frameAt || now)));
+      if (Math.abs(d) > 0.02) { cam.zoom = z + d * (1 - Math.exp(-(dt || 16) / 420)); zooming = true; }
+    }
+    const before = mapView.getZoom();
     mapView.jumpTo(cam, { glide: true });
+    if (zooming && Math.abs(mapView.getZoom() - before) < 1e-5) zooming = false; // the map will go no further: do not keep asking
   }
-  if (p.moving) gps.raf = requestAnimationFrame(gpsFrame);
+  gps.frameAt = now;
+  // Frames go on while the mark is moving, and while the map has not yet reached the zoom it is making for (standing
+  // at a light, or just after auto-zoom was asked back).
+  if (p.moving || zooming) gps.raf = requestAnimationFrame(gpsFrame); else gps.frameAt = 0;
 }
 
 /** Keep the map north up, or turned to the way of travel. */
@@ -229,7 +245,7 @@ function gpsTurnSet(mode) {
 function gpsRouteChanged() {
   const r = mapGo.route;
   if (r === gps.route) return;
-  gps.route = r; gps.heard = {}; gps.arrived = false;
+  gps.route = r; gps.heard = {}; gps.arrived = false; gps.zoomHeld = false; gps.zoomWant = null;
   // A route worked out from the position starts at the nearest road. Until the car is on it, being that far away is not "off the route".
   gps.slack = r && r.coords && r.coords.length && mapGo.from && mapGo.from.gps && gps.fix && gps.fix.has ? WikivaultGuide.metres([gps.fix.lon, gps.fix.lat], r.coords[0]) + 40 : 0;
   gps.guide = r && r.coords && r.coords.length > 1 ? new WikivaultGuide.Guide(r) : null;
@@ -261,14 +277,25 @@ function gpsGuide(fix) {
     }
     return;
   }
+  gps.zoomWant = gpsZoomWanted(fix);
   const rest = `${tripMiles(u.remaining)} to go`;
   if (!u.next) { gpsBanner('Continue to the end of the route', rest); return; }
   gpsBanner(`In ${WikivaultGuide.said(u.next.meters)}: ${u.next.text}`, rest);
-  // Each turn is announced when it comes within a quarter of a mile, and again just before it.
-  const far = `${u.next.index}:far`; const near = `${u.next.index}:near`;
-  if (u.next.meters <= 60 && !gps.heard[near]) { gps.heard[near] = true; gps.heard[far] = true; gpsSay(`${u.next.text}.`); }
-  else if (u.next.meters <= 400 && !gps.heard[far]) { gps.heard[far] = true; gpsSay(`In ${WikivaultGuide.said(u.next.meters)}, ${u.next.text.charAt(0).toLowerCase()}${u.next.text.slice(1)}.`); }
+  // What is said: at once after a turn when the next is far off, then at a distance that grows with the speed.
+  const words = WikivaultGuide.announce(u.next, fix.speed, gps.heard);
+  if (words) gpsSay(words);
 }
+
+/** The zoom at which the next turn (or the end of the route) is in view ahead, or null when no route is followed. */
+function gpsZoomWanted(fix) {
+  const u = gps.progress;
+  if (!gps.guide || !mapGo.route || !u || u.arrived || !mapView) return null;
+  const box = mapView.getContainer();
+  const ahead = gps.turn === 'heading' ? box.clientHeight * 0.62 : Math.min(box.clientWidth, box.clientHeight) * 0.45;
+  return WikivaultGuide.zoomFor(u.next ? u.next.meters : u.remaining, fix.lat, ahead, fix.speed || 0, { min: Math.max(9.5, mapView.getMinZoom()), max: Math.min(17, mapView.getMaxZoom()) });
+}
+/** Take up zooming to the next turn again, after the user zoomed the map by hand. */
+function gpsZoomResume() { gps.zoomHeld = false; gps.handsUntil = 0; /* asked back: the map is taken up at once */ paintGps(); if (!gps.raf && gps.status === 'fix') gps.raf = requestAnimationFrame(gpsFrame); }
 
 /**
  * End the trip: the route and its guidance go, the GPS stays connected and the map keeps showing where you are.
@@ -294,12 +321,26 @@ function gpsOverlay(map) {
   // While the user has hold of the map (dragging it, zooming it) the following waits, and for a few seconds after.
   const hands = (e) => { if (!e || e.originalEvent) gps.handsUntil = performance.now() + 4000; };
   for (const ev of ['mousedown', 'touchstart', 'wheel', 'drag', 'zoom']) map.on(ev, hands);
+  // Zooming by hand (the wheel, a pinch, the + and - buttons, a double click) keeps the zoom where it was put.
+  const zoomed = (e) => { if (e && e.originalEvent && gps.guide && gps.autoZoom && !gps.zoomHeld) { gps.zoomHeld = true; paintGps(); } };
+  map.on('zoomstart', zoomed); map.on('wheel', zoomed);
+  // The mark when the map is turned to the way of travel: an arrow, pointing the way the car is going.
+  if (!map.hasImage('gps-arrow')) {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.beginPath(); g.moveTo(32, 5); g.lineTo(55, 57); g.lineTo(32, 45); g.lineTo(9, 57); g.closePath();
+    g.lineJoin = 'round'; g.lineWidth = 6; g.strokeStyle = '#ffffff'; g.stroke(); g.fillStyle = '#1a73e8'; g.fill();
+    map.addImage('gps-arrow', g.getImageData(0, 0, 64, 64), { pixelRatio: 2 });
+  }
+  map.setFilter('gps-dot', ['!=', ['get', 'arrow'], true]);
+  map.addLayer({ id: 'gps-arrow', type: 'symbol', source: 'gps', filter: ['==', ['get', 'arrow'], true], layout: { 'icon-image': 'gps-arrow', 'icon-size': 1.15, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
   gpsDraw();
 }
 function gpsDraw() {
   if (typeof mapView === 'undefined' || !mapView || !mapView.getSource('gps')) return;
   const f = gps.fix; const at = f && f.has ? gps.shown || f : null;
-  mapView.getSource('gps').setData({ type: 'FeatureCollection', features: at ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [at.lon, at.lat] } }] : [] });
+  const arrow = Boolean(at && gps.turn === 'heading' && gps.shown && gps.shown.bearing != null);
+  mapView.getSource('gps').setData({ type: 'FeatureCollection', features: at ? [{ type: 'Feature', properties: { arrow, bearing: arrow ? gps.shown.bearing : 0 }, geometry: { type: 'Point', coordinates: [at.lon, at.lat] } }] : [] });
 }
 
 /** Where a receiver can be bought, when the app has been given one to point to: the words and the link. */
@@ -397,6 +438,10 @@ function paintGpsPanel(text) {
   $('map-gps-end').hidden = !(on && gps.guide && mapGo.route);
   $('map-gps-follow-row').hidden = !on; $('map-gps-speak-row').hidden = !on;
   $('map-gps-follow').checked = gps.follow; $('map-gps-speak').checked = gps.speak;
+  const guiding = Boolean(on && gps.guide && mapGo.route);
+  $('map-gps-zoom-row').hidden = !on; $('map-gps-zoom').checked = gps.autoZoom;
+  $('map-gps-zoom-resume').hidden = !(guiding && gps.autoZoom && gps.zoomHeld); $('map-guide-zoom').hidden = $('map-gps-zoom-resume').hidden;
+  if (typeof mapRouteLabel === 'function') mapRouteLabel();
   $('map-gps-turn-row').hidden = !on;
   $('map-gps-turn-north').setAttribute('aria-pressed', String(gps.turn === 'north')); $('map-gps-turn-heading').setAttribute('aria-pressed', String(gps.turn === 'heading'));
   $('map-gps-turn-note').textContent = gps.turn === 'heading' && !gps.follow ? 'Tick "Keep the map on my position" for the map to turn.' : '';
@@ -413,6 +458,9 @@ $('map-guide-end').addEventListener('click', gpsEndTrip);
 $('map-gps-centre').addEventListener('click', () => { const p = gpsPoint(); if (p && mapView) mapView.easeTo({ center: [p.lon, p.lat], zoom: Math.max(mapView.getZoom(), Math.min(15, mapView.getMaxZoom())), duration: 600 }); });
 $('map-gps-turn-north').addEventListener('click', () => gpsTurnSet('north'));
 $('map-gps-turn-heading').addEventListener('click', () => gpsTurnSet('heading'));
+$('map-gps-zoom').addEventListener('change', () => { gps.autoZoom = $('map-gps-zoom').checked; localStorage.setItem('wikivault-gps-autozoom', gps.autoZoom ? '1' : '0'); gps.zoomHeld = false; paintGps(); });
+$('map-gps-zoom-resume').addEventListener('click', gpsZoomResume);
+$('map-guide-zoom').addEventListener('click', gpsZoomResume);
 $('map-gps-follow').addEventListener('change', () => { $('gps-follow').checked = $('map-gps-follow').checked; $('gps-follow').dispatchEvent(new Event('change')); });
 $('map-gps-speak').addEventListener('change', () => { $('gps-speak').checked = $('map-gps-speak').checked; $('gps-speak').dispatchEvent(new Event('change')); });
 

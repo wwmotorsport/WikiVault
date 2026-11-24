@@ -54,6 +54,38 @@ function routeUrl(origin, { points, mode, alt = 0, blocks = [], noMotorways = fa
   return `${origin}/brouter?${q.join('&')}`;
 }
 
+/**
+ * Which end of a trip the engine could not start from or reach: 'from', 'to', 'either' (it does not say), or null
+ * when the refusal is about something else. A position in a car park, or a house up a private drive, can sit on a
+ * piece of road that is joined to nothing a car may use; the engine then finds "no track" or "an island".
+ */
+function stuckEnd(text) {
+  const t = String(text || '');
+  if (/from-position not mapped/i.test(t)) return 'from';
+  if (/to-position not mapped/i.test(t)) return 'to';
+  if (/no track found|target island|island detected/i.test(t)) return 'either';
+  return null;
+}
+
+/**
+ * The same trip with its start, or its end, moved a little: tried in turn when the engine is stuck at an end.
+ * Eight compass points at 60 metres, then at 150; the start first, since a position from a GPS receiver is the
+ * likelier to be off the road.
+ * @returns {Array<{points:Array<[number,number]>, moved:'from'|'to', metres:number}>}
+ */
+function nudged(points, which = 'either') {
+  const out = [];
+  const shift = ([lon, lat], metres, bearing) => { const a = (bearing * Math.PI) / 180; return [lon + (metres * Math.sin(a)) / (111320 * Math.cos((lat * Math.PI) / 180)), lat + (metres * Math.cos(a)) / 110540]; };
+  const ends = which === 'from' ? ['from'] : which === 'to' ? ['to'] : ['from', 'to'];
+  for (const metres of [60, 150]) for (const end of ends) for (let b = 0; b < 360; b += 45) {
+    const pts = points.map((p) => p.slice());
+    const i = end === 'from' ? 0 : pts.length - 1;
+    pts[i] = shift(pts[i], metres, b);
+    out.push({ points: pts, moved: end, metres });
+  }
+  return out;
+}
+
 /** What the engine's refusals mean, in words. */
 function explain(text, where = '') {
   const t = String(text || '').trim();
@@ -115,4 +147,4 @@ function parseRoute(geojson, nameAt = () => '') {
   return { meters: Math.round(Number(p['track-length']) || total), seconds: Math.round(Number(p['total-time']) || 0), coords, steps: steps.map(({ index, ...s }) => s) };
 }
 
-module.exports = { MODES, segmentsFor, routeUrl, explain, parseRoute, heading };
+module.exports = { stuckEnd, nudged, MODES, segmentsFor, routeUrl, explain, parseRoute, heading };

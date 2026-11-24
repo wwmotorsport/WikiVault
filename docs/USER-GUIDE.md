@@ -338,7 +338,9 @@ Places that come from Overture say so when opened. They are sorted into the map'
 - with a route on the map, a banner at the top says the next turn and how far it is, and how far there is still to go;
 - if you leave the route, a new one is worked out from where you are;
 - *End trip*, on the banner and in the GPS panel, stops following the route without disconnecting the receiver: the route and its turns go, and the map keeps showing where you are;
-- *Speak the turns* reads each turn aloud as it comes up, using the voices Windows has.
+- *Speak the turns* reads each turn aloud, using the voices Windows has. Straight after a turn, when the next is more than a mile off, it says what the next is and how far (*Continue for 3.2 miles, then turn left onto Elm Street*). Each turn is then spoken of at a distance that grows with your speed (a quarter of a mile in town, a mile at 60 miles an hour and above), once more nearer when that first word came early, and at the turn itself.
+- *Zoom to keep the next turn in view*: while a route is followed, the map zooms out when the next turn is far off and in as it comes near. Zoom the map yourself and it stays where you put it, until you press *Resume auto-zoom* on the turn banner or in the panel.
+- With *Way of travel up*, the mark for your position is an arrow pointing the way you are heading.
 
 **Trips: a record of where you have been (breadcrumbs).** This is off until you switch it on: tick *Keep a record of where I go*, in the GPS panel or on the *Trips* tab beside *Saved*. While it is ticked and a receiver is connected, the app keeps your position every couple of seconds as you move, and nothing while you stand still. A stop of five minutes ends one trip, and the next movement begins another; so does unplugging the receiver. The record stays on this computer, in the app's own data folder. It is never sent anywhere and positions are not written to the log.
 

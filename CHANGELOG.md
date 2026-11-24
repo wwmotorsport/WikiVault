@@ -2,6 +2,17 @@
 
 Every revision of Wikivault, newest first. Versions before 0.7.0 were not dated when they were made.
 
+## 0.41.0 (2026-11-23)
+
+Live navigation, after a drive with it: the map zooms to the next turn, turns are spoken of in time for the speed, and a route that could not start from a car park now can.
+
+- **The map zooms by itself while a route is followed.** It is kept at the scale that shows the next turn ahead of you: out when the turn is miles off, in as it comes near, and not so far in at speed that the map rushes by. Zoom the map yourself (the wheel, a pinch, the + and - buttons) and it stays where you put it; *Resume auto-zoom*, on the turn banner and in the GPS panel, takes it up again. *Zoom to keep the next turn in view* in the panel switches it off altogether.
+- **Told what comes next, straight after a turn.** When the next turn is more than a mile away, the voice says so as soon as the last one is made: *Continue for 3.2 miles, then turn left onto Elm Street.*
+- **Turns are spoken of sooner the faster you go.** The first word about a turn came a quarter of a mile before it whatever the speed. It now comes at a distance in step with the speed: a quarter of a mile in town, half a mile at 30 miles an hour, a mile at 60 and above. When that first word comes early there is a reminder about a quarter of the way out, and always the last word at the turn, which also comes a little earlier at speed.
+- **An arrow for the way you are going.** With the map turned to the way of travel, the mark for your position is an arrow pointing the way the car is heading, in place of the dot. North up, and standing still, it stays a dot.
+- **"Start guidance".** With a receiver giving a position and the trip starting from it, the button under the From and To boxes says *Start guidance*, which is what it does. If From is left empty, the trip starts from your position.
+- **Fixed: "No way through was found" from where the car stood.** A position in a car park, or an address up a private drive, can lie on a piece of road that is joined to nothing a car may use, and the routing engine then finds no way at all. When the engine is stuck at one end like this, the app now tries the same trip with that end moved 60 metres, then 150, in each direction, and takes the first that works; guidance then treats the short way to the road as part of the start. The engine's own words for a refusal are also kept in the log now (without any position), so that the next one can be explained.
+
 ## 0.40.0 (2026-11-23)
 
 Ask reads every library at once, and the app says when a newer version of itself is out.

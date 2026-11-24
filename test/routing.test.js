@@ -172,3 +172,25 @@ test('the real engine routes on the test roads, goes round what is blocked, and 
   const missing = new RouteEngine({ java: 'java-that-is-not-here', jar: path.join(ASSETS, 'brouter.jar'), profiles: path.join(ASSETS, 'profiles2'), segments, scratch: path.join(os.tmpdir(), 'wv-none') });
   await assert.rejects(missing.start(), /Java was not found|could not be started/);
 });
+
+test('a trip stuck at one end is tried again with that end moved a little: the start first, near before far', () => {
+  const { stuckEnd, nudged } = require('../src/core/routing');
+  assert.strictEqual(stuckEnd('from-position not mapped in existing datafile'), 'from');
+  assert.strictEqual(stuckEnd('to-position not mapped in existing datafile'), 'to');
+  assert.strictEqual(stuckEnd('target island detected for section 0'), 'either');
+  assert.strictEqual(stuckEnd('no track found at pass=0'), 'either');
+  assert.strictEqual(stuckEnd('datafile W80_N35.rd5 not found'), null);
+  assert.strictEqual(stuckEnd('operation killed by thread-priority-watchdog after 60 seconds'), null);
+  const metres = (a, b) => { const k = Math.cos((a[1] * Math.PI) / 180); return Math.hypot((b[0] - a[0]) * 111320 * k, (b[1] - a[1]) * 110540); };
+  const pts = [[-90.2, 38.6], [-90.1, 38.7]];
+  const all = nudged(pts);
+  assert.strictEqual(all.length, 32);
+  assert.deepStrictEqual(all.slice(0, 9).map((x) => `${x.moved}${x.metres}`), ['from60', 'from60', 'from60', 'from60', 'from60', 'from60', 'from60', 'from60', 'to60']);
+  for (const x of all) {
+    const i = x.moved === 'from' ? 0 : 1;
+    assert.ok(Math.abs(metres(pts[i], x.points[i]) - x.metres) < 1, JSON.stringify(x));
+    assert.deepStrictEqual(x.points[1 - i], pts[1 - i]); // the other end is left where it was
+  }
+  assert.deepStrictEqual(pts, [[-90.2, 38.6], [-90.1, 38.7]]); // and the trip asked for is not changed
+  assert.ok(nudged(pts, 'from').every((x) => x.moved === 'from') && nudged(pts, 'from').length === 16);
+});

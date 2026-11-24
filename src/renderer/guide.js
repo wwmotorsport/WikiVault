@@ -79,5 +79,49 @@
     if (mi < 10) return `${mi.toFixed(1).replace(/\.0$/, '')} ${mi.toFixed(1) === '1.0' ? 'mile' : 'miles'}`;
     return `${Math.round(mi)} miles`;
   }
-  return { Guide, metres, onSegment, said };
+  const MILE = 1609.344;
+  const lower = (t) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  /**
+   * How far ahead a turn is spoken of, for the speed being travelled: the faster, the sooner. A quarter of a mile
+   * in town, rising in step with the speed to a mile at 60 miles an hour and above. `near` is the last word, at the
+   * turn itself; `mid` a reminder in between, when the first word comes early enough to want one.
+   */
+  function notice(speed) {
+    const v = Math.max(0, Number(speed) || 0); // metres a second
+    const far = Math.min(MILE, Math.max(400, MILE * (v / 26.8224)));
+    const near = Math.min(250, Math.max(60, v * 5));
+    const mid = far >= 800 ? Math.max(near + 150, far / 4) : 0;
+    return { far, mid, near };
+  }
+  /**
+   * What, if anything, is to be said now about the turn that comes next. `heard` records what has been said already
+   * (it is written to). Just after a turn, when the next is more than a mile off, the driver is told what it is and
+   * how far; then it is spoken of at the distance the speed calls for, once more nearer when that was far off, and
+   * at the turn.
+   * @param {{index:number,text:string,meters:number}|null} next
+   * @returns {string|null} the words to say
+   */
+  function announce(next, speed, heard) {
+    if (!next) return null;
+    const n = notice(speed); const k = (s) => `${next.index}:${s}`;
+    const mark = (...keys) => { for (const s of keys) heard[k(s)] = true; };
+    if (next.meters <= n.near) { if (heard[k('near')]) return null; mark('near', 'mid', 'far', 'ahead'); return `${next.text}.`; }
+    if (n.mid && next.meters <= n.mid) { if (heard[k('mid')]) return null; mark('mid', 'far', 'ahead'); return `In ${said(next.meters)}, ${lower(next.text)}.`; }
+    if (next.meters <= n.far) { if (heard[k('far')]) return null; mark('far', 'ahead'); return `In ${said(next.meters)}, ${lower(next.text)}.`; }
+    if (next.meters > MILE && !heard[k('ahead')]) { mark('ahead'); return `Continue for ${said(next.meters)}, then ${lower(next.text)}.`; }
+    return null;
+  }
+  /**
+   * The zoom at which the next turn is in view ahead of the position: `ahead` is how many pixels of map lie between
+   * the mark and the edge it is heading for. Close in for a turn that is near, out for one that is miles off, and
+   * never so close at speed that the map rushes by.
+   */
+  function zoomFor(meters, lat, ahead, speed = 0, { min = 9.5, max = 17 } = {}) {
+    const span = Math.max(120, meters) * 1.25; // the turn sits four fifths of the way to the edge
+    const perPixel = span / Math.max(80, ahead);
+    const z = Math.log2((78271.517 * Math.cos((lat * Math.PI) / 180)) / perPixel);
+    const cap = Math.min(max, 17.5 - Math.max(0, Number(speed) || 0) / 18); // 17 at a walk, about 16 at 60 miles an hour
+    return Math.round(Math.max(min, Math.min(cap, z)) * 100) / 100;
+  }
+  return { Guide, metres, onSegment, said, notice, announce, zoomFor };
 });
